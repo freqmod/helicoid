@@ -1,3 +1,4 @@
+// This is a file written only to be used on Mac OS
 use crate::{settings::SETTINGS, window::WindowSettings};
 use glutin::{PossiblyCurrent, WindowedContext};
 

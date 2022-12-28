@@ -16,5 +16,6 @@ extern crate derive_new;
 extern crate lazy_static;
 
 fn main() {
+    env_logger::init(); 
     create_window();
 }

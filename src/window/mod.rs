@@ -145,6 +145,7 @@ impl GlutinWindowWrapper {
     }*/
 
     pub fn handle_event(&mut self, event: Event<()>) {
+        //log::info!("Got event: {:?}", event);
         self.keyboard_manager.handle_event(&event);
         self.mouse_manager.handle_event(
             &event,
