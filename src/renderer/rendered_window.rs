@@ -157,7 +157,6 @@ pub struct RenderedWindow {
     pub current_scroll: f32,
     scroll_destination: f32,
     scroll_t: f32,
-
     //pub padding: WindowPadding,
 }
 
@@ -198,7 +197,7 @@ impl RenderedWindow {
             current_scroll: 0.0,
             scroll_destination: 0.0,
             scroll_t: 2.0, // 2.0 is out of the 0.0 to 1.0 range and stops animation.
-            //padding,
+                           //padding,
         }
     }
 
@@ -326,23 +325,23 @@ impl RenderedWindow {
                 &paint,
             );
         }
-/*
-        let (top_line, current_scroll) = self
-            .position_override
-            .as_ref()
-            .map(|&pos| (pos.top_line, pos.current_scroll))
-            .unwrap_or((self.current_surface.top_line, self.current_scroll));
-        let scroll_offset = (top_line * font_height) as f32 - (current_scroll * font_height as f32);
+        /*
+                let (top_line, current_scroll) = self
+                    .position_override
+                    .as_ref()
+                    .map(|&pos| (pos.top_line, pos.current_scroll))
+                    .unwrap_or((self.current_surface.top_line, self.current_scroll));
+                let scroll_offset = (top_line * font_height) as f32 - (current_scroll * font_height as f32);
 
-        // Draw current surface.
-        let snapshot = self.current_surface.surface.image_snapshot();
-        root_canvas.draw_image_rect(
-            snapshot,
-            None,
-            pixel_region.with_offset((0.0, scroll_offset as f32)),
-            &paint,
-        );
-*/
+                // Draw current surface.
+                let snapshot = self.current_surface.surface.image_snapshot();
+                root_canvas.draw_image_rect(
+                    snapshot,
+                    None,
+                    pixel_region.with_offset((0.0, scroll_offset as f32)),
+                    &paint,
+                );
+        */
         root_canvas.restore();
 
         if self.floating_order.is_some() {
@@ -357,7 +356,7 @@ impl RenderedWindow {
             floating_order: self.floating_order,
         }
     }
-/*
+    /*
     pub fn handle_window_draw_command(
         &mut self,
         grid_renderer: &mut GridRenderer,

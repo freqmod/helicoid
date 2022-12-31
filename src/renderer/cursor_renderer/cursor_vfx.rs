@@ -4,9 +4,9 @@ use skia_safe::{paint::Style, BlendMode, Canvas, Color, Paint, Point, Rect};
 
 use crate::{
     editor::Cursor,
-    renderer::cursor_renderer::CursorSettings,
-    renderer::{animation_utils::*},//, grid_renderer::GridRenderer},
+    renderer::animation_utils::*, //, grid_renderer::GridRenderer},
     //settings::*,
+    renderer::cursor_renderer::CursorSettings,
 };
 
 pub trait CursorVfx {
@@ -135,43 +135,43 @@ impl CursorVfx for PointHighlight {
         if (self.t - 1.0).abs() < std::f32::EPSILON {
             return;
         }
-/*
-        let mut paint = Paint::new(skia_safe::colors::WHITE, None);
-        paint.set_blend_mode(BlendMode::SrcOver);
+        /*
+                let mut paint = Paint::new(skia_safe::colors::WHITE, None);
+                paint.set_blend_mode(BlendMode::SrcOver);
 
-        let colors = &grid_renderer.default_style.colors;
-        let base_color: Color = cursor.background(colors).to_color();
-        let alpha = ease(ease_in_quad, settings.vfx_opacity, 0.0, self.t) as u8;
-        let color = Color::from_argb(alpha, base_color.r(), base_color.g(), base_color.b());
+                let colors = &grid_renderer.default_style.colors;
+                let base_color: Color = cursor.background(colors).to_color();
+                let alpha = ease(ease_in_quad, settings.vfx_opacity, 0.0, self.t) as u8;
+                let color = Color::from_argb(alpha, base_color.r(), base_color.g(), base_color.b());
 
-        paint.set_color(color);
+                paint.set_color(color);
 
-        let cursor_height = grid_renderer.font_dimensions.height;
-        let size = 3 * cursor_height;
-        let radius = self.t * size as f32;
-        let hr = radius * 0.5;
-        let rect = Rect::from_xywh(
-            self.center_position.x - hr,
-            self.center_position.y - hr,
-            radius,
-            radius,
-        );
-        match self.mode {
-            HighlightMode::SonicBoom => {
-                canvas.draw_oval(&rect, &paint);
-            }
-            HighlightMode::Ripple => {
-                paint.set_style(Style::Stroke);
-                paint.set_stroke_width(cursor_height as f32 * 0.2);
-                canvas.draw_oval(&rect, &paint);
-            }
-            HighlightMode::Wireframe => {
-                paint.set_style(Style::Stroke);
-                paint.set_stroke_width(cursor_height as f32 * 0.2);
-                canvas.draw_rect(&rect, &paint);
-            }
-        }
-*/
+                let cursor_height = grid_renderer.font_dimensions.height;
+                let size = 3 * cursor_height;
+                let radius = self.t * size as f32;
+                let hr = radius * 0.5;
+                let rect = Rect::from_xywh(
+                    self.center_position.x - hr,
+                    self.center_position.y - hr,
+                    radius,
+                    radius,
+                );
+                match self.mode {
+                    HighlightMode::SonicBoom => {
+                        canvas.draw_oval(&rect, &paint);
+                    }
+                    HighlightMode::Ripple => {
+                        paint.set_style(Style::Stroke);
+                        paint.set_stroke_width(cursor_height as f32 * 0.2);
+                        canvas.draw_oval(&rect, &paint);
+                    }
+                    HighlightMode::Wireframe => {
+                        paint.set_style(Style::Stroke);
+                        paint.set_stroke_width(cursor_height as f32 * 0.2);
+                        canvas.draw_rect(&rect, &paint);
+                    }
+                }
+        */
     }
 }
 

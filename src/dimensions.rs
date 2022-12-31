@@ -44,7 +44,6 @@ pub fn parse_window_geometry(input: &str) -> Result<Dimensions, String> {
         .map_err(|msg| msg.to_owned())
 }
 
-
 // Maybe this should be independent from serialization?
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Dimensions {

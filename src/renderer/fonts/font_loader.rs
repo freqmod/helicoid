@@ -13,6 +13,16 @@ use crate::renderer::fonts::swash_font::SwashFont;
 static DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
 static LAST_RESORT_FONT: &[u8] = include_bytes!("../../../assets/fonts/LastResort-Regular.ttf");
 
+#[derive(Debug, Default)]
+pub struct FontSet {
+    fonts: Vec<KeyedFont>,
+}
+#[derive(Debug)]
+pub struct KeyedFont {
+    pub key: FontKey,
+    pub skia_font: Font,
+}
+
 pub struct FontPair {
     pub key: FontKey,
     pub skia_font: Font,
@@ -40,6 +50,18 @@ impl FontPair {
 impl PartialEq for FontPair {
     fn eq(&self, other: &Self) -> bool {
         self.swash_font.key == other.swash_font.key
+    }
+}
+
+impl KeyedFont {
+    fn new(key: FontKey, mut skia_font: Font) -> Option<Self> {
+        skia_font.set_subpixel(true);
+        skia_font.set_hinting(font_hinting(&key.hinting));
+        skia_font.set_edging(font_edging(&key.edging));
+
+        let typeface = skia_font.typeface().unwrap();
+
+        Some(Self { key, skia_font })
     }
 }
 
@@ -82,6 +104,20 @@ impl FontLoader {
             let data = Data::new_copy(DEFAULT_FONT);
             let typeface = Typeface::from_data(data, 0).unwrap();
             FontPair::new(font_key, Font::from_typeface(typeface, self.font_size))
+        }
+    }
+
+    fn load_keyed(&mut self, font_key: FontKey) -> Option<KeyedFont> {
+        let font_style = font_style(font_key.bold, font_key.italic);
+
+        trace!("Loading font {:?}", font_key);
+        if let Some(family_name) = &font_key.family_name {
+            let typeface = self.font_mgr.match_family_style(family_name, font_style)?;
+            KeyedFont::new(font_key, Font::from_typeface(typeface, self.font_size))
+        } else {
+            let data = Data::new_copy(DEFAULT_FONT);
+            let typeface = Typeface::from_data(data, 0).unwrap();
+            KeyedFont::new(font_key, Font::from_typeface(typeface, self.font_size))
         }
     }
 

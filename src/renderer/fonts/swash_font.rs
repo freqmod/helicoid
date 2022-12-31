@@ -1,3 +1,8 @@
+use std::{
+    fmt::{self, Debug},
+    path::PathBuf,
+};
+
 use swash::{CacheKey, FontRef};
 
 pub struct SwashFont {
@@ -6,7 +11,20 @@ pub struct SwashFont {
     pub key: CacheKey,
 }
 
+impl Debug for SwashFont {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SwashFont")
+            .field("offset", &self.offset)
+            .field("key", &self.key)
+            .finish()
+    }
+}
+
 impl SwashFont {
+    pub fn from_path(path: &PathBuf, index: usize) -> Option<Self> {
+        let data = std::fs::read(path).ok()?;
+        Self::from_data(data, index)
+    }
     pub fn from_data(data: Vec<u8>, index: usize) -> Option<Self> {
         let font = FontRef::from_index(&data, index)?;
         let (offset, key) = (font.offset, font.key);

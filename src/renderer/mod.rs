@@ -4,6 +4,7 @@ pub mod fonts;
 pub mod grid_renderer;
 pub mod profiler;
 mod rendered_window;
+mod text_renderer;
 
 use std::{
     cmp::Ordering,
@@ -70,14 +71,13 @@ pub enum DrawCommand {
     UpdateCursor(Cursor),
     FontChanged(String),
     DefaultStyleChanged(Style),
-//    ModeChanged(EditorMode),
+    //    ModeChanged(EditorMode),
 }
 
 pub struct Renderer {
     cursor_renderer: CursorRenderer,
     //pub grid_renderer: GridRenderer,
-//    current_mode: EditorMode,
-
+    //    current_mode: EditorMode,
     rendered_windows: HashMap<u64, RenderedWindow>,
     pub window_regions: Vec<WindowDrawDetails>,
 
@@ -90,7 +90,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(os_scale_factor: f64) -> Self {
-  //      let window_settings = SETTINGS.get::<WindowSettings>();
+        //      let window_settings = SETTINGS.get::<WindowSettings>();
 
         let user_scale_factor = 1.0; //window_settings.scale_factor.into();
         let scale_factor = user_scale_factor * os_scale_factor;
@@ -128,11 +128,11 @@ impl Renderer {
     pub fn handle_event(&mut self, event: &Event<()>) {
         self.cursor_renderer.handle_event(event);
     }
-/*
-    pub fn font_names(&self) -> Vec<String> {
-        self.grid_renderer.font_names()
-    }
-*/
+    /*
+        pub fn font_names(&self) -> Vec<String> {
+            self.grid_renderer.font_names()
+        }
+    */
     /// Draws frame
     ///
     /// # Returns
@@ -246,7 +246,7 @@ impl Renderer {
             } => {
                 self.rendered_windows.remove(&grid_id);
             }
-/*            DrawCommand::Window { grid_id, command } => {
+            /*            DrawCommand::Window { grid_id, command } => {
                 match self.rendered_windows.entry(grid_id) {
                     Entry::Occupied(mut occupied_entry) => {
                         let rendered_window = occupied_entry.get_mut();
@@ -287,7 +287,6 @@ impl Renderer {
             DrawCommand::ModeChanged(new_mode) => {
                 self.current_mode = new_mode;
             }*/
-            
             _ => {}
         }
     }

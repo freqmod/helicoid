@@ -1,11 +1,17 @@
-use std::sync::Arc;
+use std::env;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use log::{debug, trace, warn};
 use lru::LruCache;
-use skia_safe::{
+use ordered_float::OrderedFloat;
+/* use skia_safe::{
     graphics::{font_cache_limit, font_cache_used, set_font_cache_limit},
     TextBlob, TextBlobBuilder,
-};
+};*/
 use swash::{
     shape::ShapeContext,
     text::{
@@ -16,8 +22,22 @@ use swash::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::renderer::fonts::{font_loader::*, font_options::*};
+use crate::renderer::fonts::blob_builder::FontKey;
+use crate::renderer::{
+    fonts::{font_loader::*, font_options::*, swash_font::SwashFont},
+    text_renderer::{ShapableString, ShapedTextBlock},
+};
+/* Make a shaper per font (variant), that contains cached shaped info etc.
+then make an algorithm that works on multiple shapers to shape multifont text */
+static DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
+static LAST_RESORT_FONT: &[u8] = include_bytes!("../../../assets/fonts/LastResort-Regular.ttf");
+static DEFAULT_FONT_SIZE: f32 = 12.0f32;
 
+/* TODO: This should ideally point to the configuration / shared directory for the helix/helicoid editor
+however currently we just use the current executable path as a base. */
+fn base_asset_path() -> PathBuf {
+    env::current_exe().unwrap().parent().unwrap().join("assets")
+}
 #[derive(new, Clone, Hash, PartialEq, Eq, Debug)]
 struct ShapeKey {
     pub text: String,
@@ -25,10 +45,19 @@ struct ShapeKey {
     pub italic: bool,
 }
 
+#[derive(Debug)]
+pub struct KeyedSwashFont {
+    pub key: FontKey,
+    pub swash_font: SwashFont,
+}
+
 pub struct CachingShaper {
     options: FontOptions,
-    font_loader: FontLoader,
-    blob_cache: LruCache<ShapeKey, Vec<TextBlob>>,
+    //font_loader: FontLoader,
+    shape_cache: LruCache<ShapableString, ShapedTextBlock>,
+    font_cache: HashMap<SmallFontOptions, KeyedSwashFont>,
+    font_names: Vec<Option<String>>,
+    default_font: KeyedSwashFont,
     shape_context: ShapeContext,
     scale_factor: f32,
     fudge_factor: f32,
@@ -37,137 +66,183 @@ pub struct CachingShaper {
 impl CachingShaper {
     pub fn new(scale_factor: f32) -> CachingShaper {
         let options = FontOptions::default();
-        let font_size = options.size * scale_factor;
+        let font_size = options.font_parameters.size() * scale_factor;
+        let default_font =
+            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), DEFAULT_FONT_SIZE)
+                .unwrap();
         let mut shaper = CachingShaper {
             options,
-            font_loader: FontLoader::new(font_size),
-            blob_cache: LruCache::new(10000),
+            shape_cache: LruCache::new(10000),
+            font_cache: Default::default(),
+            font_names: Vec::new(),
+            default_font,
+            //font_loader: FontLoader::new(font_size),
             shape_context: ShapeContext::new(),
             scale_factor,
             fudge_factor: 1.0,
         };
-        shaper.reset_font_loader();
+        //        shaper.reset_font_loader();
         shaper
     }
-
-    fn current_font_pair(&mut self) -> Arc<FontPair> {
-        self.font_loader
-            .get_or_load(&FontKey {
-                italic: false,
-                bold: false,
-                family_name: self.options.primary_font(),
-                hinting: self.options.hinting.clone(),
-                edging: self.options.edging.clone(),
-            })
-            .unwrap_or_else(|| {
-                self.font_loader
-                    .get_or_load(&FontKey::default())
-                    .expect("Could not load default font")
-            })
-    }
-
+    /*
+        fn current_font_pair(&mut self) -> Arc<FontPair> {
+            self.font_loader
+                .get_or_load(&FontKey {
+                    italic: false,
+                    bold: false,
+                    family_name: self.options.primary_font(),
+                    hinting: self.options.font_parameters.hinting.clone(),
+                    edging: self.options.font_parameters.edging.clone(),
+                })
+                .unwrap_or_else(|| {
+                    self.font_loader
+                        .get_or_load(&FontKey::default())
+                        .expect("Could not load default font")
+                })
+        }
+    */
     pub fn current_size(&self) -> f32 {
-        self.options.size * self.scale_factor * self.fudge_factor
+        self.options.font_parameters.size() * self.scale_factor * self.fudge_factor
     }
-
-    pub fn update_scale_factor(&mut self, scale_factor: f32) {
-        debug!("scale_factor changed: {:.2}", scale_factor);
-        self.scale_factor = scale_factor;
-        self.reset_font_loader();
-    }
-
-    pub fn update_font(&mut self, guifont_setting: &str) {
-        debug!("Updating font: {}", guifont_setting);
-
-        let options = FontOptions::parse(guifont_setting);
-        let font_key = FontKey {
-            italic: false,
-            bold: false,
-            family_name: options.primary_font(),
-            hinting: options.hinting.clone(),
-            edging: options.edging.clone(),
-        };
-
-        if self.font_loader.get_or_load(&font_key).is_some() {
-            debug!("Font updated to: {}", guifont_setting);
-            self.options = options;
-            self.reset_font_loader();
-        } else {
-            debug!("Font can't be updated to: {}", guifont_setting);
-        }
-    }
-
     fn reset_font_loader(&mut self) {
-        self.fudge_factor = 1.0;
-        let mut font_size = self.current_size();
-        debug!("Original font_size: {:.2}px", font_size);
-
-        self.font_loader = FontLoader::new(font_size);
-        let (metrics, font_width) = self.info();
-
-        debug!("Original font_width: {:.2}px", font_width);
-
-        if !self.options.allow_float_size {
-            // Calculate the new fudge factor required to scale the font width to the nearest exact pixel
-            debug!(
-                "Font width: {:.2}px (avg: {:.2}px)",
-                font_width, metrics.average_width
-            );
-            self.fudge_factor = font_width.round() / font_width;
-            debug!("Fudge factor: {:.2}", self.fudge_factor);
-            font_size = self.current_size();
-            debug!("Fudged font size: {:.2}px", font_size);
-            debug!("Fudged font width: {:.2}px", self.info().1);
-            self.font_loader = FontLoader::new(font_size);
-        }
-        self.blob_cache.clear();
+        self.font_names.clear();
+        //self.blob_cache.clear();
+        // clear font manager?
     }
 
     pub fn font_names(&self) -> Vec<String> {
-        self.font_loader.font_names()
+        self.font_names
+            .iter()
+            .filter_map(|s| s.as_ref().map(|s| s.clone()))
+            .collect()
+    }
+    /*
+        pub fn update_scale_factor(&mut self, scale_factor: f32) {
+            debug!("scale_factor changed: {:.2}", scale_factor);
+            self.scale_factor = scale_factor;
+            self.reset_font_loader();
+        }
+
+        pub fn update_font(&mut self, guifont_setting: &str) {
+            debug!("Updating font: {}", guifont_setting);
+
+            let options = FontOptions::parse(guifont_setting);
+            let font_key = FontKey {
+                italic: false,
+                bold: false,
+                family_name: options.primary_font(),
+                hinting: options.font_parameters.hinting.clone(),
+                edging: options.font_parameters.edging.clone(),
+            };
+
+            if self.font_loader.get_or_load(&font_key).is_some() {
+                debug!("Font updated to: {}", guifont_setting);
+                self.options = options;
+                self.reset_font_loader();
+            } else {
+                debug!("Font can't be updated to: {}", guifont_setting);
+            }
+        }
+
+        fn reset_font_loader(&mut self) {
+            self.fudge_factor = 1.0;
+            let mut font_size = self.current_size();
+            debug!("Original font_size: {:.2}px", font_size);
+
+            self.font_loader = FontLoader::new(font_size);
+            let (metrics, font_width) = self.info();
+
+            debug!("Original font_width: {:.2}px", font_width);
+
+            if !self.options.font_parameters.allow_float_size {
+                // Calculate the new fudge factor required to scale the font width to the nearest exact pixel
+                debug!(
+                    "Font width: {:.2}px (avg: {:.2}px)",
+                    font_width, metrics.average_width
+                );
+                self.fudge_factor = font_width.round() / font_width;
+                debug!("Fudge factor: {:.2}", self.fudge_factor);
+                font_size = self.current_size();
+                debug!("Fudged font size: {:.2}px", font_size);
+                debug!("Fudged font width: {:.2}px", self.info().1);
+                self.font_loader = FontLoader::new(font_size);
+            }
+            //self.blob_cache.clear();
+        }
+    */
+
+    fn get_load_font_for_index(&mut self, options: &SmallFontOptions) -> Option<&KeyedSwashFont> {
+        //        let font_key =
+        if !self.font_cache.contains_key(options) {
+            if let Some(font_family_name) = self.font_names.get(options.family_id as usize) {
+                if let Some(font_family_name) = font_family_name {
+                    let font = KeyedSwashFont::load_keyed(
+                        &base_asset_path(),
+                        FontKey::from_parameters(
+                            options.font_parameters.clone(),
+                            Some(font_family_name.clone()),
+                        ),
+                        options.font_parameters.size(),
+                    );
+                    if let Some(font) = font {
+                        self.font_cache.insert(options.clone(), font).unwrap();
+                    }
+                }
+            }
+        }
+        self.font_cache.get(options)
     }
 
-    fn info(&mut self) -> (Metrics, f32) {
-        let font_pair = self.current_font_pair();
-        let size = self.current_size();
-        let mut shaper = self
-            .shape_context
-            .builder(font_pair.swash_font.as_ref())
-            .size(size)
-            .build();
-        shaper.add_str("M");
-        let metrics = shaper.metrics();
-        let mut advance = metrics.average_width;
-        shaper.shape_with(|cluster| {
-            advance = cluster
-                .glyphs
-                .first()
-                .map_or(metrics.average_width, |g| g.advance);
-        });
-        (metrics, advance)
+    fn info(&mut self, font_options: &SmallFontOptions) -> Option<(Metrics, f32)> {
+        //let font_pair = self.current_font_pair();
+        /* Ensure font is loaded (if possible) */
+        let _ = self.get_load_font_for_index(font_options);
+        let current_size = self.current_size();
+        let Self {
+            font_cache,
+            shape_context,
+            ..
+        } = self;
+        font_cache.get(font_options).map(|font| {
+            let mut shaper = shape_context
+                .builder(font.swash_font.as_ref())
+                .size(current_size)
+                .build();
+            shaper.add_str("M");
+            let metrics = shaper.metrics();
+            let mut advance = metrics.average_width;
+            shaper.shape_with(|cluster| {
+                advance = cluster
+                    .glyphs
+                    .first()
+                    .map_or(metrics.average_width, |g| g.advance);
+            });
+            (metrics, advance)
+        })
     }
 
-    fn metrics(&mut self) -> Metrics {
-        self.info().0
+    fn metrics(&mut self, font_options: &SmallFontOptions) -> Option<Metrics> {
+        self.info(font_options).map(|i| i.0)
     }
+    /*
+        pub fn font_base_dimensions(&mut self) -> (u64, u64) {
+            let (metrics, glyph_advance) = self.info();
+            let font_height = (metrics.ascent + metrics.descent + metrics.leading).ceil() as u64;
+            let font_width = (glyph_advance + 0.5).floor() as u64;
 
-    pub fn font_base_dimensions(&mut self) -> (u64, u64) {
-        let (metrics, glyph_advance) = self.info();
-        let font_height = (metrics.ascent + metrics.descent + metrics.leading).ceil() as u64;
-        let font_width = (glyph_advance + 0.5).floor() as u64;
+            (font_width, font_height)
+        }
 
-        (font_width, font_height)
-    }
+        pub fn underline_position(&mut self) -> u64 {
+            self.metrics().underline_offset as u64
+        }
 
-    pub fn underline_position(&mut self) -> u64 {
-        self.metrics().underline_offset as u64
-    }
-
-    pub fn y_adjustment(&mut self) -> u64 {
-        let metrics = self.metrics();
-        (metrics.ascent + metrics.leading).ceil() as u64
-    }
-
+        pub fn y_adjustment(&mut self) -> u64 {
+            let metrics = self.metrics();
+            (metrics.ascent + metrics.leading).ceil() as u64
+        }
+    */
+    /*
     fn build_clusters(
         &mut self,
         text: &str,
@@ -206,20 +281,22 @@ impl CachingShaper {
 
             // Add parsed fonts from guifont
             font_fallback_keys.extend(self.options.font_list.iter().map(|font_name| FontKey {
-                italic: self.options.italic || italic,
-                bold: self.options.bold || bold,
+                size: OrderedFloat(DEFAULT_FONT_SIZE),
+                italic: self.options.font_parameters.italic || italic,
+                bold: self.options.font_parameters.bold || bold,
                 family_name: Some(font_name.clone()),
-                hinting: self.options.hinting.clone(),
-                edging: self.options.edging.clone(),
+                hinting: self.options.font_parameters.hinting.clone(),
+                edging: self.options.font_parameters.edging.clone(),
             }));
 
             // Add default font
             font_fallback_keys.push(FontKey {
-                italic: self.options.italic || italic,
-                bold: self.options.bold || bold,
+                size: OrderedFloat(DEFAULT_FONT_SIZE),
+                italic: self.options.font_parameters.italic || italic,
+                bold: self.options.font_parameters.bold || bold,
                 family_name: None,
-                hinting: self.options.hinting.clone(),
-                edging: self.options.edging.clone(),
+                hinting: self.options.font_parameters.hinting.clone(),
+                edging: self.options.font_parameters.edging.clone(),
             });
 
             // Use the cluster.map function to select a viable font from the fallback list and loaded fonts
@@ -298,9 +375,9 @@ impl CachingShaper {
         }
 
         grouped_results
-    }
+    }*/
 
-    pub fn adjust_font_cache_size(&self) {
+    /*    pub fn adjust_font_cache_size(&self) {
         let current_font_cache_size = font_cache_limit() as f32;
         let percent_font_cache_used = font_cache_used() as f32 / current_font_cache_size;
         if percent_font_cache_used > 0.9 {
@@ -310,67 +387,86 @@ impl CachingShaper {
             );
             set_font_cache_limit((percent_font_cache_used * 1.5) as usize);
         }
-    }
+    }*/
+    /*
+            pub fn shape(&mut self, text: String, bold: bool, italic: bool) -> Vec<TextBlob> {
+                let current_size = self.current_size();
+                let (glyph_width, ..) = self.font_base_dimensions();
 
-    pub fn shape(&mut self, text: String, bold: bool, italic: bool) -> Vec<TextBlob> {
-        let current_size = self.current_size();
-        let (glyph_width, ..) = self.font_base_dimensions();
+                let mut resulting_blobs = Vec::new();
 
-        let mut resulting_blobs = Vec::new();
+                trace!("Shaping text: {}", text);
 
-        trace!("Shaping text: {}", text);
+                for (cluster_group, font_pair) in self.build_clusters(&text, bold, italic) {
+                    let mut shaper = self
+                        .shape_context
+                        .builder(font_pair.swash_font.as_ref())
+                        .size(current_size)
+                        .build();
 
-        for (cluster_group, font_pair) in self.build_clusters(&text, bold, italic) {
-            let mut shaper = self
-                .shape_context
-                .builder(font_pair.swash_font.as_ref())
-                .size(current_size)
-                .build();
+                    let charmap = font_pair.swash_font.as_ref().charmap();
+                    for mut cluster in cluster_group {
+                        cluster.map(|ch| charmap.map(ch));
+                        shaper.add_cluster(&cluster);
+                    }
 
-            let charmap = font_pair.swash_font.as_ref().charmap();
-            for mut cluster in cluster_group {
-                cluster.map(|ch| charmap.map(ch));
-                shaper.add_cluster(&cluster);
-            }
+                    let mut glyph_data = Vec::new();
 
-            let mut glyph_data = Vec::new();
+                    shaper.shape_with(|glyph_cluster| {
+                        for glyph in glyph_cluster.glyphs {
+                            let position = ((glyph.data as u64 * glyph_width) as f32, glyph.y);
+                            glyph_data.push((glyph.id, position));
+                        }
+                    });
 
-            shaper.shape_with(|glyph_cluster| {
-                for glyph in glyph_cluster.glyphs {
-                    let position = ((glyph.data as u64 * glyph_width) as f32, glyph.y);
-                    glyph_data.push((glyph.id, position));
+                    if glyph_data.is_empty() {
+                        continue;
+                    }
+
+                    let mut blob_builder = TextBlobBuilder::new();
+                    let (glyphs, positions) =
+                        blob_builder.alloc_run_pos(&font_pair.skia_font, glyph_data.len(), None);
+                    for (i, (glyph_id, glyph_position)) in glyph_data.iter().enumerate() {
+                        glyphs[i] = *glyph_id;
+                        positions[i] = (*glyph_position).into();
+                    }
+
+                    let blob = blob_builder.make();
+                    resulting_blobs.push(blob.expect("Could not create textblob"));
                 }
-            });
 
-            if glyph_data.is_empty() {
-                continue;
+                self.adjust_font_cache_size();
+
+                resulting_blobs
             }
 
-            let mut blob_builder = TextBlobBuilder::new();
-            let (glyphs, positions) =
-                blob_builder.alloc_run_pos(&font_pair.skia_font, glyph_data.len(), None);
-            for (i, (glyph_id, glyph_position)) in glyph_data.iter().enumerate() {
-                glyphs[i] = *glyph_id;
-                positions[i] = (*glyph_position).into();
+            pub fn shape_cached(&mut self, text: String, bold: bool, italic: bool) -> &Vec<TextBlob> {
+                let key = ShapeKey::new(text.clone(), bold, italic);
+
+                if !self.blob_cache.contains(&key) {
+                    let blobs = self.shape(text, bold, italic);
+                    self.blob_cache.put(key.clone(), blobs);
+                }
+
+                self.blob_cache.get(&key).unwrap()
             }
 
-            let blob = blob_builder.make();
-            resulting_blobs.push(blob.expect("Could not create textblob"));
-        }
-
-        self.adjust_font_cache_size();
-
-        resulting_blobs
+    }*/
+}
+impl KeyedSwashFont {
+    fn new(key: FontKey, swash_font: SwashFont) -> Self {
+        Self { key, swash_font }
     }
-
-    pub fn shape_cached(&mut self, text: String, bold: bool, italic: bool) -> &Vec<TextBlob> {
-        let key = ShapeKey::new(text.clone(), bold, italic);
-
-        if !self.blob_cache.contains(&key) {
-            let blobs = self.shape(text, bold, italic);
-            self.blob_cache.put(key.clone(), blobs);
+    fn load_keyed(base_directory: &PathBuf, font_key: FontKey, font_size: f32) -> Option<Self> {
+        //        let font_style = font_style(font_key.bold, font_key.italic);
+        trace!("Loading font {:?}", font_key);
+        if let Some(family_name) = &font_key.family_name {
+            let font_file_path = base_directory.join(format!("{}.ttf", family_name));
+            //            let typeface = font_manager.match_family_style(family_name, font_style)?;
+            SwashFont::from_path(&font_file_path, 0).map(|font| KeyedSwashFont::new(font_key, font))
+        } else {
+            SwashFont::from_data(DEFAULT_FONT.to_vec(), 0)
+                .map(|font| KeyedSwashFont::new(font_key, font))
         }
-
-        self.blob_cache.get(&key).unwrap()
     }
 }

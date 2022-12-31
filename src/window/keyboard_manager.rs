@@ -1,9 +1,4 @@
-use crate::{
-    //bridge::{SerialCommand, UiCommand},
-    event_aggregator::EVENT_AGGREGATOR,
-//    settings::SETTINGS,
-//    window::KeyboardSettings,
-};
+use crate::event_aggregator::EVENT_AGGREGATOR;
 use glutin::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     keyboard::{Key, Key::Dead},

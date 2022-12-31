@@ -46,8 +46,8 @@ use crate::{
     redraw_scheduler::REDRAW_SCHEDULER,
     renderer::Renderer,
     renderer::WindowPadding,
-//    running_tracker::*,
-/*    settings::{
+    //    running_tracker::*,
+    /*    settings::{
         load_last_window_settings, save_window_geometry, PersistentWindowSettings, SETTINGS,
     },*/
 };
@@ -110,7 +110,7 @@ impl GlutinWindowWrapper {
                 WindowCommand::SetMouseEnabled(mouse_enabled) => {
                     self.mouse_manager.enabled = mouse_enabled
                 }
-                WindowCommand::ListAvailableFonts => {},//self.send_font_names(),
+                WindowCommand::ListAvailableFonts => {} //self.send_font_names(),
             }
         }
     }
@@ -225,7 +225,8 @@ impl GlutinWindowWrapper {
         }
 
         */
-        if REDRAW_SCHEDULER.should_draw() {//|| SETTINGS.get::<WindowSettings>().no_idle {
+        if REDRAW_SCHEDULER.should_draw() {
+            //|| SETTINGS.get::<WindowSettings>().no_idle {
             self.font_changed_last_frame =
                 self.renderer.draw_frame(self.skia_renderer.canvas(), dt);
             self.skia_renderer.gr_context.flush(None);
@@ -263,38 +264,38 @@ impl GlutinWindowWrapper {
         }
         */
     }
-/*
-    fn handle_new_grid_size(&mut self, new_size: PhysicalSize<u32>) {
-        let window_padding = self.renderer.window_padding;
-        let window_padding_width = window_padding.left + window_padding.right;
-        let window_padding_height = window_padding.top + window_padding.bottom;
+    /*
+        fn handle_new_grid_size(&mut self, new_size: PhysicalSize<u32>) {
+            let window_padding = self.renderer.window_padding;
+            let window_padding_width = window_padding.left + window_padding.right;
+            let window_padding_height = window_padding.top + window_padding.bottom;
 
-        let content_size = PhysicalSize {
-            width: new_size.width - window_padding_width,
-            height: new_size.height - window_padding_height,
-        };
+            let content_size = PhysicalSize {
+                width: new_size.width - window_padding_width,
+                height: new_size.height - window_padding_height,
+            };
 
-        let grid_size = self
-            .renderer
-            .grid_renderer
-            .convert_physical_to_grid(content_size);
+            let grid_size = self
+                .renderer
+                .grid_renderer
+                .convert_physical_to_grid(content_size);
 
-        // Have a minimum size
-        if grid_size.width < MIN_WINDOW_WIDTH || grid_size.height < MIN_WINDOW_HEIGHT {
-            return;
+            // Have a minimum size
+            if grid_size.width < MIN_WINDOW_WIDTH || grid_size.height < MIN_WINDOW_HEIGHT {
+                return;
+            }
+
+            if self.saved_grid_size == Some(grid_size) {
+                trace!("Grid matched saved size, skip update.");
+                return;
+            }
+            self.saved_grid_size = Some(grid_size);
+            EVENT_AGGREGATOR.send(UiCommand::Parallel(ParallelCommand::Resize {
+                width: grid_size.width,
+                height: grid_size.height,
+            }));
         }
-
-        if self.saved_grid_size == Some(grid_size) {
-            trace!("Grid matched saved size, skip update.");
-            return;
-        }
-        self.saved_grid_size = Some(grid_size);
-        EVENT_AGGREGATOR.send(UiCommand::Parallel(ParallelCommand::Resize {
-            width: grid_size.width,
-            height: grid_size.height,
-        }));
-    }
-*/
+    */
     fn handle_scale_factor_update(&mut self, scale_factor: f64) {
         self.renderer.handle_os_scale_factor_change(scale_factor);
         EVENT_AGGREGATOR.send(EditorCommand::RedrawScreen);
@@ -319,21 +320,21 @@ pub fn create_window() {
 
     let event_loop = EventLoop::new();
 
-/*    let cmd_line_settings = SETTINGS.get::<CmdLineSettings>();
+    /*    let cmd_line_settings = SETTINGS.get::<CmdLineSettings>();
 
-    let mut maximized = cmd_line_settings.maximized;
-    let mut previous_position = None;
-    if let Ok(last_window_settings) = load_last_window_settings() {
-        match last_window_settings {
-            PersistentWindowSettings::Maximized => {
-                maximized = true;
-            }
-            PersistentWindowSettings::Windowed { position, .. } => {
-                previous_position = Some(position);
+        let mut maximized = cmd_line_settings.maximized;
+        let mut previous_position = None;
+        if let Ok(last_window_settings) = load_last_window_settings() {
+            match last_window_settings {
+                PersistentWindowSettings::Maximized => {
+                    maximized = true;
+                }
+                PersistentWindowSettings::Windowed { position, .. } => {
+                    previous_position = Some(position);
+                }
             }
         }
-    }
-*/
+    */
     let maximized = false;
     //let mut previous_position = None;
     let winit_window_builder = window::WindowBuilder::new()
@@ -342,12 +343,11 @@ pub fn create_window() {
         .with_maximized(maximized)
         .with_transparent(true);
 
-    let frame_decoration = true;//cmd_line_settings.frame;
+    let frame_decoration = true; //cmd_line_settings.frame;
 
     // There is only two options for windows & linux, no need to match more options.
     #[cfg(not(target_os = "macos"))]
-    let mut winit_window_builder =
-        winit_window_builder.with_decorations(frame_decoration);// == Frame::Full);
+    let mut winit_window_builder = winit_window_builder.with_decorations(frame_decoration); // == Frame::Full);
 
     #[cfg(target_os = "macos")]
     let mut winit_window_builder = match frame_decoration {
@@ -373,11 +373,11 @@ pub fn create_window() {
 
     #[cfg(target_os = "linux")]
     let winit_window_builder = winit_window_builder;
-/*        .with_app_id(cmd_line_settings.wayland_app_id)
-        .with_class(
-            cmd_line_settings.x11_wm_class_instance,
-            cmd_line_settings.x11_wm_class,
-        );*/
+    /*        .with_app_id(cmd_line_settings.wayland_app_id)
+    .with_class(
+        cmd_line_settings.x11_wm_class_instance,
+        cmd_line_settings.x11_wm_class,
+    );*/
 
     #[cfg(target_os = "macos")]
     let winit_window_builder = winit_window_builder.with_accepts_first_mouse(false);
@@ -386,8 +386,8 @@ pub fn create_window() {
         .with_pixel_format(24, 8)
         .with_stencil_buffer(8)
         .with_gl_profile(GlProfile::Core);
-        //.with_srgb(cmd_line_settings.srgb)
-        //.with_vsync(cmd_line_settings.vsync);
+    //.with_srgb(cmd_line_settings.srgb)
+    //.with_vsync(cmd_line_settings.vsync);
 
     let windowed_context = match builder
         .clone()
@@ -452,8 +452,7 @@ pub fn create_window() {
         "window created (scale_factor: {:.4}, font_dimensions: {:?})",
         scale_factor,
         "",
-
-//        renderer.grid_renderer.font_dimensions,
+        //        renderer.grid_renderer.font_dimensions,
     );
 
     let mut window_wrapper = GlutinWindowWrapper {
@@ -465,10 +464,10 @@ pub fn create_window() {
         title: String::from("Neovide"),
         fullscreen: false,
         font_changed_last_frame: false,
-//        size_at_startup: initial_size,
+        //        size_at_startup: initial_size,
         maximized_at_startup: maximized,
-//        saved_inner_size,
-//        saved_grid_size: None,
+        //        saved_inner_size,
+        //        saved_grid_size: None,
         window_command_receiver,
     };
 
@@ -494,18 +493,18 @@ pub fn create_window() {
                 FocusedState::UnfocusedNotDrawn
             };
         }
-/*
-        if !RUNNING_TRACKER.is_running() {
-            let window = window_wrapper.windowed_context.window();
-            save_window_geometry(
-                window.is_maximized(),
-                window_wrapper.saved_grid_size,
-                window.outer_position().ok(),
-            );
+        /*
+                if !RUNNING_TRACKER.is_running() {
+                    let window = window_wrapper.windowed_context.window();
+                    save_window_geometry(
+                        window.is_maximized(),
+                        window_wrapper.saved_grid_size,
+                        window.outer_position().ok(),
+                    );
 
-            std::process::exit(RUNNING_TRACKER.exit_code());
-        }
-*/
+                    std::process::exit(RUNNING_TRACKER.exit_code());
+                }
+        */
         let frame_start = Instant::now();
 
         window_wrapper.handle_window_commands();
@@ -514,9 +513,9 @@ pub fn create_window() {
 
         let refresh_rate = match focused {
             FocusedState::Focused | FocusedState::UnfocusedNotDrawn => {
-                60f32//SETTINGS.get::<WindowSettings>().refresh_rate as f32
+                60f32 //SETTINGS.get::<WindowSettings>().refresh_rate as f32
             }
-            FocusedState::Unfocused => 10f32,//SETTINGS.get::<WindowSettings>().refresh_rate_idle as f32,
+            FocusedState::Unfocused => 10f32, //SETTINGS.get::<WindowSettings>().refresh_rate_idle as f32,
         }
         .max(1.0);
 

@@ -1,11 +1,15 @@
 use itertools::Itertools;
 
+use ordered_float::OrderedFloat;
+use rkyv::{with::Skip, Archive, Deserialize, Serialize};
+//use serde::{Serialize, Deserialize};
+use smallvec::{smallvec, SmallVec};
+use std::sync::Arc;
 const DEFAULT_FONT_SIZE: f32 = 14.0;
 
-#[derive(Clone, Debug)]
-pub struct FontOptions {
-    pub font_list: Vec<String>,
-    pub size: f32,
+#[derive(Clone, Debug, Archive, Serialize, Deserialize, Hash, Eq)]
+pub struct FontParameters {
+    pub size: OrderedFloat<f32>,
     pub bold: bool,
     pub italic: bool,
     pub allow_float_size: bool,
@@ -13,6 +17,46 @@ pub struct FontOptions {
     pub edging: FontEdging,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct SmallFontRegistry {
+    pub font_list: Vec<String>,
+}
+
+/* Font options for sending over the wire. Refer to a list of font names to save space */
+#[derive(Clone, Hash, Debug, Archive, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SmallFontOptions {
+    pub family_id: u8,
+    pub font_parameters: FontParameters,
+    //#[with(Skip)]
+    //font_list_ref: Option<Arc<SmallFontRegistry>>,
+}
+#[derive(Clone, Debug, Archive, Serialize, Deserialize)]
+pub struct FontOptions {
+    pub font_list: Vec<String>,
+    pub font_parameters: FontParameters,
+}
+
+impl Default for SmallFontOptions {
+    fn default() -> Self {
+        SmallFontOptions {
+            family_id: 0,
+            font_parameters: FontParameters {
+                size: OrderedFloat(10f32),
+                bold: false,
+                italic: false,
+                allow_float_size: true,
+                hinting: FontHinting::Normal,
+                edging: FontEdging::AntiAlias,
+            },
+        }
+    }
+}
+
+impl FontParameters {
+    pub fn size(&self) -> f32 {
+        f32::from(self.size)
+    }
+}
 impl FontOptions {
     pub fn parse(guifont_setting: &str) -> FontOptions {
         let mut font_list = Vec::new();
@@ -58,12 +102,14 @@ impl FontOptions {
 
         FontOptions {
             font_list,
-            bold,
-            italic,
-            allow_float_size,
-            hinting,
-            edging,
-            size: points_to_pixels(size),
+            font_parameters: FontParameters {
+                bold,
+                italic,
+                allow_float_size,
+                hinting,
+                edging,
+                size: OrderedFloat(points_to_pixels(size)),
+            },
         }
     }
 
@@ -76,24 +122,29 @@ impl Default for FontOptions {
     fn default() -> Self {
         FontOptions {
             font_list: Vec::new(),
-            bold: false,
-            italic: false,
-            allow_float_size: false,
-            size: points_to_pixels(DEFAULT_FONT_SIZE),
-            hinting: FontHinting::default(),
-            edging: FontEdging::default(),
+            font_parameters: FontParameters {
+                bold: false,
+                italic: false,
+                allow_float_size: false,
+                size: OrderedFloat(points_to_pixels(DEFAULT_FONT_SIZE)),
+                hinting: FontHinting::default(),
+                edging: FontEdging::default(),
+            },
         }
     }
 }
-
-impl PartialEq for FontOptions {
+impl PartialEq for FontParameters {
     fn eq(&self, other: &Self) -> bool {
-        self.font_list == other.font_list
-            && (self.size - other.size).abs() < std::f32::EPSILON
+        (self.size - other.size).abs() < std::f32::EPSILON
             && self.bold == other.bold
             && self.italic == other.italic
             && self.edging == other.edging
             && self.hinting == other.hinting
+    }
+}
+impl PartialEq for FontOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.font_list == other.font_list && self.font_parameters == other.font_parameters
     }
 }
 
@@ -114,7 +165,7 @@ fn parse_font_name(font_name: impl AsRef<str>) -> String {
     parsed_font_name
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub enum FontEdging {
     AntiAlias,
     SubpixelAntiAlias,
@@ -137,7 +188,7 @@ impl Default for FontEdging {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub enum FontHinting {
     Full,
     Normal,
@@ -221,10 +272,10 @@ mod tests {
         let font_options = FontOptions::parse(guifont_setting);
 
         assert_eq!(
-            font_options.edging,
+            font_options.font_parameters.edging,
             FontEdging::SubpixelAntiAlias,
             "font edging should equal {:?}, but {:?}",
-            font_options.edging,
+            font_options.font_parameters.edging,
             FontEdging::SubpixelAntiAlias,
         );
     }
@@ -235,10 +286,10 @@ mod tests {
         let font_options = FontOptions::parse(guifont_setting);
 
         assert_eq!(
-            font_options.hinting,
+            font_options.font_parameters.hinting,
             FontHinting::Slight,
             "font hinting should equal {:?}, but {:?}",
-            font_options.hinting,
+            font_options.font_parameters.hinting,
             FontHinting::Slight,
         );
     }
@@ -249,9 +300,9 @@ mod tests {
 
         let font_size_pixels = points_to_pixels(15.5);
         assert_eq!(
-            font_options.size, font_size_pixels,
+            font_options.font_parameters.size, font_size_pixels,
             "font size should equal {}, but {}",
-            font_size_pixels, font_options.size,
+            font_size_pixels, font_options.font_parameters.size,
         );
     }
 
@@ -263,36 +314,36 @@ mod tests {
 
         let font_size_pixels = points_to_pixels(15.0);
         assert_eq!(
-            font_options.size, font_size_pixels,
+            font_options.font_parameters.size, font_size_pixels,
             "font size should equal {}, but {}",
-            font_size_pixels, font_options.size,
+            font_size_pixels, font_options.font_parameters.size,
         );
 
         assert_eq!(
-            font_options.bold, true,
+            font_options.font_parameters.bold, true,
             "bold should equal {}, but {}",
-            font_options.bold, true,
+            font_options.font_parameters.bold, true,
         );
 
         assert_eq!(
-            font_options.italic, true,
+            font_options.font_parameters.italic, true,
             "italic should equal {}, but {}",
-            font_options.italic, true,
+            font_options.font_parameters.italic, true,
         );
 
         assert_eq!(
-            font_options.edging,
+            font_options.font_parameters.edging,
             FontEdging::Alias,
             "font hinting should equal {:?}, but {:?}",
-            font_options.hinting,
+            font_options.font_parameters.hinting,
             FontEdging::Alias,
         );
 
         assert_eq!(
-            font_options.hinting,
+            font_options.font_parameters.hinting,
             FontHinting::Slight,
             "font hinting should equal {:?}, but {:?}",
-            font_options.hinting,
+            font_options.font_parameters.hinting,
             FontHinting::Slight,
         );
     }

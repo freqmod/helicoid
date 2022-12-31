@@ -1,8 +1,6 @@
-pub struct BridgeMessage{
-    
-}
+pub struct BridgeMessage {}
 
-/* This is the start of an (currently imaginary) bridge to the helix editor. 
+/* This is the start of an (currently imaginary) bridge to the helix editor.
 This bridge is having a quite different architecture than the (neo)vim bridge. */
 
 #[derive(Clone, Debug)]
@@ -14,8 +12,7 @@ pub enum WindowAnchor {
 }
 
 #[derive(Clone, Debug)]
-pub enum RedrawEvent {
-}
+pub enum RedrawEvent {}
 
 #[derive(Clone, Debug)]
 pub enum GuiOption {
@@ -31,5 +28,3 @@ pub enum GuiOption {
     TermGuiColors(bool),
     //Unknown(String, ),
 }
-
-

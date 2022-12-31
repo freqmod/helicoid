@@ -2,13 +2,13 @@ use window::create_window;
 
 mod bridge;
 mod channel_utils;
+mod dimensions;
 mod editor;
 mod event_aggregator;
 mod frame;
 mod redraw_scheduler;
 mod renderer;
 mod window;
-mod dimensions;
 
 #[macro_use]
 extern crate derive_new;
@@ -16,6 +16,6 @@ extern crate derive_new;
 extern crate lazy_static;
 
 fn main() {
-    env_logger::init(); 
+    env_logger::init();
     create_window();
 }
