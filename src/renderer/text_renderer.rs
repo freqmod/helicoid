@@ -9,9 +9,8 @@ use glutin::dpi::PhysicalSize;
 use log::trace;
 
 use half::f16;
-use smallvec::SmallVec;
 use ordered_float::OrderedFloat;
-
+use smallvec::SmallVec;
 
 use crate::{
     editor::{Colors, Style, UnderlineStyle},
@@ -38,11 +37,11 @@ pub struct ShapedStringMetadata {
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct ShapableString {
-    pub text: SmallVec<[u8; 128]>,
+    pub text: SmallVec<[u8; 128]>, //text should always contain valid UTF-8?
     pub metadata_runs: SmallVec<[ShapedStringMetadata; 8]>,
 }
 
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Default, Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct ShapedTextBlock {
     pub glyphs: SmallVec<[ShapedTextGlyph; 128]>,
     pub metadata_runs: SmallVec<[ShapedStringMetadata; 8]>,

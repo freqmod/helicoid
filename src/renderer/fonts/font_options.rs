@@ -32,7 +32,7 @@ pub struct SmallFontOptions {
 }
 #[derive(Clone, Debug, Archive, Serialize, Deserialize)]
 pub struct FontOptions {
-    pub font_list: Vec<String>,
+    pub font_list: SmallVec<[SmallVec<[u8; 32]>; 8]>,
     pub font_parameters: FontParameters,
 }
 
@@ -59,7 +59,7 @@ impl FontParameters {
 }
 impl FontOptions {
     pub fn parse(guifont_setting: &str) -> FontOptions {
-        let mut font_list = Vec::new();
+        let mut font_list = SmallVec::new();
         let mut size = DEFAULT_FONT_SIZE;
         let mut bold = false;
         let mut italic = false;
@@ -70,10 +70,15 @@ impl FontOptions {
         let mut parts = guifont_setting.split(':').filter(|part| !part.is_empty());
 
         if let Some(parts) = parts.next() {
-            let parsed_font_list: Vec<String> = parts
+            let parsed_font_list: SmallVec<[SmallVec<[u8; 32]>; 8]> = parts
                 .split(',')
-                .filter(|fallback| !fallback.is_empty())
-                .map(parse_font_name)
+                .filter_map(|fallback| {
+                    if !fallback.is_empty() {
+                        Some(parse_font_name(fallback))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
 
             if !parsed_font_list.is_empty() {
@@ -114,14 +119,17 @@ impl FontOptions {
     }
 
     pub fn primary_font(&self) -> Option<String> {
-        self.font_list.first().cloned()
+        self.font_list
+            .first()
+            .cloned()
+            .map(|s| std::str::from_utf8(s.as_slice()).unwrap().to_string())
     }
 }
 
 impl Default for FontOptions {
     fn default() -> Self {
         FontOptions {
-            font_list: Vec::new(),
+            font_list: SmallVec::new(),
             font_parameters: FontParameters {
                 bold: false,
                 italic: false,
@@ -148,8 +156,9 @@ impl PartialEq for FontOptions {
     }
 }
 
-fn parse_font_name(font_name: impl AsRef<str>) -> String {
-    let parsed_font_name = font_name
+fn parse_font_name(font_name: impl AsRef<str>) -> SmallVec<[u8; 32]> {
+    let mut parsed_font_name_bytes = SmallVec::new();
+    font_name
         .as_ref()
         .chars()
         .batching(|iter| {
@@ -160,9 +169,12 @@ fn parse_font_name(font_name: impl AsRef<str>) -> String {
                 _ => ch,
             }
         })
-        .collect();
-
-    parsed_font_name
+        .for_each(|ch| {
+            let mut tmp_enc = [0u8; 4];
+            ch.encode_utf8(&mut tmp_enc);
+            parsed_font_name_bytes.extend_from_slice(&tmp_enc[0..ch.len_utf8()]);
+        });
+    parsed_font_name_bytes
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize)]

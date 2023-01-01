@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use std::env;
 use std::{
     collections::HashMap,
@@ -23,6 +24,7 @@ use swash::{
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::renderer::fonts::blob_builder::FontKey;
+use crate::renderer::text_renderer::ShapedStringMetadata;
 use crate::renderer::{
     fonts::{font_loader::*, font_options::*, swash_font::SwashFont},
     text_renderer::{ShapableString, ShapedTextBlock},
@@ -50,12 +52,17 @@ pub struct KeyedSwashFont {
     pub key: FontKey,
     pub swash_font: SwashFont,
 }
-
+#[derive(new, Clone, Hash, PartialEq, Eq, Debug)]
+pub struct BackupClusterKey {
+    text: SmallVec<[u8; 8]>,
+    font_info: SmallFontOptions,
+}
 pub struct CachingShaper {
     options: FontOptions,
     //font_loader: FontLoader,
     shape_cache: LruCache<ShapableString, ShapedTextBlock>,
     font_cache: HashMap<SmallFontOptions, KeyedSwashFont>,
+    backed_up_clusters: LruCache<BackupClusterKey, SmallFontOptions>,
     font_names: Vec<Option<String>>,
     default_font: KeyedSwashFont,
     shape_context: ShapeContext,
@@ -73,6 +80,7 @@ impl CachingShaper {
         let mut shaper = CachingShaper {
             options,
             shape_cache: LruCache::new(10000),
+            backed_up_clusters: LruCache::new(64),
             font_cache: Default::default(),
             font_names: Vec::new(),
             default_font,
@@ -242,21 +250,39 @@ impl CachingShaper {
             (metrics.ascent + metrics.leading).ceil() as u64
         }
     */
-    /*
     fn build_clusters(
         &mut self,
-        text: &str,
-        bold: bool,
-        italic: bool,
-    ) -> Vec<(Vec<CharCluster>, Arc<FontPair>)> {
+        text: &ShapableString,
+        meta_run_index: usize,
+        meta_run_start: usize,
+        backup_font_families: Option<SmallVec<[u8; 8]>>,
+    ) -> (
+        SmallVec<[CharCluster; 128]>,
+        SmallVec<[ShapedStringMetadata; 8]>,
+    ) {
         let mut cluster = CharCluster::new();
-
+        let meta_run = text.metadata_runs[meta_run_index];
+        let text_str_data =
+            &text.text[meta_run_start..(meta_run_start + meta_run.substring_length as usize)];
+        let text_str = std::str::from_utf8(text_str_data).unwrap();
         // Enumerate the characters storing the glyph index in the user data so that we can position
         // glyphs according to Neovim's grid rules
         let mut character_index = 0;
+        let mut default_parser = Parser::new(
+            Script::Latin,
+            [Token {
+                ch: '#',
+                ..Default::default()
+            }]
+            .into_iter(),
+        );
+        let mut default_cluster;
+        default_parser.next(default_cluster);
+
         let mut parser = Parser::new(
             Script::Latin,
-            text.graphemes(true)
+            text_str
+                .graphemes(true)
                 .enumerate()
                 .flat_map(|(glyph_index, unicode_segment)| {
                     unicode_segment.chars().map(move |character| {
@@ -273,67 +299,80 @@ impl CachingShaper {
                 }),
         );
 
-        let mut results = Vec::new();
+        let result_clusters: SmallVec<[CharCluster; 128]> = SmallVec::new();
+        let result_metadatas: SmallVec<[ShapedStringMetadata; 8]> = SmallVec::new();
+        let last_result_metadata: Option<SmallFontOptions> = None;
+        let last_result_metadata_start = 0;
+
+        let mut results: SmallVec<[(CharCluster, SmallFontOptions); 128]> = SmallVec::new();
+        //        let mut font_fallback_keys = None; // TODO: Store font fallback keys in an lru cache
+        let _ = self.get_load_font_for_index(&meta_run.font_info);
+        let Some(specified_font) = self.font_cache.get(&meta_run.font_info) else {return (result_clusters, result_metadatas)};
         'cluster: while parser.next(&mut cluster) {
             // TODO: Don't redo this work for every cluster. Save it some how
             // Create font fallback list
-            let mut font_fallback_keys = Vec::new();
+            /*            if font_fallback_keys.is_none() {
+                font_fallback_keys = Some(make_fallback_list(self.options));
+            }*/
+            //let mut font_fallback_keys = Vec::new();
 
-            // Add parsed fonts from guifont
-            font_fallback_keys.extend(self.options.font_list.iter().map(|font_name| FontKey {
-                size: OrderedFloat(DEFAULT_FONT_SIZE),
-                italic: self.options.font_parameters.italic || italic,
-                bold: self.options.font_parameters.bold || bold,
-                family_name: Some(font_name.clone()),
-                hinting: self.options.font_parameters.hinting.clone(),
-                edging: self.options.font_parameters.edging.clone(),
-            }));
-
-            // Add default font
-            font_fallback_keys.push(FontKey {
-                size: OrderedFloat(DEFAULT_FONT_SIZE),
-                italic: self.options.font_parameters.italic || italic,
-                bold: self.options.font_parameters.bold || bold,
-                family_name: None,
-                hinting: self.options.font_parameters.hinting.clone(),
-                edging: self.options.font_parameters.edging.clone(),
-            });
-
-            // Use the cluster.map function to select a viable font from the fallback list and loaded fonts
-
+            // The simplest case is if the cluster is available in the specified font, then no more work is needed
             let mut best = None;
-            // Search through the configured and default fonts for a match
-            for fallback_key in font_fallback_keys.iter() {
-                if let Some(font_pair) = self.font_loader.get_or_load(fallback_key) {
-                    let charmap = font_pair.swash_font.as_ref().charmap();
-                    match cluster.map(|ch| charmap.map(ch)) {
-                        Status::Complete => {
-                            results.push((cluster.to_owned(), font_pair.clone()));
-                            continue 'cluster;
-                        }
-                        Status::Keep => best = Some(font_pair),
-                        Status::Discard => {}
-                    }
+            let charmap = specified_font.swash_font.as_ref().charmap();
+            match cluster.map(|ch| charmap.map(ch)) {
+                Status::Complete => {
+                    results.push((cluster.to_owned(), meta_run.font_info));
+                    continue 'cluster;
                 }
+                Status::Keep => best = Some(meta_run.font_info),
+                Status::Discard => {}
             }
 
-            // Configured font/default didn't work. Search through currently loaded ones
-            for loaded_font in self.font_loader.loaded_fonts() {
-                let charmap = loaded_font.swash_font.as_ref().charmap();
-                match cluster.map(|ch| charmap.map(ch)) {
-                    Status::Complete => {
-                        results.push((cluster.to_owned(), loaded_font.clone()));
-                        self.font_loader.refresh(loaded_font.as_ref());
-                        continue 'cluster;
+            // Use the cluster.map function to select a viable font from the fallback list and loaded fonts
+            let italic = meta_run.font_info.font_parameters.italic;
+            let bold = meta_run.font_info.font_parameters.bold;
+
+            if let Some(font_list) = backup_font_families {
+                for font_id in font_list {
+                    let mut modified_font_options = meta_run.font_info.clone();
+                    modified_font_options.family_id = font_id;
+                    let _ = self.get_load_font_for_index(&modified_font_options);
+                    if let Some(list_font) = self.font_cache.get(&modified_font_options) {
+                        let charmap = list_font.swash_font.as_ref().charmap();
+                        match cluster.map(|ch| charmap.map(ch)) {
+                            Status::Complete => {
+                                results.push((cluster.to_owned(), meta_run.font_info));
+                                continue 'cluster;
+                            }
+                            Status::Keep => best = Some(meta_run.font_info),
+                            Status::Discard => {}
+                        }
                     }
-                    Status::Keep => best = Some(loaded_font),
-                    Status::Discard => {}
+                }
+            } else {
+                /* If no backup font families are specified, just try all available fonts */
+                for font_id in 0..self.font_names.len() {
+                    let mut modified_font_options = meta_run.font_info.clone();
+                    modified_font_options.family_id = font_id as u8;
+                    let _ = self.get_load_font_for_index(&modified_font_options);
+                    if let Some(list_font) = self.font_cache.get(&modified_font_options) {
+                        let charmap = list_font.swash_font.as_ref().charmap();
+                        match cluster.map(|ch| charmap.map(ch)) {
+                            Status::Complete => {
+                                results.push((cluster.to_owned(), meta_run.font_info));
+                                continue 'cluster;
+                            }
+                            Status::Keep => best = Some(meta_run.font_info),
+                            Status::Discard => {}
+                        }
+                    }
                 }
             }
 
             if let Some(best) = best {
                 results.push((cluster.to_owned(), best.clone()));
             } else {
+                /*
                 let fallback_character = cluster.chars()[0].ch;
                 if let Some(fallback_font) =
                     self.font_loader
@@ -346,36 +385,53 @@ impl CachingShaper {
                         cluster.to_owned(),
                         self.font_loader.get_or_load_last_resort(),
                     ));
-                }
+                }*/
+                //                CharCluster()
+                results.push((default_cluster.to_owned(), meta_run.font_info));
+                log::warn!(
+                    "Could not shape character: {}, using dummy",
+                    cluster.chars()[0].ch
+                );
             }
         }
 
         // Now we have to group clusters by the font used so that the shaper can actually form
         // ligatures across clusters
-        let mut grouped_results = Vec::new();
+        /*        let mut grouped_results = Vec::new();
         let mut current_group = Vec::new();
         let mut current_font_option = None;
-        for (cluster, font) in results {
-            if let Some(current_font) = current_font_option.clone() {
-                if current_font == font {
-                    current_group.push(cluster);
-                } else {
-                    grouped_results.push((current_group, current_font));
-                    current_group = vec![cluster];
-                    current_font_option = Some(font);
-                }
-            } else {
-                current_group = vec![cluster];
-                current_font_option = Some(font);
+        if last_result_metadata.is_none(){
+            last_result_metadata = results
+        }*/
+        //        let mut current_offset = 0;
+
+        if let Some((cluster, font_info)) = results.first() {
+            last_result_metadata = Some(font_info.clone());
+            last_result_metadata_start = 0;
+        }
+
+        for (cluster_index, (cluster, font_info)) in results.iter().enumerate() {
+            if last_result_metadata.as_ref() != Some(font_info) {
+                result_metadatas.push(ShapedStringMetadata {
+                    substring_length: (cluster_index - last_result_metadata_start) as u16,
+                    font_info: last_result_metadata.take().unwrap(),
+                    font_color: 0,
+                });
+                last_result_metadata = Some(font_info.clone());
+                last_result_metadata_start = cluster_index;
             }
         }
 
-        if !current_group.is_empty() {
-            grouped_results.push((current_group, current_font_option.unwrap()));
+        if last_result_metadata.is_some() {
+            result_metadatas.push(ShapedStringMetadata {
+                substring_length: (results.len() - last_result_metadata_start) as u16,
+                font_info: last_result_metadata.take().unwrap(),
+                font_color: 0,
+            });
         }
 
-        grouped_results
-    }*/
+        (result_clusters, result_metadatas)
+    }
 
     /*    pub fn adjust_font_cache_size(&self) {
         let current_font_cache_size = font_cache_limit() as f32;
@@ -388,58 +444,64 @@ impl CachingShaper {
             set_font_cache_limit((percent_font_cache_used * 1.5) as usize);
         }
     }*/
-    /*
-            pub fn shape(&mut self, text: String, bold: bool, italic: bool) -> Vec<TextBlob> {
-                let current_size = self.current_size();
-                let (glyph_width, ..) = self.font_base_dimensions();
 
-                let mut resulting_blobs = Vec::new();
+    pub fn shape(
+        &mut self,
+        text: &ShapableString,
+        backup_font_families: Option<SmallVec<[u8; 8]>>,
+    ) -> ShapedTextBlock {
+        let current_size = self.current_size();
+        //let (glyph_width, ..) = self.font_base_dimensions();
 
-                trace!("Shaping text: {}", text);
+        //        let mut resulting_blobs = Vec::new();
+        let mut resulting_block: ShapedTextBlock = Default::default();
 
-                for (cluster_group, font_pair) in self.build_clusters(&text, bold, italic) {
-                    let mut shaper = self
-                        .shape_context
-                        .builder(font_pair.swash_font.as_ref())
-                        .size(current_size)
-                        .build();
-
-                    let charmap = font_pair.swash_font.as_ref().charmap();
-                    for mut cluster in cluster_group {
-                        cluster.map(|ch| charmap.map(ch));
-                        shaper.add_cluster(&cluster);
-                    }
-
-                    let mut glyph_data = Vec::new();
-
-                    shaper.shape_with(|glyph_cluster| {
-                        for glyph in glyph_cluster.glyphs {
-                            let position = ((glyph.data as u64 * glyph_width) as f32, glyph.y);
-                            glyph_data.push((glyph.id, position));
-                        }
-                    });
-
-                    if glyph_data.is_empty() {
-                        continue;
-                    }
-
-                    let mut blob_builder = TextBlobBuilder::new();
-                    let (glyphs, positions) =
-                        blob_builder.alloc_run_pos(&font_pair.skia_font, glyph_data.len(), None);
-                    for (i, (glyph_id, glyph_position)) in glyph_data.iter().enumerate() {
-                        glyphs[i] = *glyph_id;
-                        positions[i] = (*glyph_position).into();
-                    }
-
-                    let blob = blob_builder.make();
-                    resulting_blobs.push(blob.expect("Could not create textblob"));
+        trace!("Shaping text: {:?}", text);
+        let mut current_text_offset = 0;
+        for (run_index, run) in text.metadata_runs.iter().enumerate() {
+            //            current_text_offset += run.substring_length as usize;
+            let (cluster_list, shaped_string_list) =
+                self.build_clusters(text, run_index, current_text_offset, backup_font_families);
+            let mut current_cluster_offset = 0;
+            'cluster: for shaped_string_run in shaped_string_list {
+                let font_options = &shaped_string_run.font_info;
+                let _ = self.get_load_font_for_index(font_options);
+                /* If this font is not valid it should not be returned by build clusters */
+                let font = self.font_cache.get(font_options).unwrap();
+                let mut shaper = self
+                    .shape_context
+                    .builder(font.swash_font.as_ref())
+                    .size(font_options.font_parameters.size())
+                    .build();
+                let charmap = font.swash_font.as_ref().charmap();
+                let cluster_list_slice = &cluster_list[current_cluster_offset
+                    ..(current_cluster_offset + shaped_string_run.substring_length as usize)];
+                for char_cluster in cluster_list_slice.iter() {
+                    char_cluster.map(|ch| charmap.map(ch));
+                    shaper.add_cluster(&char_cluster);
                 }
+                let mut glyph_data = Vec::new();
 
-                self.adjust_font_cache_size();
+                shaper.shape_with(|glyph_cluster| {
+                    for glyph in glyph_cluster.glyphs {
+                        // TODO: Check if advance is the right way to handle width here
+                        // TODO: Consider implementing word wrapping
+                        let position = ((glyph.data as f32 * glyph.advance) as f32, glyph.y);
+                        glyph_data.push((glyph.id, position));
+                    }
+                });
 
-                resulting_blobs
+                if glyph_data.is_empty() {
+                    continue 'cluster;
+                }
+                current_cluster_offset += shaped_string_run.substring_length as usize;
             }
+        }
+        //        self.adjust_font_cache_size();
 
+        resulting_block
+    }
+    /*
             pub fn shape_cached(&mut self, text: String, bold: bool, italic: bool) -> &Vec<TextBlob> {
                 let key = ShapeKey::new(text.clone(), bold, italic);
 
@@ -470,3 +532,34 @@ impl KeyedSwashFont {
         }
     }
 }
+/*
+fn make_fallback_list(
+    font_name: &str,
+    options: FontOptions,
+    meta_run: &ShapedStringMetadata,
+) -> Vec<FontKey> {
+    // Create font fallback list
+    let mut font_fallback_keys = Vec::new();
+
+    // Add parsed fonts from guifont
+    font_fallback_keys.extend(options.font_list.iter().map(|font_name| FontKey {
+        size: OrderedFloat(DEFAULT_FONT_SIZE),
+        italic: options.font_parameters.italic || meta_run.font_info.font_parameters.italic,
+        bold: options.font_parameters.bold || meta_run.font_info.font_parameters.bold,
+        family_name: Some(font_name.as_slice()),
+        hinting: options.font_parameters.hinting.clone(),
+        edging: options.font_parameters.edging.clone(),
+    }));
+
+    // Add default font
+    font_fallback_keys.push(FontKey {
+        size: OrderedFloat(DEFAULT_FONT_SIZE),
+        italic: options.font_parameters.italic || meta_run.font_info.font_parameters.italic,
+        bold: options.font_parameters.bold || meta_run.font_info.font_parameters.bold,
+        family_name: None,
+        hinting: options.font_parameters.hinting.clone(),
+        edging: options.font_parameters.edging.clone(),
+    });
+    font_fallback_keys
+}
+*/
