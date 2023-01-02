@@ -15,6 +15,8 @@ use crate::{
     renderer::{animation_utils::*, RendererSettings},
 };
 
+use super::{fonts::blob_builder::ShapedBlobBuilder, text_renderer::ShapableString, CachingShaper};
+
 #[derive(Clone, Debug)]
 pub struct LineFragment {
     pub text: String,
@@ -265,6 +267,7 @@ impl RenderedWindow {
         if self.update(settings, dt) {
             REDRAW_SCHEDULER.queue_next_frame();
         }
+        log::trace!("Draw Window");
 
         let pixel_region = self.pixel_region(font_dimensions);
 

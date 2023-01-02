@@ -31,7 +31,7 @@ static DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/FiraCodeNerdF
 static LAST_RESORT_FONT: &[u8] = include_bytes!("../../../assets/fonts/LastResort-Regular.ttf");
 static DEFAULT_FONT_SIZE: f32 = 12.0f32;
 
-pub struct CachingShaper {
+pub struct ShapedBlobBuilder {
     options: FontOptions,
     //skia: FontLoader,
     blob_cache: LruCache<ShapedTextBlock, Vec<TextBlob>>,
@@ -44,15 +44,15 @@ pub struct CachingShaper {
     //    fudge_factor: f32,
 }
 
-impl CachingShaper {
-    pub fn new() -> CachingShaper {
+impl ShapedBlobBuilder {
+    pub fn new() -> ShapedBlobBuilder {
         let mut font_manager = FontMgr::new();
         let options = FontOptions::default();
         let font_size = options.font_parameters.size;
         let default_font =
             KeyedFont::load_keyed(&mut font_manager, Default::default(), DEFAULT_FONT_SIZE)
                 .unwrap();
-        let mut shaper = CachingShaper {
+        let mut shaper = ShapedBlobBuilder {
             options,
             //font_loader: FontLoader::new(font_size),
             blob_cache: LruCache::new(10000),

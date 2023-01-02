@@ -10,7 +10,7 @@ use log::trace;
 
 use half::f16;
 use ordered_float::OrderedFloat;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::{
     editor::{Colors, Style, UnderlineStyle},
@@ -35,7 +35,7 @@ pub struct ShapedStringMetadata {
     pub font_color: u32, /* ARGB32 */
 }
 
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Default, Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct ShapableString {
     pub text: SmallVec<[u8; 128]>, //text should always contain valid UTF-8?
     pub metadata_runs: SmallVec<[ShapedStringMetadata; 8]>,
@@ -74,4 +74,19 @@ pub struct TextRenderer {
     //pub font_dimensions: Dimensions,
     pub scale_factor: f64,
     pub is_ready: bool,
+}
+
+impl ShapableString {
+    pub fn from_text(text: &str) -> Self {
+        let text = SmallVec::from_slice(text.as_bytes());
+        let simple_run = ShapedStringMetadata {
+            substring_length: text.len() as u16,
+            font_info: Default::default(),
+            font_color: 0,
+        };
+        ShapableString {
+            text,
+            metadata_runs: smallvec![simple_run],
+        }
+    }
 }

@@ -14,13 +14,14 @@ use std::{
 
 use glutin::event::Event;
 use log::error;
-use skia_safe::{Canvas, Color};
+use skia_safe::{BlendMode, Canvas, Color, Paint};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
     //bridge::EditorMode,
     editor::{Cursor, Style},
     event_aggregator::EVENT_AGGREGATOR,
+    renderer::{fonts::blob_builder::ShapedBlobBuilder, text_renderer::ShapableString},
     //settings::*,
     window::WindowSettings,
 };
@@ -140,6 +141,7 @@ impl Renderer {
     #[allow(clippy::needless_collect)]
     pub fn draw_frame(&mut self, root_canvas: &mut Canvas, dt: f32) -> bool {
         root_canvas.draw_color(Color::RED, None);
+        self.font_draw_test(root_canvas);
         /*
         let mut draw_commands = Vec::new();
         while let Ok(draw_command) = self.batched_draw_command_receiver.try_recv() {
@@ -231,7 +233,25 @@ impl Renderer {
         */
         false
     }
+    pub fn font_draw_test(&mut self, root_canvas: &mut Canvas) {
+        let mut shaper = CachingShaper::new(1.0f32);
+        let mut blob_builder = ShapedBlobBuilder::new();
+        let string_to_shape = ShapableString::from_text("See if we can shape a simple string");
+        let shaped = shaper.shape(&string_to_shape, &None);
+        log::trace!("Shaped: {:?}", shaped);
+        let blobs = blob_builder.bulid_blobs(shaped);
+        let x = 0f32;
+        let y = 20f32;
 
+        let mut paint = Paint::default();
+        paint.set_blend_mode(BlendMode::Src);
+        paint.set_anti_alias(false);
+
+        log::trace!("Draw text: {:?}", blobs);
+        for blob in blobs.iter() {
+            root_canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
+        }
+    }
     pub fn handle_os_scale_factor_change(&mut self, os_scale_factor: f64) {
         self.os_scale_factor = os_scale_factor;
         //self.grid_renderer

@@ -26,7 +26,7 @@ use swash::{
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::renderer::fonts::blob_builder::FontKey;
-use crate::renderer::text_renderer::ShapedStringMetadata;
+use crate::renderer::text_renderer::{ShapedStringMetadata, ShapedTextGlyph};
 use crate::renderer::{
     fonts::{font_loader::*, font_options::*, swash_font::SwashFont},
     text_renderer::{ShapableString, ShapedTextBlock},
@@ -92,6 +92,7 @@ impl CachingShaper {
             })),
             shape_context: ShapeContext::new(),
         };
+        shaper.cache_fonts(&ShapableString::default(), &None);
         //        shaper.reset_font_loader();
         shaper
     }
@@ -345,8 +346,10 @@ impl CachingShaper {
         );
 
         let mut results: SmallVec<[(CharCluster, SmallFontOptions); 128]> = SmallVec::new();
-        //        let mut font_fallback_keys = None; // TODO: Store font fallback keys in an lru cache
-        let Some(specified_font) = inner.font_cache.get(&meta_run.font_info) else {return (SmallVec::new(), SmallVec::new())};
+        let specified_font = inner
+            .font_cache
+            .get(&meta_run.font_info)
+            .unwrap_or(&inner.default_font);
         let mut cluster = CharCluster::new();
         'cluster: while parser.next(&mut cluster) {
             // TODO: Don't redo this work for every cluster. Save it some how
@@ -428,7 +431,6 @@ impl CachingShaper {
                 );
             }
         }
-        let mut result_clusters: SmallVec<[CharCluster; 128]> = SmallVec::new();
         let mut result_metadatas: SmallVec<[ShapedStringMetadata; 8]> = SmallVec::new();
         let mut last_result_metadata: Option<SmallFontOptions> = None;
         let mut last_result_metadata_start = 0;
@@ -443,12 +445,12 @@ impl CachingShaper {
         }*/
         //        let mut current_offset = 0;
 
-        if let Some((cluster, font_info)) = results.first() {
+        if let Some((_, font_info)) = results.first() {
             last_result_metadata = Some(font_info.clone());
             last_result_metadata_start = 0;
         }
 
-        for (cluster_index, (cluster, font_info)) in results.iter().enumerate() {
+        for (cluster_index, (_, font_info)) in results.iter().enumerate() {
             if last_result_metadata.as_ref() != Some(font_info) {
                 result_metadatas.push(ShapedStringMetadata {
                     substring_length: (cluster_index - last_result_metadata_start) as u16,
@@ -468,6 +470,10 @@ impl CachingShaper {
             });
         }
 
+        let mut result_clusters: SmallVec<[CharCluster; 128]> = SmallVec::new();
+        result_clusters.reserve(results.len());
+        result_clusters.extend(results.drain(..).map(|(c, _)| c));
+
         (result_clusters, result_metadatas)
     }
 
@@ -486,7 +492,7 @@ impl CachingShaper {
     pub fn shape(
         &mut self,
         text: &ShapableString,
-        backup_font_families: Option<SmallVec<[u8; 8]>>,
+        backup_font_families: &Option<SmallVec<[u8; 8]>>,
     ) -> ShapedTextBlock {
         let current_size = self.current_size();
         //let (glyph_width, ..) = self.font_base_dimensions();
@@ -498,6 +504,7 @@ impl CachingShaper {
         //        self.cache_fonts(text, &backup_font_families);
         let mut current_text_offset = 0;
         let inner = self.inner.read();
+        let mut current_pixel_offset = 0f32;
         for (run_index, run) in text.metadata_runs.iter().enumerate() {
             //            current_text_offset += run.substring_length as usize;
             let (mut cluster_list, shaped_string_list) = Self::build_clusters(
@@ -505,13 +512,16 @@ impl CachingShaper {
                 text,
                 run_index,
                 current_text_offset,
-                &backup_font_families,
+                backup_font_families,
             );
             let mut current_cluster_offset = 0;
             'cluster: for shaped_string_run in shaped_string_list {
                 let font_options = &shaped_string_run.font_info;
                 /* If this font is not valid it should not be returned by build clusters */
-                let font = inner.font_cache.get(font_options).unwrap();
+                let font = inner
+                    .font_cache
+                    .get(font_options)
+                    .unwrap_or(&inner.default_font);
                 let mut shaper = self
                     .shape_context
                     .builder(font.swash_font.as_ref())
@@ -524,24 +534,33 @@ impl CachingShaper {
                     char_cluster.map(|ch| charmap.map(ch));
                     shaper.add_cluster(&char_cluster);
                 }
-                let mut glyph_data = Vec::new();
 
+                let glyphs_start_offset = resulting_block.glyphs.len();
                 shaper.shape_with(|glyph_cluster| {
                     for glyph in glyph_cluster.glyphs {
-                        // TODO: Check if advance is the right way to handle width here
                         // TODO: Consider implementing word wrapping
-                        let position = ((glyph.data as f32 * glyph.advance) as f32, glyph.y);
-                        glyph_data.push((glyph.id, position));
+                        // It could be interesting to look at info (word/line boundary etc.) 
+                        // and components for ligatures here 
+                        resulting_block.glyphs.push(ShapedTextGlyph::new(
+                            glyph.id as u16,
+                            glyph.x + current_pixel_offset,
+                            glyph.y,
+                        ));
+                        current_pixel_offset += glyph.advance;
                     }
                 });
+                /* Should we store some more metadata here that may be useful for drawing decorations
+                 related to the text, but not neccesarily transmitted over the wire to the drawing 
+                 client? Like the total with of the text box (to know the size of the charaters)
+                 */
 
-                if glyph_data.is_empty() {
-                    continue 'cluster;
-                }
+                let mut metadata = shaped_string_run.clone();
+                metadata.substring_length =
+                    (resulting_block.glyphs.len() - glyphs_start_offset) as u16;
+                resulting_block.metadata_runs.push(metadata);
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }
         }
-        //        self.adjust_font_cache_size();
 
         resulting_block
     }
