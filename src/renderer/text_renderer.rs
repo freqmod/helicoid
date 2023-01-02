@@ -19,6 +19,8 @@ use crate::{
     renderer::CachingShaper,
 };
 
+pub const SHAPABLE_STRING_ALLOC_LEN : usize = 128;
+pub const SHAPABLE_STRING_ALLOC_RUNS : usize = 16;
 /* Shaping is done in editor on "server", shaped glyphs are transfered to client
 Coordinates are relative to ShapedTextBlock origin */
 #[derive(Default, Clone, Copy, Hash, Eq, PartialEq, Archive, Serialize, Deserialize)]
@@ -52,14 +54,14 @@ impl ShapedStringMetadata {
 
 #[derive(Default, Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct ShapableString {
-    pub text: SmallVec<[u8; 128]>, //text should always contain valid UTF-8?
-    pub metadata_runs: SmallVec<[ShapedStringMetadata; 8]>,
+    pub text: SmallVec<[u8; SHAPABLE_STRING_ALLOC_LEN]>, //text should always contain valid UTF-8?
+    pub metadata_runs: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
 }
 
 #[derive(Default, Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct ShapedTextBlock {
-    pub glyphs: SmallVec<[ShapedTextGlyph; 128]>,
-    pub metadata_runs: SmallVec<[ShapedStringMetadata; 8]>,
+    pub glyphs: SmallVec<[ShapedTextGlyph; SHAPABLE_STRING_ALLOC_LEN]>,
+    pub metadata_runs: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
 }
 
 impl ShapedTextGlyph {
