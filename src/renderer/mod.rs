@@ -15,7 +15,7 @@ use std::{
 use glutin::event::Event;
 use log::error;
 use ordered_float::OrderedFloat;
-use skia_safe::{BlendMode, Canvas, Color, Paint};
+use skia_safe::{BlendMode, Canvas, Color, Paint, Rect};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
@@ -254,17 +254,13 @@ impl Renderer {
         );
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
             i.font_color = 0xF000A030;
-            /* ((Color::MAGENTA.a() as u32) << 24)
-                | ((Color::MAGENTA.r() as u32) << 16)
-                | ((Color::MAGENTA.g() as u32) << 8)
-                | (Color::MAGENTA.b() as u32); // 0xFF000000;*/
             i.font_info.font_parameters.size = OrderedFloat(80.0f32);
         });
         //shaper.cache_fonts(&string_to_shape, &None);
         let shaped = shaper.shape(&string_to_shape, &None);
         log::trace!("Shaped: {:?}", shaped);
         let blobs = blob_builder.bulid_blobs(&shaped);
-        let x = 0f32;
+        let mut x = 0f32;
         let y = 0f32;
 
         let mut paint = Paint::default();
@@ -280,6 +276,22 @@ impl Renderer {
                 paint.set_color(Color::new(metadata_run.font_color));
             }
             root_canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
+        }
+        let mut rect_paint = Paint::default();
+        rect_paint.set_stroke_width(1.0);
+        rect_paint.set_style(skia_safe::PaintStyle::Stroke);
+        //        rect_paint.set_color(Color::DARK_GRAY);
+        for metadata_run in shaped.metadata_runs.iter() {
+            root_canvas.draw_rect(
+                Rect {
+                    left: x,
+                    top: y,
+                    right: x + metadata_run.advance_x(),
+                    bottom: y + metadata_run.advance_y(),
+                },
+                &rect_paint,
+            );
+            x += x + metadata_run.advance_x();
         }
     }
     pub fn handle_os_scale_factor_change(&mut self, os_scale_factor: f64) {

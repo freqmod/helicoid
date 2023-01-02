@@ -466,6 +466,8 @@ impl CachingShaper {
                     substring_length: (cluster_index - last_result_metadata_start) as u16,
                     font_info: last_result_metadata.take().unwrap(),
                     font_color: 0,
+                    advance_x: 0,
+                    advance_y: 0,
                 });
                 last_result_metadata = Some(font_info.clone());
                 last_result_metadata_start = cluster_index;
@@ -477,6 +479,8 @@ impl CachingShaper {
                 substring_length: (results.len() - last_result_metadata_start) as u16,
                 font_info: last_result_metadata.take().unwrap(),
                 font_color: 0,
+                advance_x: 0,
+                advance_y: 0,
             });
         }
 
@@ -542,7 +546,9 @@ impl CachingShaper {
                     //.normalized_coords(&ncoords)
                     .build();
                 //let y_offset = font.swash_font.as_ref().metrics(shaper.normalized_coords()).ascent;
-                let y_offset = shaper.metrics().ascent;
+                let metrics = &shaper.metrics();
+                let y_offset = metrics.ascent;
+                let y_advance = metrics.ascent + metrics.descent + metrics.leading;
                 let charmap = font.swash_font.as_ref().charmap();
                 let cluster_list_slice = &mut cluster_list[current_cluster_offset
                     ..(current_cluster_offset + shaped_string_run.substring_length as usize)];
@@ -551,6 +557,7 @@ impl CachingShaper {
                     shaper.add_cluster(&char_cluster);
                 }
 
+                let start_pixel_offset = current_pixel_offset;
                 let glyphs_start_offset = resulting_block.glyphs.len();
                 shaper.shape_with(|glyph_cluster| {
                     emoji_found |= glyph_cluster.info.is_emoji();
@@ -576,6 +583,7 @@ impl CachingShaper {
                     (resulting_block.glyphs.len() - glyphs_start_offset) as u16;
                 metadata.font_info.font_parameters.emoji = emoji_found;
                 metadata.font_color = run.font_color;
+                metadata.set_advance(current_pixel_offset - start_pixel_offset, y_advance);
                 resulting_block.metadata_runs.push(metadata);
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }
