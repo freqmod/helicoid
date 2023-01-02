@@ -13,6 +13,7 @@ pub struct FontParameters {
     pub bold: bool,
     pub italic: bool,
     pub allow_float_size: bool,
+    pub emoji: bool,
     pub hinting: FontHinting,
     pub edging: FontEdging,
 }
@@ -44,6 +45,7 @@ impl Default for SmallFontOptions {
                 size: OrderedFloat(DEFAULT_FONT_SIZE),
                 bold: false,
                 italic: false,
+                emoji: false,
                 allow_float_size: true,
                 hinting: FontHinting::Normal,
                 edging: FontEdging::AntiAlias,
@@ -113,6 +115,7 @@ impl FontOptions {
                 allow_float_size,
                 hinting,
                 edging,
+                emoji: false,
                 size: OrderedFloat(points_to_pixels(size)),
             },
         }
@@ -134,6 +137,7 @@ impl Default for FontOptions {
                 bold: false,
                 italic: false,
                 allow_float_size: false,
+                emoji: false,
                 size: OrderedFloat(points_to_pixels(DEFAULT_FONT_SIZE)),
                 hinting: FontHinting::default(),
                 edging: FontEdging::default(),

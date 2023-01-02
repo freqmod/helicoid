@@ -240,28 +240,45 @@ impl Renderer {
         //shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
         shaper.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        shaper.set_font_key(2, String::from("NotoColorEmoji"));
         shaper.set_font_key(3, String::from("MissingGlyphs"));
         shaper.set_font_key(4, String::from("LastResort-Regular"));
         //blob_builder.set_font_key(0, String::from("Anonymous Pro"));
         //blob_builder.set_font_key(1, String::from("NotoSansMono-Regular"));
         blob_builder.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        blob_builder.set_font_key(2, String::from("NotoColorEmoji"));
         blob_builder.set_font_key(3, String::from("MissingGlyphs"));
         blob_builder.set_font_key(4, String::from("LastResort-Regular"));
-        let mut string_to_shape = ShapableString::from_text("See if we can shape a simple string ≠ <= string Some(typeface) => {");
-        string_to_shape.metadata_runs.iter_mut().for_each(|i| i.font_info.font_parameters.size = OrderedFloat(30.0f32));
+        let mut string_to_shape = ShapableString::from_text(
+            "See if we can shape a simple string ≠ <= string Some(typeface) => { 😀🙀",
+        );
+        string_to_shape.metadata_runs.iter_mut().for_each(|i| {
+            i.font_color = 0xF000A030;
+            /* ((Color::MAGENTA.a() as u32) << 24)
+                | ((Color::MAGENTA.r() as u32) << 16)
+                | ((Color::MAGENTA.g() as u32) << 8)
+                | (Color::MAGENTA.b() as u32); // 0xFF000000;*/
+            i.font_info.font_parameters.size = OrderedFloat(80.0f32);
+        });
         //shaper.cache_fonts(&string_to_shape, &None);
         let shaped = shaper.shape(&string_to_shape, &None);
         log::trace!("Shaped: {:?}", shaped);
-        let blobs = blob_builder.bulid_blobs(shaped);
+        let blobs = blob_builder.bulid_blobs(&shaped);
         let x = 0f32;
         let y = 0f32;
 
         let mut paint = Paint::default();
-        paint.set_blend_mode(BlendMode::Src);
-        paint.set_anti_alias(false);
+        //paint.set_blend_mode(BlendMode::SrcIn);
+        paint.set_blend_mode(BlendMode::SrcATop);
+        paint.set_anti_alias(true);
 
         log::trace!("Draw text: {:?}", blobs);
-        for blob in blobs.iter() {
+        for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
+            if metadata_run.font_info.font_parameters.emoji {
+                //paint.color
+            } else {
+                paint.set_color(Color::new(metadata_run.font_color));
+            }
             root_canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
         }
     }

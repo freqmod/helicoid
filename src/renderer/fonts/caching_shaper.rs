@@ -40,7 +40,15 @@ static DEFAULT_FONT_SIZE: f32 = 12.0f32;
 /* TODO: This should ideally point to the configuration / shared directory for the helix/helicoid editor
 however currently we just use the current executable path as a base. */
 pub fn base_asset_path() -> PathBuf {
-    env::current_exe().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join("assets")
+    env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("assets")
 }
 #[derive(new, Clone, Hash, PartialEq, Eq, Debug)]
 struct ShapeKey {
@@ -78,8 +86,7 @@ impl CachingShaper {
         let options = FontOptions::default();
         let font_size = options.font_parameters.size() * scale_factor;
         let default_font =
-            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), font_size)
-                .unwrap();
+            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), font_size).unwrap();
         let mut shaper = CachingShaper {
             inner: Arc::new(RwLock::new(CachingShaperInner {
                 options,
@@ -275,11 +282,7 @@ impl CachingShaper {
         }
     */
     /* Make sure that all fonts that may be needed for building clusters are cached */
-    fn cache_fonts(
-        &self,
-        text: &ShapableString,
-        backup_font_families: &Option<SmallVec<[u8; 8]>>,
-    ) {
+    fn cache_fonts(&self, text: &ShapableString, backup_font_families: &Option<SmallVec<[u8; 8]>>) {
         for meta_run in text.metadata_runs.iter() {
             let _ = self.cache_font_for_index(&meta_run.font_info);
             //let Some(specified_font) = self.font_cache.get(&meta_run.font_info) else {return (SmallVec::new(), SmallVec::new())};
@@ -523,6 +526,7 @@ impl CachingShaper {
                 current_text_offset,
                 backup_font_families,
             );
+            let mut emoji_found = false;
             let mut current_cluster_offset = 0;
             'cluster: for shaped_string_run in shaped_string_list {
                 let font_options = &shaped_string_run.font_info;
@@ -549,10 +553,11 @@ impl CachingShaper {
 
                 let glyphs_start_offset = resulting_block.glyphs.len();
                 shaper.shape_with(|glyph_cluster| {
+                    emoji_found |= glyph_cluster.info.is_emoji();
                     for glyph in glyph_cluster.glyphs {
                         // TODO: Consider implementing word wrapping
-                        // It could be interesting to look at info (word/line boundary etc.) 
-                        // and components for ligatures here 
+                        // It could be interesting to look at info (word/line boundary etc.)
+                        // and components for ligatures here
                         resulting_block.glyphs.push(ShapedTextGlyph::new(
                             glyph.id as u16,
                             glyph.x + current_pixel_offset,
@@ -562,13 +567,15 @@ impl CachingShaper {
                     }
                 });
                 /* Should we store some more metadata here that may be useful for drawing decorations
-                 related to the text, but not neccesarily transmitted over the wire to the drawing 
-                 client? Like the total with of the text box (to know the size of the charaters)
-                 */
+                related to the text, but not neccesarily transmitted over the wire to the drawing
+                client? Like the total with of the text box (to know the size of the charaters)
+                */
 
                 let mut metadata = shaped_string_run.clone();
                 metadata.substring_length =
                     (resulting_block.glyphs.len() - glyphs_start_offset) as u16;
+                metadata.font_info.font_parameters.emoji = emoji_found;
+                metadata.font_color = run.font_color;
                 resulting_block.metadata_runs.push(metadata);
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }
@@ -606,14 +613,16 @@ impl KeyedSwashFont {
         //        let font_style = font_style(font_key.bold, font_key.italic);
         if let Some(family_name) = &font_key.family_name {
             trace!("KSFLoading font {:?}", font_key);
-            let font_file_path = base_directory.join("fonts").join(format!("{}.ttf", family_name));
+            let font_file_path = base_directory
+                .join("fonts")
+                .join(format!("{}.ttf", family_name));
             //            let typeface = font_manager.match_family_style(family_name, font_style)?;
-            let res = SwashFont::from_path(&font_file_path, 0).map(|font| KeyedSwashFont::new(font_key, font));
-            if res.is_none(){
+            let res = SwashFont::from_path(&font_file_path, 0)
+                .map(|font| KeyedSwashFont::new(font_key, font));
+            if res.is_none() {
                 trace!("KSFLoading font failed: {:?}", font_file_path);
             }
             res
-
         } else {
             trace!("KSFLoading default font {:?}", font_key);
             SwashFont::from_data(DEFAULT_FONT.to_vec(), 0)

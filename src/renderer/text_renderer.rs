@@ -3,12 +3,10 @@ the depedenencies that are introduced */
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use std::sync::Arc;
-use std::{
-    fmt::{self, Debug},
-};
 use glutin::dpi::PhysicalSize;
 use log::trace;
+use std::fmt::{self, Debug};
+use std::sync::Arc;
 
 use half::f16;
 use ordered_float::OrderedFloat;
@@ -67,7 +65,7 @@ impl ShapedTextGlyph {
         }
     }
 }
-impl Debug for ShapedTextGlyph{
+impl Debug for ShapedTextGlyph {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ShapedTextGlyph")
             .field("glyph", &self.glyph)
@@ -75,7 +73,6 @@ impl Debug for ShapedTextGlyph{
             .field("y", &self.y())
             .finish()
     }
-
 }
 pub struct TextRenderer {
     pub shaper: CachingShaper,
