@@ -39,8 +39,8 @@ static DEFAULT_FONT_SIZE: f32 = 12.0f32;
 
 /* TODO: This should ideally point to the configuration / shared directory for the helix/helicoid editor
 however currently we just use the current executable path as a base. */
-fn base_asset_path() -> PathBuf {
-    env::current_exe().unwrap().parent().unwrap().join("assets")
+pub fn base_asset_path() -> PathBuf {
+    env::current_exe().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join("assets")
 }
 #[derive(new, Clone, Hash, PartialEq, Eq, Debug)]
 struct ShapeKey {
@@ -78,7 +78,7 @@ impl CachingShaper {
         let options = FontOptions::default();
         let font_size = options.font_parameters.size() * scale_factor;
         let default_font =
-            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), DEFAULT_FONT_SIZE)
+            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), font_size)
                 .unwrap();
         let mut shaper = CachingShaper {
             inner: Arc::new(RwLock::new(CachingShaperInner {
@@ -131,6 +131,13 @@ impl CachingShaper {
             .iter()
             .filter_map(|s| s.as_ref().map(|s| s.clone()))
             .collect()
+    }
+    pub fn set_font_key(&mut self, font_id: u8, font_name: String) {
+        let mut inner = self.inner.write();
+        if font_id as usize >= inner.font_names.len() {
+            inner.font_names.resize(font_id as usize + 1, None);
+        }
+        inner.font_names[font_id as usize] = Some(font_name);
     }
     /*
         pub fn update_scale_factor(&mut self, scale_factor: f32) {
@@ -187,7 +194,7 @@ impl CachingShaper {
         }
     */
 
-    fn cache_font_for_index(&mut self, options: &SmallFontOptions) -> bool {
+    fn cache_font_for_index(&self, options: &SmallFontOptions) -> bool {
         //        let font_key =
         let inner = self.inner.upgradable_read();
         if !inner.font_cache.contains_key(options) {
@@ -203,10 +210,10 @@ impl CachingShaper {
                     );
                     if let Some(font) = font {
                         let mut inner_write = RwLockUpgradableReadGuard::upgrade(inner);
-                        inner_write
+                        assert!(inner_write
                             .font_cache
                             .insert(options.clone(), font)
-                            .unwrap();
+                            .is_none());
                         return true;
                     }
                 }
@@ -269,7 +276,7 @@ impl CachingShaper {
     */
     /* Make sure that all fonts that may be needed for building clusters are cached */
     fn cache_fonts(
-        &mut self,
+        &self,
         text: &ShapableString,
         backup_font_families: &Option<SmallVec<[u8; 8]>>,
     ) {
@@ -379,10 +386,10 @@ impl CachingShaper {
                         let charmap = list_font.swash_font.as_ref().charmap();
                         match cluster.map(|ch| charmap.map(ch)) {
                             Status::Complete => {
-                                results.push((cluster.to_owned(), meta_run.font_info.clone()));
+                                results.push((cluster.to_owned(), modified_font_options));
                                 continue 'cluster;
                             }
-                            Status::Keep => best = Some(meta_run.font_info.clone()),
+                            Status::Keep => best = Some(modified_font_options),
                             Status::Discard => {}
                         }
                     }
@@ -396,10 +403,10 @@ impl CachingShaper {
                         let charmap = list_font.swash_font.as_ref().charmap();
                         match cluster.map(|ch| charmap.map(ch)) {
                             Status::Complete => {
-                                results.push((cluster.to_owned(), meta_run.font_info.clone()));
+                                results.push((cluster.to_owned(), modified_font_options));
                                 continue 'cluster;
                             }
-                            Status::Keep => best = Some(meta_run.font_info.clone()),
+                            Status::Keep => best = Some(modified_font_options),
                             Status::Discard => {}
                         }
                     }
@@ -501,10 +508,12 @@ impl CachingShaper {
         let mut resulting_block: ShapedTextBlock = Default::default();
 
         trace!("Shaping text: {:?}", text);
-        //        self.cache_fonts(text, &backup_font_families);
+        self.cache_fonts(text, &backup_font_families);
         let mut current_text_offset = 0;
         let inner = self.inner.read();
         let mut current_pixel_offset = 0f32;
+        //let ncoords = [1<<14];
+
         for (run_index, run) in text.metadata_runs.iter().enumerate() {
             //            current_text_offset += run.substring_length as usize;
             let (mut cluster_list, shaped_string_list) = Self::build_clusters(
@@ -526,7 +535,10 @@ impl CachingShaper {
                     .shape_context
                     .builder(font.swash_font.as_ref())
                     .size(font_options.font_parameters.size())
+                    //.normalized_coords(&ncoords)
                     .build();
+                //let y_offset = font.swash_font.as_ref().metrics(shaper.normalized_coords()).ascent;
+                let y_offset = shaper.metrics().ascent;
                 let charmap = font.swash_font.as_ref().charmap();
                 let cluster_list_slice = &mut cluster_list[current_cluster_offset
                     ..(current_cluster_offset + shaped_string_run.substring_length as usize)];
@@ -544,7 +556,7 @@ impl CachingShaper {
                         resulting_block.glyphs.push(ShapedTextGlyph::new(
                             glyph.id as u16,
                             glyph.x + current_pixel_offset,
-                            glyph.y,
+                            glyph.y + y_offset,
                         ));
                         current_pixel_offset += glyph.advance;
                     }
@@ -592,12 +604,18 @@ impl KeyedSwashFont {
     }
     fn load_keyed(base_directory: &PathBuf, font_key: FontKey, font_size: f32) -> Option<Self> {
         //        let font_style = font_style(font_key.bold, font_key.italic);
-        trace!("Loading font {:?}", font_key);
         if let Some(family_name) = &font_key.family_name {
-            let font_file_path = base_directory.join(format!("{}.ttf", family_name));
+            trace!("KSFLoading font {:?}", font_key);
+            let font_file_path = base_directory.join("fonts").join(format!("{}.ttf", family_name));
             //            let typeface = font_manager.match_family_style(family_name, font_style)?;
-            SwashFont::from_path(&font_file_path, 0).map(|font| KeyedSwashFont::new(font_key, font))
+            let res = SwashFont::from_path(&font_file_path, 0).map(|font| KeyedSwashFont::new(font_key, font));
+            if res.is_none(){
+                trace!("KSFLoading font failed: {:?}", font_file_path);
+            }
+            res
+
         } else {
+            trace!("KSFLoading default font {:?}", font_key);
             SwashFont::from_data(DEFAULT_FONT.to_vec(), 0)
                 .map(|font| KeyedSwashFont::new(font_key, font))
         }

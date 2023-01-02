@@ -1,7 +1,7 @@
 use half::f16;
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use std::sync::Arc;
 
 use log::{debug, trace, warn};
@@ -23,7 +23,7 @@ use swash::{
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::renderer::{
-    fonts::{font_loader::*, font_options::*},
+    fonts::{font_loader::*, font_options::*, caching_shaper::base_asset_path},
     text_renderer::ShapedTextBlock,
 };
 
@@ -50,7 +50,7 @@ impl ShapedBlobBuilder {
         let options = FontOptions::default();
         let font_size = options.font_parameters.size;
         let default_font =
-            KeyedFont::load_keyed(&mut font_manager, Default::default(), DEFAULT_FONT_SIZE)
+            KeyedFont::load_keyed(&mut font_manager, &base_asset_path(), Default::default(), DEFAULT_FONT_SIZE)
                 .unwrap();
         let mut shaper = ShapedBlobBuilder {
             options,
@@ -85,7 +85,7 @@ impl ShapedBlobBuilder {
     }
 
     pub fn set_font_key(&mut self, font_id: u8, font_name: String) {
-        if font_id as usize > self.font_names.len() {
+        if font_id as usize >= self.font_names.len() {
             self.font_names.resize(font_id as usize + 1, None);
         }
         self.font_names[font_id as usize] = Some(font_name);
@@ -128,15 +128,19 @@ impl ShapedBlobBuilder {
                     if let Some(font_name) = font_name {
                         let loaded = KeyedFont::load_keyed(
                             &mut self.font_manager,
+                            &base_asset_path(),
                             FontKey::from_parameters(
                                 shaped_string.font_info.font_parameters.clone(),
                                 Some(font_name.clone()),
                             ),
-                            DEFAULT_FONT_SIZE,
+                            *shaped_string.font_info.font_parameters.size,
                         );
                         if let Some(loaded) = loaded {
                             self.font_cache
                                 .insert(shaped_string.font_info.clone(), loaded);
+                        }
+                        else{
+                            log::trace!("Failed loading font with name: {}", font_name);
                         }
                     }
                 }
@@ -227,14 +231,27 @@ impl KeyedFont {
 
         Some(Self { key, skia_font })
     }
-    fn load_keyed(font_manager: &mut FontMgr, font_key: FontKey, font_size: f32) -> Option<Self> {
+    fn load_keyed(font_manager: &mut FontMgr, base_directory: &PathBuf, font_key: FontKey, font_size: f32) -> Option<Self> {
         let font_style = font_style(font_key.bold, font_key.italic);
 
-        trace!("Loading font {:?}", font_key);
         if let Some(family_name) = &font_key.family_name {
-            let typeface = font_manager.match_family_style(family_name, font_style)?;
-            KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
-        } else {
+            trace!("Loading font {:?}", font_key);
+            match font_manager.match_family_style(family_name, font_style){
+                Some(typeface) => {
+                    /* Load typeface from system fonts */
+                    KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
+                },
+                None => {
+                    /* See if there is a local ttf file in assets we can load */
+                    let font_file_path = base_directory.join("fonts").join(format!("{}.ttf", family_name));
+                    let font_data_vec = std::fs::read(font_file_path).ok()?;
+                    let font_data = Data::new_copy(&font_data_vec.as_slice());
+                    let typeface = Typeface::from_data(font_data, 0).unwrap();
+                    KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
+                },
+            }
+        } else { 
+            trace!("Loading default font {:?}", font_key);
             let data = Data::new_copy(DEFAULT_FONT);
             let typeface = Typeface::from_data(data, 0).unwrap();
             KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))

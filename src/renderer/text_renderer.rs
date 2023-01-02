@@ -4,7 +4,9 @@ the depedenencies that are introduced */
 use rkyv::{Archive, Deserialize, Serialize};
 
 use std::sync::Arc;
-
+use std::{
+    fmt::{self, Debug},
+};
 use glutin::dpi::PhysicalSize;
 use log::trace;
 
@@ -21,7 +23,7 @@ use crate::{
 
 /* Shaping is done in editor on "server", shaped glyphs are transfered to client
 Coordinates are relative to ShapedTextBlock origin */
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, Hash, Eq, PartialEq, Archive, Serialize, Deserialize)]
 pub struct ShapedTextGlyph {
     glyph: u16,
     y: u16, /* This is an f16, but to make rkyv happy use u16 */
@@ -65,7 +67,16 @@ impl ShapedTextGlyph {
         }
     }
 }
+impl Debug for ShapedTextGlyph{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ShapedTextGlyph")
+            .field("glyph", &self.glyph)
+            .field("x", &self.x())
+            .field("y", &self.y())
+            .finish()
+    }
 
+}
 pub struct TextRenderer {
     pub shaper: CachingShaper,
     //pub paint: Paint,

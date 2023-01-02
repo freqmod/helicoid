@@ -14,6 +14,7 @@ use std::{
 
 use glutin::event::Event;
 use log::error;
+use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint};
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -236,12 +237,24 @@ impl Renderer {
     pub fn font_draw_test(&mut self, root_canvas: &mut Canvas) {
         let mut shaper = CachingShaper::new(1.0f32);
         let mut blob_builder = ShapedBlobBuilder::new();
-        let string_to_shape = ShapableString::from_text("See if we can shape a simple string");
+        //shaper.set_font_key(0, String::from("Anonymous Pro"));
+        //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
+        shaper.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        shaper.set_font_key(3, String::from("MissingGlyphs"));
+        shaper.set_font_key(4, String::from("LastResort-Regular"));
+        //blob_builder.set_font_key(0, String::from("Anonymous Pro"));
+        //blob_builder.set_font_key(1, String::from("NotoSansMono-Regular"));
+        blob_builder.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        blob_builder.set_font_key(3, String::from("MissingGlyphs"));
+        blob_builder.set_font_key(4, String::from("LastResort-Regular"));
+        let mut string_to_shape = ShapableString::from_text("See if we can shape a simple string ≠ <= string Some(typeface) => {");
+        string_to_shape.metadata_runs.iter_mut().for_each(|i| i.font_info.font_parameters.size = OrderedFloat(30.0f32));
+        //shaper.cache_fonts(&string_to_shape, &None);
         let shaped = shaper.shape(&string_to_shape, &None);
         log::trace!("Shaped: {:?}", shaped);
         let blobs = blob_builder.bulid_blobs(shaped);
         let x = 0f32;
-        let y = 20f32;
+        let y = 0f32;
 
         let mut paint = Paint::default();
         paint.set_blend_mode(BlendMode::Src);

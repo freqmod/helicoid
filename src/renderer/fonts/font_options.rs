@@ -41,7 +41,7 @@ impl Default for SmallFontOptions {
         SmallFontOptions {
             family_id: 0,
             font_parameters: FontParameters {
-                size: OrderedFloat(10f32),
+                size: OrderedFloat(DEFAULT_FONT_SIZE),
                 bold: false,
                 italic: false,
                 allow_float_size: true,
