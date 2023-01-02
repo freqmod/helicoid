@@ -74,9 +74,9 @@ pub struct GlutinWindowWrapper {
     title: String,
     fullscreen: bool,
     font_changed_last_frame: bool,
-    /*saved_inner_size: PhysicalSize<u32>,
-    saved_grid_size: Option<Dimensions>,
-    size_at_startup: PhysicalSize<u32>,*/
+    saved_inner_size: PhysicalSize<u32>,
+    /*saved_grid_size: Option<Dimensions>,*/
+    size_at_startup: PhysicalSize<u32>,
     maximized_at_startup: bool,
     window_command_receiver: UnboundedReceiver<WindowCommand>,
 }
@@ -204,27 +204,27 @@ impl GlutinWindowWrapper {
 
         //self.skia_renderer.render(dt);
         /*let window_settings = SETTINGS.get::<WindowSettings>();
-        let window_padding = WindowPadding {
-            top: window_settings.padding_top,
-            left: window_settings.padding_left,
-            right: window_settings.padding_right,
-            bottom: window_settings.padding_bottom,
-        };
+                let window_padding = WindowPadding {
+                    top: window_settings.padding_top,
+                    left: window_settings.padding_left,
+                    right: window_settings.padding_right,
+                    bottom: window_settings.padding_bottom,
+                };
 
-        let padding_changed = window_padding != self.renderer.window_padding;
-        if padding_changed {
-            self.renderer.window_padding = window_padding;
-        }
-
-        if self.saved_inner_size != new_size || self.font_changed_last_frame || padding_changed {
-            self.font_changed_last_frame = false;
+                let padding_changed = window_padding != self.renderer.window_padding;
+                if padding_changed {
+                    self.renderer.window_padding = window_padding;
+                }
+        */
+        if self.saved_inner_size != new_size {
+            //|| self.font_changed_last_frame || padding_changed {
+            //self.font_changed_last_frame = false;
             self.saved_inner_size = new_size;
 
-            self.handle_new_grid_size(new_size);
+            //self.handle_new_grid_size(new_size);
             self.skia_renderer.resize(&self.windowed_context);
         }
 
-        */
         if REDRAW_SCHEDULER.should_draw() {
             //|| SETTINGS.get::<WindowSettings>().no_idle {
             self.font_changed_last_frame =
@@ -464,9 +464,9 @@ pub fn create_window() {
         title: String::from("Neovide"),
         fullscreen: false,
         font_changed_last_frame: false,
-        //        size_at_startup: initial_size,
+        size_at_startup: initial_size,
         maximized_at_startup: maximized,
-        //        saved_inner_size,
+        saved_inner_size,
         //        saved_grid_size: None,
         window_command_receiver,
     };

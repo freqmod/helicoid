@@ -250,7 +250,7 @@ impl Renderer {
         blob_builder.set_font_key(3, String::from("MissingGlyphs"));
         blob_builder.set_font_key(4, String::from("LastResort-Regular"));
         let mut string_to_shape = ShapableString::from_text(
-            "See if we can shape a simple string ≠ <= string Some(typeface) => { 😀🙀",
+            "See if we can shape a simple string\n ≠ <= string Some(typeface) => { 😀🙀 What about newlines?",
         );
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
             i.font_color = 0xF000A030;
@@ -291,7 +291,7 @@ impl Renderer {
                 },
                 &rect_paint,
             );
-            x += x + metadata_run.advance_x();
+            x += metadata_run.advance_x();
         }
     }
     pub fn handle_os_scale_factor_change(&mut self, os_scale_factor: f64) {

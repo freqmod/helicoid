@@ -19,8 +19,8 @@ use crate::{
     renderer::CachingShaper,
 };
 
-pub const SHAPABLE_STRING_ALLOC_LEN : usize = 128;
-pub const SHAPABLE_STRING_ALLOC_RUNS : usize = 16;
+pub const SHAPABLE_STRING_ALLOC_LEN: usize = 128;
+pub const SHAPABLE_STRING_ALLOC_RUNS: usize = 16;
 /* Shaping is done in editor on "server", shaped glyphs are transfered to client
 Coordinates are relative to ShapedTextBlock origin */
 #[derive(Default, Clone, Copy, Hash, Eq, PartialEq, Archive, Serialize, Deserialize)]

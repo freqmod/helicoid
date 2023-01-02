@@ -26,7 +26,9 @@ use swash::{
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::renderer::fonts::blob_builder::FontKey;
-use crate::renderer::text_renderer::{ShapedStringMetadata, ShapedTextGlyph, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS};
+use crate::renderer::text_renderer::{
+    ShapedStringMetadata, ShapedTextGlyph, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+};
 use crate::renderer::{
     fonts::{font_loader::*, font_options::*, swash_font::SwashFont},
     text_renderer::{ShapableString, ShapedTextBlock},
@@ -355,7 +357,8 @@ impl CachingShaper {
                 }),
         );
 
-        let mut results: SmallVec<[(CharCluster, SmallFontOptions); SHAPABLE_STRING_ALLOC_LEN]> = SmallVec::new();
+        let mut results: SmallVec<[(CharCluster, SmallFontOptions); SHAPABLE_STRING_ALLOC_LEN]> =
+            SmallVec::new();
         let specified_font = inner
             .font_cache
             .get(&meta_run.font_info)
@@ -441,7 +444,8 @@ impl CachingShaper {
                 );
             }
         }
-        let mut result_metadatas: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]> = SmallVec::new();
+        let mut result_metadatas: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]> =
+            SmallVec::new();
         let mut last_result_metadata: Option<SmallFontOptions> = None;
         let mut last_result_metadata_start = 0;
 
@@ -484,7 +488,8 @@ impl CachingShaper {
             });
         }
 
-        let mut result_clusters: SmallVec<[CharCluster; SHAPABLE_STRING_ALLOC_LEN]> = SmallVec::new();
+        let mut result_clusters: SmallVec<[CharCluster; SHAPABLE_STRING_ALLOC_LEN]> =
+            SmallVec::new();
         result_clusters.reserve(results.len());
         result_clusters.extend(results.drain(..).map(|(c, _)| c));
 
