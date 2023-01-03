@@ -10,10 +10,8 @@ const DEFAULT_FONT_SIZE: f32 = 14.0;
 #[derive(Clone, Debug, Archive, Serialize, Deserialize, Hash, Eq)]
 pub struct FontParameters {
     pub size: OrderedFloat<f32>,
-    pub bold: bool,
-    pub italic: bool,
     pub allow_float_size: bool,
-    pub emoji: bool,
+    pub underlined: bool,
     pub hinting: FontHinting,
     pub edging: FontEdging,
 }
@@ -43,9 +41,7 @@ impl Default for SmallFontOptions {
             family_id: 0,
             font_parameters: FontParameters {
                 size: OrderedFloat(DEFAULT_FONT_SIZE),
-                bold: false,
-                italic: false,
-                emoji: false,
+                underlined: false,
                 allow_float_size: true,
                 hinting: FontHinting::Normal,
                 edging: FontEdging::AntiAlias,
@@ -110,12 +106,10 @@ impl FontOptions {
         FontOptions {
             font_list,
             font_parameters: FontParameters {
-                bold,
-                italic,
                 allow_float_size,
                 hinting,
                 edging,
-                emoji: false,
+                underlined: false,
                 size: OrderedFloat(points_to_pixels(size)),
             },
         }
@@ -134,10 +128,8 @@ impl Default for FontOptions {
         FontOptions {
             font_list: SmallVec::new(),
             font_parameters: FontParameters {
-                bold: false,
-                italic: false,
                 allow_float_size: false,
-                emoji: false,
+                underlined: false,
                 size: OrderedFloat(points_to_pixels(DEFAULT_FONT_SIZE)),
                 hinting: FontHinting::default(),
                 edging: FontEdging::default(),
@@ -148,9 +140,8 @@ impl Default for FontOptions {
 impl PartialEq for FontParameters {
     fn eq(&self, other: &Self) -> bool {
         (self.size - other.size).abs() < std::f32::EPSILON
-            && self.bold == other.bold
-            && self.italic == other.italic
             && self.edging == other.edging
+            && self.underlined == other.underlined
             && self.hinting == other.hinting
     }
 }
@@ -325,7 +316,7 @@ mod tests {
     #[test]
     #[allow(clippy::bool_assert_comparison)]
     fn test_parse_all_params_together_from_guifont_setting() {
-        let guifont_setting = "Fira Code Mono:h15:b:i:#h-slight:#e-alias";
+        let guifont_setting = "Fira Code Mono:h15:#h-slight:#e-alias";
         let font_options = FontOptions::parse(guifont_setting);
 
         let font_size_pixels = points_to_pixels(15.0);
@@ -333,18 +324,6 @@ mod tests {
             font_options.font_parameters.size, font_size_pixels,
             "font size should equal {}, but {}",
             font_size_pixels, font_options.font_parameters.size,
-        );
-
-        assert_eq!(
-            font_options.font_parameters.bold, true,
-            "bold should equal {}, but {}",
-            font_options.font_parameters.bold, true,
-        );
-
-        assert_eq!(
-            font_options.font_parameters.italic, true,
-            "italic should equal {}, but {}",
-            font_options.font_parameters.italic, true,
         );
 
         assert_eq!(

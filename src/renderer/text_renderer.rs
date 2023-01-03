@@ -37,18 +37,23 @@ pub struct ShapedStringMetadata {
     pub font_color: u32, /* ARGB32 */
     pub advance_x: u16,
     pub advance_y: u16,
+    pub baseline_y: u16,
 }
 
 impl ShapedStringMetadata {
-    pub fn set_advance(&mut self, x: f32, y: f32) {
+    pub fn set_advance(&mut self, x: f32, y: f32, bl_y: f32) {
         self.advance_x = half::f16::from_f32(x).to_bits();
         self.advance_y = half::f16::from_f32(y).to_bits();
+        self.baseline_y = half::f16::from_f32(bl_y).to_bits();
     }
     pub fn advance_x(&self) -> f32 {
         half::f16::from_bits(self.advance_x).to_f32()
     }
     pub fn advance_y(&self) -> f32 {
         half::f16::from_bits(self.advance_y).to_f32()
+    }
+    pub fn baseline_y(&self) -> f32 {
+        half::f16::from_bits(self.baseline_y).to_f32()
     }
 }
 
@@ -110,6 +115,7 @@ impl ShapableString {
             font_color: 0,
             advance_x: 0,
             advance_y: 0,
+            baseline_y: 0,
         };
         ShapableString {
             text,

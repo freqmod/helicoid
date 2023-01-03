@@ -202,8 +202,8 @@ pub struct FontKey {
 impl FontKey {
     pub fn from_parameters(parameters: FontParameters, family_name: Option<String>) -> Self {
         FontKey {
-            bold: parameters.bold,
-            italic: parameters.italic,
+            bold: false,
+            italic: false,
             family_name,
             hinting: parameters.hinting,
             edging: parameters.edging,

@@ -472,6 +472,7 @@ impl CachingShaper {
                     font_color: 0,
                     advance_x: 0,
                     advance_y: 0,
+                    baseline_y: 0,
                 });
                 last_result_metadata = Some(font_info.clone());
                 last_result_metadata_start = cluster_index;
@@ -485,6 +486,7 @@ impl CachingShaper {
                 font_color: 0,
                 advance_x: 0,
                 advance_y: 0,
+                baseline_y: 0,
             });
         }
 
@@ -535,7 +537,6 @@ impl CachingShaper {
                 current_text_offset,
                 backup_font_families,
             );
-            let mut emoji_found = false;
             let mut current_cluster_offset = 0;
             'cluster: for shaped_string_run in shaped_string_list {
                 let font_options = &shaped_string_run.font_info;
@@ -565,7 +566,6 @@ impl CachingShaper {
                 let start_pixel_offset = current_pixel_offset;
                 let glyphs_start_offset = resulting_block.glyphs.len();
                 shaper.shape_with(|glyph_cluster| {
-                    emoji_found |= glyph_cluster.info.is_emoji();
                     for glyph in glyph_cluster.glyphs {
                         // TODO: Consider implementing word wrapping
                         // It could be interesting to look at info (word/line boundary etc.)
@@ -586,9 +586,12 @@ impl CachingShaper {
                 let mut metadata = shaped_string_run.clone();
                 metadata.substring_length =
                     (resulting_block.glyphs.len() - glyphs_start_offset) as u16;
-                metadata.font_info.font_parameters.emoji = emoji_found;
                 metadata.font_color = run.font_color;
-                metadata.set_advance(current_pixel_offset - start_pixel_offset, y_advance);
+                metadata.set_advance(
+                    current_pixel_offset - start_pixel_offset,
+                    y_advance,
+                    y_offset,
+                );
                 resulting_block.metadata_runs.push(metadata);
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }

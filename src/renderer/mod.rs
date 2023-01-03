@@ -1,9 +1,10 @@
 pub mod animation_utils;
 pub mod cursor_renderer;
 pub mod fonts;
-pub mod grid_renderer;
+//pub mod grid_renderer;
 pub mod profiler;
 mod rendered_window;
+mod text_box_renderer;
 mod text_renderer;
 
 use std::{
@@ -15,7 +16,7 @@ use std::{
 use glutin::event::Event;
 use log::error;
 use ordered_float::OrderedFloat;
-use skia_safe::{BlendMode, Canvas, Color, Paint, Rect};
+use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
@@ -257,7 +258,7 @@ impl Renderer {
             i.font_info.font_parameters.size = OrderedFloat(80.0f32);
         });
         //shaper.cache_fonts(&string_to_shape, &None);
-        let shaped = shaper.shape(&string_to_shape, &None);
+        let mut shaped = shaper.shape(&string_to_shape, &None);
         log::trace!("Shaped: {:?}", shaped);
         let blobs = blob_builder.bulid_blobs(&shaped);
         let mut x = 0f32;
@@ -270,18 +271,27 @@ impl Renderer {
 
         log::trace!("Draw text: {:?}", blobs);
         for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
-            if metadata_run.font_info.font_parameters.emoji {
-                //paint.color
-            } else {
-                paint.set_color(Color::new(metadata_run.font_color));
-            }
+            paint.set_color(Color::new(metadata_run.font_color));
             root_canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
         }
         let mut rect_paint = Paint::default();
         rect_paint.set_stroke_width(1.0);
         rect_paint.set_style(skia_safe::PaintStyle::Stroke);
-        //        rect_paint.set_color(Color::DARK_GRAY);
+        shaped.metadata_runs[1].font_info.font_parameters.underlined = true;
         for metadata_run in shaped.metadata_runs.iter() {
+            if metadata_run.font_info.font_parameters.underlined {
+                root_canvas.draw_line(
+                    Point {
+                        x: x as f32,
+                        y: y + metadata_run.baseline_y(),
+                    },
+                    Point {
+                        x: x as f32 + metadata_run.advance_x(),
+                        y: y + metadata_run.baseline_y(),
+                    },
+                    &rect_paint,
+                );
+            }
             root_canvas.draw_rect(
                 Rect {
                     left: x,
