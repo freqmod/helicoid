@@ -12,4 +12,9 @@ smallvec = {version = "1.10", features = ["serde", "const_generics"]}
 half = {version = "2.1", features=["serde", "bytemuck"]}
 rkyv = { version = "0.7", features = ["validation", "smallvec"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
+swash = "0.1.4"
+lru = "0.9"
+unicode-segmentation = "1.10.0"
+derive-new = "0.5.9"
+itertools = "0.10.5"
 

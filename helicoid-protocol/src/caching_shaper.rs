@@ -1,5 +1,12 @@
+use crate::font_options::FontOptions;
+use crate::swash_font::SwashFont;
+use crate::text::{
+    ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph, SmallFontOptions,
+    SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+};
 use smallvec::SmallVec;
 use std::env;
+use std::num::NonZeroUsize;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -25,19 +32,12 @@ use swash::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::renderer::fonts::blob_builder::FontKey;
-use crate::renderer::text_renderer::{
-    ShapedStringMetadata, ShapedTextGlyph, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
-};
-use crate::renderer::{
-    fonts::{font_loader::*, font_options::*, swash_font::SwashFont},
-    text_renderer::{ShapableString, ShapedTextBlock},
-};
 /* Make a shaper per font (variant), that contains cached shaped info etc.
 then make an algorithm that works on multiple shapers to shape multifont text */
-static DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
-static LAST_RESORT_FONT: &[u8] = include_bytes!("../../../assets/fonts/LastResort-Regular.ttf");
+static DEFAULT_FONT: &[u8] = include_bytes!("../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
+static LAST_RESORT_FONT: &[u8] = include_bytes!("../../assets/fonts/LastResort-Regular.ttf");
 static DEFAULT_FONT_SIZE: f32 = 12.0f32;
+pub const DEFAULT_FONT_NAME_LENGTH: usize = 32;
 
 /* TODO: This should ideally point to the configuration / shared directory for the helix/helicoid editor
 however currently we just use the current executable path as a base. */
@@ -61,7 +61,7 @@ struct ShapeKey {
 
 #[derive(Debug)]
 pub struct KeyedSwashFont {
-    pub key: FontKey,
+    pub key: Option<SmallVec<[u8; DEFAULT_FONT_NAME_LENGTH]>>,
     pub swash_font: SwashFont,
 }
 #[derive(new, Clone, Hash, PartialEq, Eq, Debug)]
@@ -92,8 +92,8 @@ impl CachingShaper {
         let mut shaper = CachingShaper {
             inner: Arc::new(RwLock::new(CachingShaperInner {
                 options,
-                shape_cache: LruCache::new(10000),
-                backed_up_clusters: LruCache::new(64),
+                shape_cache: LruCache::new(NonZeroUsize::new(10000).unwrap()),
+                backed_up_clusters: LruCache::new(NonZeroUsize::new(64).unwrap()),
                 font_cache: Default::default(),
                 font_names: Vec::new(),
                 default_font,
@@ -211,10 +211,7 @@ impl CachingShaper {
                 if let Some(font_family_name) = font_family_name {
                     let font = KeyedSwashFont::load_keyed(
                         &base_asset_path(),
-                        FontKey::from_parameters(
-                            options.font_parameters.clone(),
-                            Some(font_family_name.clone()),
-                        ),
+                        Some(font_family_name.clone()),
                         options.font_parameters.size(),
                     );
                     if let Some(font) = font {
@@ -622,27 +619,36 @@ impl Clone for CachingShaper {
     }
 }
 impl KeyedSwashFont {
-    fn new(key: FontKey, swash_font: SwashFont) -> Self {
-        Self { key, swash_font }
+    fn new(key: Option<&str>, swash_font: SwashFont) -> Self {
+        Self {
+            key: key.map(|s| SmallVec::from_slice(s.as_bytes())),
+            swash_font,
+        }
     }
-    fn load_keyed(base_directory: &PathBuf, font_key: FontKey, font_size: f32) -> Option<Self> {
+    fn new_string(key: Option<String>, swash_font: SwashFont) -> Self {
+        Self {
+            key: key.map(|s| SmallVec::from_slice(s.as_bytes())),
+            swash_font,
+        }
+    }
+    fn load_keyed(base_directory: &PathBuf, name: Option<String>, font_size: f32) -> Option<Self> {
         //        let font_style = font_style(font_key.bold, font_key.italic);
-        if let Some(family_name) = &font_key.family_name {
-            trace!("KSFLoading font {:?}", font_key);
+        if let Some(family_name) = &name {
+            trace!("KSFLoading font {:?}", name);
             let font_file_path = base_directory
                 .join("fonts")
                 .join(format!("{}.ttf", family_name));
             //            let typeface = font_manager.match_family_style(family_name, font_style)?;
             let res = SwashFont::from_path(&font_file_path, 0)
-                .map(|font| KeyedSwashFont::new(font_key, font));
+                .map(|font| KeyedSwashFont::new_string(name, font));
             if res.is_none() {
                 trace!("KSFLoading font failed: {:?}", font_file_path);
             }
             res
         } else {
-            trace!("KSFLoading default font {:?}", font_key);
+            trace!("KSFLoading default font {:?}", name);
             SwashFont::from_data(DEFAULT_FONT.to_vec(), 0)
-                .map(|font| KeyedSwashFont::new(font_key, font))
+                .map(|font| KeyedSwashFont::new_string(name, font))
         }
     }
 }

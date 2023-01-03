@@ -1,9 +1,12 @@
 use half::f16;
+use helicoid_protocol::caching_shaper::base_asset_path;
+use helicoid_protocol::font_options::FontOptions;
 use helicoid_protocol::text::{
     FontEdging, FontHinting, FontParameters, ShapedTextBlock, SmallFontOptions,
 };
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -25,7 +28,7 @@ use swash::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::renderer::fonts::{caching_shaper::base_asset_path, font_loader::*, font_options::*};
+//use {caching_shaper::base_asset_path, font_loader::*, font_options::*};
 
 static DEFAULT_FONT: &[u8] =
     include_bytes!("../../../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
@@ -60,7 +63,7 @@ impl ShapedBlobBuilder {
         let mut shaper = ShapedBlobBuilder {
             options,
             //font_loader: FontLoader::new(font_size),
-            blob_cache: LruCache::new(10000),
+            blob_cache: LruCache::new(NonZeroUsize::new(10000).unwrap()),
             shape_context: ShapeContext::new(),
             font_cache: Default::default(),
             font_names: Vec::new(),

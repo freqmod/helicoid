@@ -1,14 +1,15 @@
-use std::sync::Arc;
+use std::{num::NonZeroUsize, sync::Arc};
 
-use helicoid_protocol::text::{FontEdging, FontHinting};
+use helicoid_protocol::{
+    swash_font::SwashFont,
+    text::{FontEdging, FontHinting},
+};
 use log::trace;
 use lru::LruCache;
 use skia_safe::{
     font::Edging as SkiaEdging, Data, Font, FontHinting as SkiaHinting, FontMgr, FontStyle,
     Typeface,
 };
-
-use crate::renderer::fonts::swash_font::SwashFont;
 
 static DEFAULT_FONT: &[u8] =
     include_bytes!("../../../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
@@ -88,7 +89,7 @@ impl FontLoader {
     pub fn new(font_size: f32) -> FontLoader {
         FontLoader {
             font_mgr: FontMgr::new(),
-            cache: LruCache::new(20),
+            cache: LruCache::new(NonZeroUsize::new(20).unwrap()),
             font_size,
             last_resort: None,
         }

@@ -14,7 +14,7 @@ use std::{
 };
 
 use glutin::event::Event;
-use helicoid_protocol::text::ShapableString;
+use helicoid_protocol::{caching_shaper::CachingShaper, text::ShapableString};
 use log::error;
 use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect};
@@ -30,7 +30,6 @@ use crate::{
 };
 
 use cursor_renderer::CursorRenderer;
-pub use fonts::caching_shaper::CachingShaper;
 //pub use grid_renderer::GridRenderer;
 pub use rendered_window::{
     LineFragment, RenderedWindow, WindowDrawCommand, WindowDrawDetails, WindowPadding,
