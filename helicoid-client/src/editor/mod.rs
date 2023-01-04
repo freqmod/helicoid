@@ -13,6 +13,7 @@ use crate::{
 const MODE_CMDLINE: u64 = 4;
 
 mod cursor;
+pub(crate) mod editor;
 mod style;
 
 pub use cursor::{Cursor, CursorMode, CursorShape};

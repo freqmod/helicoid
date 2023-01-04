@@ -22,7 +22,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
     //bridge::EditorMode,
-    editor::{Cursor, Style},
+    editor::{editor::HeliconeEditor, Cursor, Style},
     event_aggregator::EVENT_AGGREGATOR,
     renderer::fonts::blob_builder::ShapedBlobBuilder,
     //settings::*,
@@ -34,6 +34,8 @@ use cursor_renderer::CursorRenderer;
 pub use rendered_window::{
     LineFragment, RenderedWindow, WindowDrawCommand, WindowDrawDetails, WindowPadding,
 };
+
+use self::text_box_renderer::RemoteBoxRenderer;
 
 //#[derive(SettingGroup, Clone)]
 pub struct RendererSettings {
@@ -79,6 +81,8 @@ pub enum DrawCommand {
 
 pub struct Renderer {
     cursor_renderer: CursorRenderer,
+    editor: HeliconeEditor,
+    //    text_box: RemoteBoxRenderer,
     //pub grid_renderer: GridRenderer,
     //    current_mode: EditorMode,
     rendered_windows: HashMap<u64, RenderedWindow>,
@@ -92,7 +96,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(os_scale_factor: f64) -> Self {
+    pub fn new(os_scale_factor: f64, editor: HeliconeEditor) -> Self {
         //      let window_settings = SETTINGS.get::<WindowSettings>();
 
         let user_scale_factor = 1.0; //window_settings.scale_factor.into();
@@ -124,6 +128,7 @@ impl Renderer {
             //profiler,
             os_scale_factor,
             user_scale_factor,
+            editor,
             //window_padding,
         }
     }

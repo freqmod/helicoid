@@ -40,12 +40,13 @@ use crate::{
     //bridge::{ParallelCommand, UiCommand},
     //cmd_line::CmdLineSettings,
     dimensions::Dimensions,
-    editor::EditorCommand,
+    editor::{editor::HeliconeEditor, EditorCommand},
     event_aggregator::EVENT_AGGREGATOR,
     frame::Frame,
     redraw_scheduler::REDRAW_SCHEDULER,
     renderer::Renderer,
     renderer::WindowPadding,
+    HeliconeCommandLineArguments,
     //    running_tracker::*,
     /*    settings::{
         load_last_window_settings, save_window_geometry, PersistentWindowSettings, SETTINGS,
@@ -307,7 +308,7 @@ impl GlutinWindowWrapper {
     }
 }
 
-pub fn create_window() {
+pub fn create_window(args: &HeliconeCommandLineArguments) {
     let icon = {
         let icon = load_from_memory(ICON).expect("Failed to parse icon data");
         let (width, height) = icon.dimensions();
@@ -440,8 +441,9 @@ pub fn create_window() {
 
     log::trace!("repositioned window: {}", did_reposition);
 
+    let editor = HeliconeEditor::new(args);
     let scale_factor = windowed_context.window().scale_factor();
-    let renderer = Renderer::new(scale_factor);
+    let renderer = Renderer::new(scale_factor, editor);
     let saved_inner_size = window.inner_size();
 
     let skia_renderer = SkiaRenderer::new(&windowed_context);

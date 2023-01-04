@@ -104,6 +104,7 @@ fn build_sub_surface(context: &mut DirectContext, image_info: ImageInfo) -> Surf
 pub struct RemoteBoxRenderer {
     surface_cache: SharedSurfaceCache,
     rendered_surfaces: HashMap<u16, Surface>,
+    //bridge: TcpBridge,
     dimensions: ISize,
 }
 impl RemoteBoxRenderer {

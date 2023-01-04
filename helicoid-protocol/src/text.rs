@@ -7,7 +7,9 @@ use log::trace;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
+use bytecheck::CheckBytes;
 use half::f16;
+use num_enum::IntoPrimitive;
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
 
@@ -16,7 +18,11 @@ pub const SHAPABLE_STRING_ALLOC_RUNS: usize = 16;
 /* Shaping is done in editor on "server", shaped glyphs are transfered to client
 Coordinates are relative to ShapedTextBlock origin */
 
-#[derive(Clone, Debug, Default, Archive, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(
+    Clone, Debug, Default, Archive, Serialize, Deserialize, Hash, PartialEq, Eq, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct FontParameters {
     pub size: OrderedFloat<f32>,
     pub allow_float_size: bool,
@@ -25,21 +31,31 @@ pub struct FontParameters {
     pub edging: FontEdging,
 }
 
-#[derive(Clone, Hash, Default, Debug, Archive, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(
+    Clone, Hash, Default, Debug, Archive, Serialize, Deserialize, PartialEq, Eq, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct SmallFontOptions {
     pub family_id: u8,
     pub font_parameters: FontParameters,
     //#[with(Skip)]
     //font_list_ref: Option<Arc<SmallFontRegistry>>,
 }
-#[derive(Clone, Hash, Archive, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Hash, Archive, Serialize, Deserialize, PartialEq, Eq, CheckBytes)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct ShapedTextGlyph {
     glyph: u16,
     y: u16, /* This is an f16, but to make rkyv happy use u16 */
     x: OrderedFloat<f32>,
 }
 
-#[derive(Debug, Default, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct ShapedStringMetadata {
     pub substring_length: u16,
     pub font_info: SmallFontOptions,
@@ -73,6 +89,7 @@ pub struct ShapableString {
 }
 
 #[derive(Default, Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct ShapedTextBlock {
     pub glyphs: SmallVec<[ShapedTextGlyph; SHAPABLE_STRING_ALLOC_LEN]>,
     pub metadata_runs: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
@@ -122,7 +139,11 @@ impl ShapableString {
         }
     }
 }
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+#[derive(IntoPrimitive)]
+#[repr(u8)]
 pub enum FontEdging {
     AntiAlias,
     SubpixelAntiAlias,
@@ -145,7 +166,11 @@ impl Default for FontEdging {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+#[derive(IntoPrimitive)]
+#[repr(u8)]
 pub enum FontHinting {
     Full,
     Normal,

@@ -1,6 +1,3 @@
-mod tcp_bridge;
-pub struct BridgeMessage {}
-
 /* This is the start of an (currently imaginary) bridge to the helix editor.
 This bridge is having a quite different architecture than the (neo)vim bridge. */
 

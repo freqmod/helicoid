@@ -3,18 +3,22 @@ name = "helicoid-protocol"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+tokio = ["dep:tokio"]
 
 [dependencies]
 parking_lot = "0.12.0"
 log = "0.4.16"
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}
 half = {version = "2.1", features=["serde", "bytemuck"]}
-rkyv = { version = "0.7", features = ["validation", "smallvec"] }
+bytecheck = { version = "0.6.9", features = [] }
+rkyv = { version = "0.7", features = ["validation", "smallvec", "bytecheck"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
 swash = "0.1.4"
 lru = "0.9"
 unicode-segmentation = "1.10.0"
 derive-new = "0.5.9"
 itertools = "0.10.5"
-
+anyhow = {version="1.0.68"}
+num_enum = {version= "0.5.7"}
+tokio = { version = "1", features = ["full"] , optional = true}
