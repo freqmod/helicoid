@@ -1,3 +1,4 @@
+mod tcp_bridge;
 pub struct BridgeMessage {}
 
 /* This is the start of an (currently imaginary) bridge to the helix editor.

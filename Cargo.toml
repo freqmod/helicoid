@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "helicoid-client",
-    "helicoid-protocol"
+    "helicoid-protocol",
+    "helicoid-testserver",
 ]
 
 default-members = [
