@@ -6,6 +6,10 @@ use helicoid_protocol::{
         HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate,
         RenderBlockDescription, RenderBlockLocation,
     },
+    input::{
+        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
+        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo,
+    },
     tcp_bridge::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
         TcpBridgeToServerMessage,
@@ -41,6 +45,8 @@ struct ServerState {
     close_rx: BReceiver<()>,
     editor_update_rx: BReceiver<()>,
     state_data: ServerStateData,
+
+    viewport_size: Option<ViewportInfo>,
 }
 pub struct HelicoidTestServer {
     editor: Arc<TMutex<DummyEditor>>,
@@ -93,8 +99,28 @@ impl DummyEditor {
 impl ServerState {
     //    async fn process_event(&mut self, e: &mut DummyEditor) {}
     async fn handle_client_message(&mut self, message: TcpBridgeToServerMessage) -> Result<()> {
+        match message.message {
+            HelicoidToServerMessage::ViewportSizeUpdate(viewportinfo) => {
+                self.viewport_size = Some(viewportinfo);
+                self.sync_screen().await?;
+            }
+            HelicoidToServerMessage::KeyModifierStateUpdate(keymodifierstateupdateevent) => {}
+            HelicoidToServerMessage::KeyPressedEvent(simplekeytappedevent) => {}
+            HelicoidToServerMessage::MouseButtonStateChange(mousebuttonstatechangeevent) => {}
+            HelicoidToServerMessage::CursorMoved(cursormovedevent) => {}
+            HelicoidToServerMessage::CharReceived(ch) => {}
+            HelicoidToServerMessage::Ime(imeevent) => {}
+            HelicoidToServerMessage::ClipboardEvent(clipboard) => {}
+        }
+        //self.send_simple_test_shaped_string().await?;
+
         Ok(())
     }
+    async fn sync_screen(&mut self) -> Result<()> {
+        self.send_simple_test_shaped_string().await?;
+        Ok(())
+    }
+
     async fn editor_updated(&mut self) -> Result<()> {
         let editor = self.state_data.editor.lock();
         /* Assess if the update is relevant for the client represented by this server state,
@@ -176,10 +202,10 @@ impl TcpBridgeServerConnectionState for ServerState {
             close_rx,
             state_data,
             editor_update_rx,
+            viewport_size: None,
         }
     }
     async fn initialize(&mut self) -> Result<()> {
-        self.send_simple_test_shaped_string().await?;
         Ok(())
     }
     async fn event_loop(&mut self) -> Result<()> {

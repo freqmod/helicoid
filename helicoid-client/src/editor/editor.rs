@@ -1,10 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::HeliconeCommandLineArguments;
-use glutin::event::Event;
-use helicoid_protocol::tcp_bridge::{
-    ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage,
+use glutin::event::{Event, WindowEvent};
+use helicoid_protocol::{
+    input::ViewportInfo,
+    tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
+use ordered_float::OrderedFloat;
 use skia_safe::Canvas;
 use tokio::sync::{
     mpsc::{Receiver, Sender},
@@ -91,7 +93,79 @@ impl HeliconeEditor {
             log::warn!("Try to handle event before connection is established to server");
             return;
         }
-        if let Some(inner) = self.inner.try_lock().ok() {}
+        if let Some(inner) = self.inner.try_lock().ok() {
+            match event {
+                Event::NewEvents(_) => {}
+                Event::WindowEvent { window_id, event } => match event {
+                    WindowEvent::Resized(event) => {
+                        /* Convert event to helicoid protocol and send off  to server. */
+                        let size = ViewportInfo {
+                            physical_size: (event.width, event.height),
+                            scale_factor: OrderedFloat(1.0),
+                            container_physical_size: None,
+                            container_scale_factor: None,
+                        };
+                    }
+                    WindowEvent::Moved(_) => {}
+                    WindowEvent::CloseRequested => {}
+                    WindowEvent::Destroyed => {}
+                    WindowEvent::DroppedFile(_) => {}
+                    WindowEvent::HoveredFile(_) => {}
+                    WindowEvent::HoveredFileCancelled => {}
+                    WindowEvent::ReceivedImeText(_) => {}
+                    WindowEvent::Focused(_) => {}
+                    WindowEvent::KeyboardInput {
+                        device_id,
+                        event,
+                        is_synthetic,
+                    } => {}
+                    WindowEvent::ModifiersChanged(_) => {}
+                    WindowEvent::CursorMoved {
+                        device_id,
+                        position,
+                        modifiers,
+                    } => {}
+                    WindowEvent::CursorEntered { device_id } => {}
+                    WindowEvent::CursorLeft { device_id } => {}
+                    WindowEvent::MouseWheel {
+                        device_id,
+                        delta,
+                        phase,
+                        modifiers,
+                    } => {}
+                    WindowEvent::MouseInput {
+                        device_id,
+                        state,
+                        button,
+                        modifiers,
+                    } => {}
+                    WindowEvent::TouchpadPressure {
+                        device_id,
+                        pressure,
+                        stage,
+                    } => {}
+                    WindowEvent::AxisMotion {
+                        device_id,
+                        axis,
+                        value,
+                    } => {}
+                    WindowEvent::Touch(_) => {}
+                    WindowEvent::ScaleFactorChanged {
+                        scale_factor,
+                        new_inner_size,
+                    } => {}
+                    WindowEvent::ThemeChanged(_) => {}
+                },
+                Event::DeviceEvent { device_id, event } => {}
+                Event::UserEvent(_) => {}
+                Event::Suspended => todo!(),
+                Event::Resumed => todo!(),
+                Event::MainEventsCleared => {}
+                Event::RedrawRequested(_) => {}
+                Event::RedrawEventsCleared => {}
+                Event::LoopDestroyed => {}
+            }
+        }
     }
     fn reconnect_bridge(&mut self) {
         /* Set editor in disconnected state (i.e. render appropriate graphics) and try to reconnect regularly */

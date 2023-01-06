@@ -27,35 +27,35 @@ pub enum HelicoidToServerMessage {
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub struct ViewportInfo {
-    physical_size: (u32, u32),
-    scale_factor: u32,
-    container_physical_size: Option<(u32, u32)>,
-    container_scale_factor: Option<u32>,
+    pub physical_size: (u32, u32),
+    pub scale_factor: OrderedFloat<f32>,
+    pub container_physical_size: Option<(u32, u32)>,
+    pub container_scale_factor: Option<u32>,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub struct SimpleKeyTappedEvent {
-    key_code: u32, /* Virutual key code, as represented in winit */
+    pub key_code: u32, /* Virutual key code, as represented in winit */
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub struct KeyModifierStateUpdateEvent {
-    shift_pressed: bool,
-    ctrl_pressed: bool,
-    alt_pressed: bool,
-    logo_pressed: bool,
+    pub shift_pressed: bool,
+    pub ctrl_pressed: bool,
+    pub alt_pressed: bool,
+    pub logo_pressed: bool,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub struct MouseButtonStateChangeEvent {
-    pressed: bool,
-    button: u16,
+    pub pressed: bool,
+    pub button: u16,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub struct CursorMovedEvent {
-    physical_position_x: OrderedFloat<f32>,
-    physical_position_y: OrderedFloat<f32>,
+    pub physical_position_x: OrderedFloat<f32>,
+    pub physical_position_y: OrderedFloat<f32>,
 }
 /* See winit Ime event for details, expects the strings in the smallvec to
 be utf-8 encoded, and relatively short (max len 255 bytes) */
