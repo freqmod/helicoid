@@ -63,15 +63,15 @@ struct SimpleDrawPath {
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleDrawPolygon {
-    paint: SimplePaint,
-    draw_elements: SmallVec<[PointF16; 16]>,
+    pub paint: SimplePaint,
+    pub draw_elements: SmallVec<[PointF16; 16]>,
 }
 /// This element just fill the whole surface with the paint
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleFill {
-    paint: SimplePaint,
+    pub paint: SimplePaint,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
@@ -84,31 +84,36 @@ pub enum SimpleDrawElement {
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleDrawBlock {
-    pub width: u16,
-    pub height: u16,
-    draw_elements: SmallVec<[SimpleDrawElement; 32]>,
+    pub extent: PointF16,
+    pub draw_elements: SmallVec<[SimpleDrawElement; 32]>,
+}
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct MetaDrawBlock {
+    pub extent: PointF16,
+    pub sub_blocks: SmallVec<[RenderBlockLocation; 64]>,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub enum RenderBlockDescription {
     ShapedTextBlock(ShapedTextBlock),
     SimpleDraw(SimpleDrawBlock),
+    MetaBox(MetaDrawBlock),
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct NewRenderBlock {
-    id: RenderBlockId,
-    contents: RenderBlockDescription,
+    pub id: RenderBlockId,
+    pub contents: RenderBlockDescription,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockLocation {
-    id: RenderBlockId,
+    pub id: RenderBlockId,
     /* Location refers to top left corner of the render block */
-    location_x: u16,
-    location_y: u16,
+    pub location: PointF16,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
@@ -122,5 +127,20 @@ pub struct RemoteBoxUpdate {
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct HelicoidToClientMessage {
-    update: RemoteBoxUpdate,
+    pub update: RemoteBoxUpdate,
+}
+
+impl PointF16 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self {
+            x: half::f16::from_f32(x).to_bits(),
+            y: half::f16::from_f32(y).to_bits(),
+        }
+    }
+    pub fn x(&self) -> f32 {
+        half::f16::from_bits(self.x).to_f32()
+    }
+    pub fn y(&self) -> f32 {
+        half::f16::from_bits(self.y).to_f32()
+    }
 }

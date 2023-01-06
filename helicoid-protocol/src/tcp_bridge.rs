@@ -1,15 +1,29 @@
 /* Used to talk to a helix / helicoid backend over a relyable TCP connection
 managed by Tokio, and connected to the user interface by channels */
 
+use async_trait::async_trait;
+use rkyv::ser::{serializers::AllocSerializer, Serializer};
 use rkyv::{Archive, Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::IoSlice;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::task::JoinSet;
 
 use crate::gfx::HelicoidToClientMessage;
+use crate::input::HelicoidToServerMessage;
 use anyhow::{anyhow, Result};
 use bytecheck::CheckBytes;
+use futures::{stream::FuturesUnordered, StreamExt};
+use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::net::TcpStream;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{
+    broadcast::{self, Receiver as BReceiver, Sender as BSender},
+    mpsc::{self, Receiver, Sender},
+    Mutex as TMutex,
+};
+
 /*pub struct OwnedRkyvArchive<T: Archive, L: usize> {
     bytes: [u8; L],
     archive: T,
@@ -17,12 +31,12 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct TcpBridgeToClientMessage {
-    message: HelicoidToClientMessage,
+    pub message: HelicoidToClientMessage,
 }
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
-#[archive_attr(derive(CheckBytes, Debug))]
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(Debug))]
 pub struct TcpBridgeToServerMessage {
-    message: HelicoidToClientMessage,
+    pub message: HelicoidToServerMessage,
 }
 pub struct TcpBridgeSend<M> {
     tcp_conn: OwnedWriteHalf,
@@ -37,6 +51,36 @@ pub struct ClientTcpBridge {
     receive: TcpBridgeReceive<TcpBridgeToClientMessage>,
 }
 
+pub struct TcpBridgeServer<S> {
+    close_sender: BSender<()>,
+    listener: Option<TcpListener>,
+    connections: HashMap<SocketAddr, TcpBridgeServerConnection<S>>,
+}
+
+pub struct TcpBridgeServerConnection<S> {
+    bridge: ServerSingleTcpBridge,
+    connection_state: S,
+}
+
+pub struct ServerSingleTcpBridge {
+    send: TcpBridgeSend<TcpBridgeToClientMessage>,
+    receive: TcpBridgeReceive<TcpBridgeToServerMessage>,
+}
+
+#[async_trait]
+pub trait TcpBridgeServerConnectionState: Send {
+    type StateData: Send + 'static;
+    async fn new_state(
+        peer_address: SocketAddr,
+        channel_tx: Sender<TcpBridgeToClientMessage>,
+        channel_rx: Receiver<TcpBridgeToServerMessage>,
+        close_rx: BReceiver<()>,
+        state_data: Self::StateData,
+    ) -> Self;
+    async fn initialize(&mut self) -> Result<()>;
+    async fn event_loop(&mut self) -> Result<()>;
+}
+
 impl ClientTcpBridge {
     pub async fn connect(
         addr: &String,
@@ -49,13 +93,125 @@ impl ClientTcpBridge {
         //        unimplemented!()
         let mut stream = TcpStream::connect(addr).await?;
         let (r, w) = stream.into_split();
-        let (send, send_channel) = TcpBridgeSend::new(w).await?;
-        let (receive, receive_channel) = TcpBridgeReceive::new(r).await?;
+        let (send, send_channel) = TcpBridgeSend::new(w)?;
+        let (receive, receive_channel) = TcpBridgeReceive::new(r)?;
         Ok((Self { send, receive }, send_channel, receive_channel))
     }
+    pub async fn process_rxtx(&mut self) -> Result<()> {
+        let ClientTcpBridge { send, receive } = self;
+        let send_proc_fut = send.process();
+        let recv_proc_fut = receive.process();
+        let (send_proc_res, rec_proc_res) = tokio::join!(send_proc_fut, recv_proc_fut);
+        send_proc_res?;
+        rec_proc_res?;
+        Ok(())
+        // Need to call process on send and on receive
+    }
 }
-impl<M> TcpBridgeSend<M> {
-    async fn new(writer: OwnedWriteHalf) -> Result<(Self, Sender<M>)> {
+impl ServerSingleTcpBridge {
+    pub fn handle_connection(
+        stream: TcpStream,
+    ) -> Result<(
+        Self,
+        Sender<TcpBridgeToClientMessage>,
+        Receiver<TcpBridgeToServerMessage>,
+    )> {
+        let (r, w) = stream.into_split();
+        let (send, send_channel) = TcpBridgeSend::new(w)?;
+        let (receive, receive_channel) = TcpBridgeReceive::new(r)?;
+        Ok((Self { send, receive }, send_channel, receive_channel))
+    }
+    pub async fn process_rxtx(&mut self) -> Result<()> {
+        let ServerSingleTcpBridge { send, receive } = self;
+        let send_proc_fut = send.process();
+        let recv_proc_fut = receive.process();
+        let (send_proc_res, rec_proc_res) = tokio::join!(send_proc_fut, recv_proc_fut);
+        send_proc_res?;
+        rec_proc_res?;
+        Ok(())
+        // Need to call process on send and on receive
+    }
+}
+
+impl<S: TcpBridgeServerConnectionState> TcpBridgeServer<S> {
+    pub async fn new() -> Result<Self> {
+        let (close_sender, _) = broadcast::channel(1);
+
+        Ok(Self {
+            listener: None,
+            connections: Default::default(),
+            close_sender,
+        })
+    }
+
+    async fn establish_connection(
+        stream: TcpStream,
+        peer_addr: SocketAddr,
+        close_receiver: BReceiver<()>,
+        state_data: S::StateData,
+    ) -> Result<()> {
+        //let local_address = socket.local_addr()?;
+        log::trace!("Handle connection");
+        let (mut bridge, channel_tx, channel_rx) =
+            ServerSingleTcpBridge::handle_connection(stream).unwrap();
+        tokio::spawn(async move { bridge.process_rxtx().await.unwrap() });
+        let mut connection_state = S::new_state(
+            peer_addr,
+            channel_tx,
+            channel_rx,
+            close_receiver,
+            state_data,
+        )
+        .await;
+        log::trace!("Initialize connection");
+        connection_state.initialize().await?;
+        log::trace!("Connection intialized, run connection event loop");
+        connection_state.event_loop().await?;
+        log::trace!("Connection event loop completed");
+        Ok(())
+    }
+    pub async fn wait_for_connection(
+        this: Arc<TMutex<Self>>,
+        addr: &String,
+        state_data: S::StateData,
+    ) -> Result<()> {
+        let addr_spawn = addr.clone();
+        let listener = TcpListener::bind(&addr).await?;
+        // Asynchronously wait for an inbound socket.
+        log::trace!("Waiting for connection, bound {}", addr_spawn);
+        let (socket, peer_addr) = listener.accept().await?;
+        log::trace!("Waiting for connection, accepted {}", addr_spawn);
+        let close_receiver = {
+            let this_locked = this.lock().await;
+            this_locked.close_sender.subscribe()
+        };
+        log::trace!("Waiting for connection, got close channel {}", addr_spawn);
+        tokio::spawn(async move {
+            log::trace!("Waiting for connection on {}", addr_spawn);
+            match Self::establish_connection(socket, peer_addr, close_receiver, state_data).await {
+                Ok(_) => {
+                    log::trace!("Establish connection returned");
+                }
+                Err(e) => {
+                    log::warn!("Got error while processing connection: {:?}", e)
+                }
+            }
+        });
+        Ok(())
+    }
+}
+impl<S> Drop for TcpBridgeServer<S> {
+    fn drop(&mut self) {
+        let _ = self.close_sender.send(());
+    }
+}
+
+type TBSSerializer = AllocSerializer<0x8000>;
+impl<M> TcpBridgeSend<M>
+where
+    M: Serialize<TBSSerializer>,
+{
+    fn new(writer: OwnedWriteHalf) -> Result<(Self, Sender<M>)> {
         let (tx, rx) = mpsc::channel(32);
         Ok((
             Self {
@@ -69,7 +225,15 @@ impl<M> TcpBridgeSend<M> {
         loop {
             let received = self.chan.recv().await;
             match received {
-                Some(message) => {}
+                Some(message) => {
+                    let mut serializer = TBSSerializer::default();
+                    serializer.serialize_value(&message).unwrap();
+                    let bytes = serializer.into_serializer().into_inner();
+                    log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);
+                    let header = (bytes.len() as u16).to_le_bytes();
+                    let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
+                    self.tcp_conn.write_vectored(&bufs).await?;
+                }
                 None => {
                     break;
                 }
@@ -83,7 +247,7 @@ impl<M: Archive> TcpBridgeReceive<M>
 where
     M::Archived: Deserialize<M, rkyv::Infallible>,
 {
-    async fn new(reader: OwnedReadHalf) -> Result<(Self, Receiver<M>)> {
+    fn new(reader: OwnedReadHalf) -> Result<(Self, Receiver<M>)> {
         let (tx, rx) = mpsc::channel(32);
         Ok((
             Self {
@@ -164,31 +328,3 @@ where
         Ok(())
     }
 }
-/*
-pub async fn connect(
-    addr: &SocketAddr,
-    mut stdin: impl Stream<Item = Result<Bytes, io::Error>> + Unpin,
-    mut stdout: impl Sink<Bytes, Error = io::Error> + Unpin,
-) -> Result<(), Box<dyn Error>> {
-    let mut stream = TcpStream::connect(addr).await?;
-    let (r, w) = stream.split();
-    let mut sink = FramedWrite::new(w, BytesCodec::new());
-    // filter map Result<BytesMut, Error> stream into just a Bytes stream to match stdout Sink
-    // on the event of an Error, log the error and end the stream
-    let mut stream = FramedRead::new(r, BytesCodec::new())
-        .filter_map(|i| match i {
-            //BytesMut into Bytes
-            Ok(i) => future::ready(Some(i.freeze())),
-            Err(e) => {
-                println!("failed to read from socket; error={}", e);
-                future::ready(None)
-            }
-        })
-        .map(Ok);
-
-    match future::join(sink.send_all(&mut stdin), stdout.send_all(&mut stream)).await {
-        (Err(e), _) | (_, Err(e)) => Err(e.into()),
-        _ => Ok(()),
-    }
-}
-*/
