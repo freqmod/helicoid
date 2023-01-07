@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::HeliconeCommandLineArguments;
-use glutin::event::{Event, WindowEvent};
 use helicoid_protocol::{
     input::ViewportInfo,
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
@@ -12,6 +11,7 @@ use tokio::sync::{
     mpsc::{Receiver, Sender},
     Mutex as TMutex,
 };
+use winit::event::{Event, WindowEvent};
 
 struct HeliconeEditorInner {
     bridge: ClientTcpBridge,
@@ -112,13 +112,6 @@ impl HeliconeEditor {
                     WindowEvent::DroppedFile(_) => {}
                     WindowEvent::HoveredFile(_) => {}
                     WindowEvent::HoveredFileCancelled => {}
-                    WindowEvent::ReceivedImeText(_) => {}
-                    WindowEvent::Focused(_) => {}
-                    WindowEvent::KeyboardInput {
-                        device_id,
-                        event,
-                        is_synthetic,
-                    } => {}
                     WindowEvent::ModifiersChanged(_) => {}
                     WindowEvent::CursorMoved {
                         device_id,
@@ -155,6 +148,15 @@ impl HeliconeEditor {
                         new_inner_size,
                     } => {}
                     WindowEvent::ThemeChanged(_) => {}
+                    WindowEvent::ReceivedCharacter(_) => todo!(),
+                    WindowEvent::Focused(_) => todo!(),
+                    WindowEvent::KeyboardInput {
+                        device_id,
+                        input,
+                        is_synthetic,
+                    } => todo!(),
+                    WindowEvent::Ime(_) => todo!(),
+                    WindowEvent::Occluded(_) => todo!(),
                 },
                 Event::DeviceEvent { device_id, event } => {}
                 Event::UserEvent(_) => {}

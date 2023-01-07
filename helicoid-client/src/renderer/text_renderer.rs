@@ -3,7 +3,7 @@ the depedenencies that are introduced */
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use glutin::dpi::PhysicalSize;
+use winit::dpi::PhysicalSize;
 use log::trace;
 use std::fmt::{self, Debug};
 use std::sync::Arc;

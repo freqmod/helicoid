@@ -8,16 +8,37 @@ mod settings;
 //#[cfg(target_os = "macos")]
 //mod draw_background;
 
-use std::time::{Duration, Instant};
+use std::{
+    mem::ManuallyDrop,
+    time::{Duration, Instant},
+};
 
 use glutin::{
     self,
+    config::{GetGlConfig, GlConfig},
+    context::{AsRawContext, GlProfile, NotCurrentContext, PossiblyCurrentContext},
+    display::{AsRawDisplay, Display, GetGlDisplay},
+    prelude::GlDisplay,
+};
+use winit::{
+    self,
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
     window::{self, Fullscreen, Icon},
-    ContextBuilder, GlProfile, WindowedContext,
 };
+
+use winit::event_loop::EventLoopBuilder;
+use winit::window::{Window, WindowBuilder};
+
+use glutin::config::{Config as GlutinConfig, ConfigTemplateBuilder};
+use glutin::context::{ContextApi, ContextAttributesBuilder};
+//use glutin::prelude::*;
+use glutin::surface::{Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
+use glutin_winit::{self, DisplayBuilder};
+
+use raw_window_handle::HasRawWindowHandle;
+
 use log::trace;
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -28,8 +49,8 @@ use glutin::platform::macos::WindowBuilderExtMacOS;
 use draw_background::draw_background;
 */
 
-#[cfg(target_os = "linux")]
-use glutin::platform::unix::WindowBuilderExtUnix;
+//#[cfg(target_os = "linux")]
+//use glutin::platform::unix::WindowBuilderExtUnix;
 
 use image::{load_from_memory, GenericImageView, Pixel};
 use keyboard_manager::KeyboardManager;
@@ -65,10 +86,25 @@ pub enum WindowCommand {
     SetMouseEnabled(bool),
     ListAvailableFonts,
 }
+struct GlutinRunning {
+    skia_renderer: ManuallyDrop<SkiaRenderer>,
+    context: PossiblyCurrentContext,
+    //config: GlutinConfig,
+}
+struct GlutinPaused {
+    context: NotCurrentContext,
+    //config: GlutinConfig,
+}
+enum GlutinWindowGl {
+    Uninitialized,
+    Paused(GlutinPaused),
+    Running(GlutinRunning),
+}
 
 pub struct GlutinWindowWrapper {
-    windowed_context: WindowedContext<glutin::PossiblyCurrent>,
-    skia_renderer: SkiaRenderer,
+    //windowed_context: WindowedContext<glutin::PossiblyCurrent>,
+    //gl_window: GlWindow,
+    //    surface: Surface<WindowSurface>,
     renderer: Renderer,
     keyboard_manager: KeyboardManager,
     mouse_manager: MouseManager,
@@ -80,11 +116,14 @@ pub struct GlutinWindowWrapper {
     size_at_startup: PhysicalSize<u32>,
     maximized_at_startup: bool,
     window_command_receiver: UnboundedReceiver<WindowCommand>,
+    /* NB: Observer drop (i.e declaration) order */
+    glutin_context: GlutinWindowGl,
+    window: Window,
 }
 
 impl GlutinWindowWrapper {
     pub fn toggle_fullscreen(&mut self) {
-        let window = self.windowed_context.window();
+        let window = &self.window;
         if self.fullscreen {
             window.set_fullscreen(None);
         } else {
@@ -118,7 +157,7 @@ impl GlutinWindowWrapper {
 
     pub fn handle_title_changed(&mut self, new_title: String) {
         self.title = new_title;
-        self.windowed_context.window().set_title(&self.title);
+        self.window.set_title(&self.title);
     }
 
     /*pub fn send_font_names(&self) {
@@ -145,14 +184,48 @@ impl GlutinWindowWrapper {
         REDRAW_SCHEDULER.queue_next_frame();
     }*/
 
-    pub fn handle_event(&mut self, event: Event<()>) {
+    fn finish_gl_initialization(&mut self, window_target: &EventLoopWindowTarget<()>) {
+        if let GlutinWindowGl::Paused(paused_context) = &mut self.glutin_context {
+            let not_current_context = &mut paused_context.context;
+            let gl_config = not_current_context.config();
+            //            let window = self.window.take().unwrap_or_else(|| {
+            let window_builder = WindowBuilder::new().with_transparent(true);
+            glutin_winit::finalize_window(window_target, window_builder, &gl_config).unwrap();
+            //          });
+
+            //let gl_window = GlWindow::new(window, &gl_config);
+            let skia_renderer = SkiaRenderer::new(&mut self.window, not_current_context);
+            /* TODO: Put the initialized variables back into the right context */
+            unimplemented!()
+            /*
+            // Make the context it current.
+            let gl_context = not_current_context
+                .make_current(gl_surface)
+                .unwrap();
+
+            // The context needs to be current for the Renderer to set up shaders and
+            // buffers. It also performs function loading, which needs a current context on
+            // WGL.
+            renderer.get_or_insert_with(|| Renderer::new(&gl_display));
+
+            // Try setting vsync.
+            if let Err(res) = gl_window
+                .surface
+                .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
+            {
+                eprintln!("Error setting vsync: {:?}", res);
+            }
+            */
+        }
+    }
+    pub fn handle_event(&mut self, event: Event<()>, wt: &EventLoopWindowTarget<()>) {
         //log::info!("Got event: {:?}", event);
         self.keyboard_manager.handle_event(&event);
         self.mouse_manager.handle_event(
             &event,
             &self.keyboard_manager,
             &self.renderer,
-            &self.windowed_context,
+            //&self.windowed_context,
         );
         self.renderer.handle_event(&event);
         match event {
@@ -161,6 +234,7 @@ impl GlutinWindowWrapper {
             }
             Event::Resumed => {
                 EVENT_AGGREGATOR.send(EditorCommand::RedrawScreen);
+                self.finish_gl_initialization(wt);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -200,7 +274,7 @@ impl GlutinWindowWrapper {
     }
 
     pub fn draw_frame(&mut self, dt: f32) {
-        let window = self.windowed_context.window();
+        let window = &self.window;
         let new_size = window.inner_size();
 
         //self.skia_renderer.render(dt);
@@ -223,15 +297,22 @@ impl GlutinWindowWrapper {
             self.saved_inner_size = new_size;
 
             //self.handle_new_grid_size(new_size);
-            self.skia_renderer.resize(&self.windowed_context);
+            if let GlutinWindowGl::Running(gl_run) = &mut self.glutin_context {
+                gl_run
+                    .skia_renderer
+                    .resize(&mut self.window, &mut gl_run.context);
+            }
         }
 
         if REDRAW_SCHEDULER.should_draw() {
             //|| SETTINGS.get::<WindowSettings>().no_idle {
-            self.font_changed_last_frame =
-                self.renderer.draw_frame(self.skia_renderer.canvas(), dt);
-            self.skia_renderer.gr_context.flush(None);
-            self.windowed_context.swap_buffers().unwrap();
+            if let GlutinWindowGl::Running(gl_run) = &mut self.glutin_context {
+                self.font_changed_last_frame =
+                    self.renderer.draw_frame(gl_run.skia_renderer.canvas(), dt);
+                gl_run
+                    .skia_renderer
+                    .flush_and_swap_buffers(&mut self.window, &mut gl_run.context);
+            }
         }
 
         /*
@@ -308,6 +389,82 @@ impl GlutinWindowWrapper {
     }
 }
 
+/*
+Create a window with a gl context for rendering on it. This function is to
+separate winit & glutin details from create window function */
+fn create_window_with_gl_context(
+    event_loop: &EventLoop<()>,
+    icon: Icon,
+    maximized: bool,
+) -> (Window, NotCurrentContext) {
+    //let mut previous_position = None;
+    /* TODO: Android does not support using a window builder, so as long as a
+    window builder is made by default android is not supported */
+    let winit_window_builder = window::WindowBuilder::new()
+        .with_title("Helicoid")
+        .with_window_icon(Some(icon))
+        .with_maximized(maximized)
+        .with_transparent(true);
+
+    let frame_decoration = true; //cmd_line_settings.frame;
+
+    // There is only two options for windows & linux, no need to match more options.
+    #[cfg(not(target_os = "macos"))]
+    let mut winit_window_builder = winit_window_builder.with_decorations(frame_decoration); // == Frame::Full);
+
+    let template = ConfigTemplateBuilder::new()
+        .with_alpha_size(8)
+        .with_transparency(true);
+
+    let display_builder = DisplayBuilder::new().with_window_builder(Some(winit_window_builder));
+    let (mut window, gl_config) = display_builder
+        .build(event_loop, template, |configs| {
+            // Find the config with the maximum number of samples, so our triangle will
+            // be smooth.
+            configs
+                .reduce(|accum, config| {
+                    let transparency_check = config.supports_transparency().unwrap_or(false)
+                        & !accum.supports_transparency().unwrap_or(false);
+
+                    if transparency_check || config.num_samples() > accum.num_samples() {
+                        config
+                    } else {
+                        accum
+                    }
+                })
+                .unwrap()
+        })
+        .unwrap();
+    log::trace!("Picked a config with {} samples", gl_config.num_samples());
+
+    let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
+
+    // XXX The display could be obtained from the any object created by it, so we
+    // can query it from the config.
+    let gl_display = gl_config.display();
+
+    // The context creation part. It can be created before surface and that's how
+    // it's expected in multithreaded + multiwindow operation mode, since you
+    // can send NotCurrentContext, but not Surface.
+    let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
+
+    // Since glutin by default tries to create OpenGL core context, which may not be
+    // present we should try gles.
+    let fallback_context_attributes = ContextAttributesBuilder::new()
+        .with_context_api(ContextApi::Gles(None))
+        .build(raw_window_handle);
+    let mut not_current_gl_context = unsafe {
+        gl_display
+            .create_context(&gl_config, &context_attributes)
+            .unwrap_or_else(|_| {
+                gl_display
+                    .create_context(&gl_config, &fallback_context_attributes)
+                    .expect("failed to create context")
+            })
+    };
+
+    (window.unwrap(), not_current_gl_context)
+}
 pub fn create_window(args: &HeliconeCommandLineArguments) {
     let icon = {
         let icon = load_from_memory(ICON).expect("Failed to parse icon data");
@@ -337,34 +494,24 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         }
     */
     let maximized = false;
-    //let mut previous_position = None;
-    let winit_window_builder = window::WindowBuilder::new()
-        .with_title("Helicoid")
-        .with_window_icon(Some(icon))
-        .with_maximized(maximized)
-        .with_transparent(true);
 
-    let frame_decoration = true; //cmd_line_settings.frame;
-
-    // There is only two options for windows & linux, no need to match more options.
-    #[cfg(not(target_os = "macos"))]
-    let mut winit_window_builder = winit_window_builder.with_decorations(frame_decoration); // == Frame::Full);
-
-    #[cfg(target_os = "macos")]
-    let mut winit_window_builder = match frame_decoration {
-        Frame::Full => winit_window_builder,
-        Frame::None => winit_window_builder.with_decorations(false),
-        Frame::Buttonless => winit_window_builder
-            .with_transparent(true)
-            .with_title_hidden(true)
-            .with_titlebar_buttons_hidden(true)
-            .with_titlebar_transparent(true)
-            .with_fullsize_content_view(true),
-        Frame::Transparent => winit_window_builder
-            .with_title_hidden(true)
-            .with_titlebar_transparent(true)
-            .with_fullsize_content_view(true),
-    };
+    /*
+        #[cfg(target_os = "macos")]
+        let mut winit_window_builder = match frame_decoration {
+            Frame::Full => winit_window_builder,
+            Frame::None => winit_window_builder.with_decorations(false),
+            Frame::Buttonless => winit_window_builder
+                .with_transparent(true)
+                .with_title_hidden(true)
+                .with_titlebar_buttons_hidden(true)
+                .with_titlebar_transparent(true)
+                .with_fullsize_content_view(true),
+            Frame::Transparent => winit_window_builder
+                .with_title_hidden(true)
+                .with_titlebar_transparent(true)
+                .with_fullsize_content_view(true),
+        };
+    */
 
     /*if let Some(previous_position) = previous_position {
         if !maximized {
@@ -372,8 +519,8 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         }
     }*/
 
-    #[cfg(target_os = "linux")]
-    let winit_window_builder = winit_window_builder;
+    //    #[cfg(target_os = "linux")]
+    //    let winit_window_builder = winit_window_builder;
     /*        .with_app_id(cmd_line_settings.wayland_app_id)
     .with_class(
         cmd_line_settings.x11_wm_class_instance,
@@ -383,35 +530,43 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
     #[cfg(target_os = "macos")]
     let winit_window_builder = winit_window_builder.with_accepts_first_mouse(false);
 
-    let builder = ContextBuilder::new()
-        .with_pixel_format(24, 8)
-        .with_stencil_buffer(8)
-        .with_gl_profile(GlProfile::Core);
-    //.with_srgb(cmd_line_settings.srgb)
-    //.with_vsync(cmd_line_settings.vsync);
+    /*
+        let builder = ContextBuilder::new()
+            .with_pixel_format(24, 8)
+            .with_stencil_buffer(8)
+            .with_gl_profile(GlProfile::Core);
+        //.with_srgb(cmd_line_settings.srgb)
+        //.with_vsync(cmd_line_settings.vsync);
 
-    let windowed_context = match builder
-        .clone()
-        .build_windowed(winit_window_builder.clone(), &event_loop)
-    {
-        Ok(ctx) => ctx,
-        Err(err) => {
-            // haven't found any sane way to actually match on the pattern rabbithole CreationError
-            // provides, so here goes nothing
-            if err.to_string().contains("vsync") {
-                builder
-                    .with_vsync(false)
-                    .build_windowed(winit_window_builder, &event_loop)
-                    .unwrap()
-            } else {
-                panic!("{}", err);
+        let windowed_context = match builder
+            .clone()
+            .build_windowed(winit_window_builder.clone(), &event_loop)
+        {
+            Ok(ctx) => ctx,
+            Err(err) => {
+                // haven't found any sane way to actually match on the pattern rabbithole CreationError
+                // provides, so here goes nothing
+                if err.to_string().contains("vsync") {
+                    builder
+                        .with_vsync(false)
+                        .build_windowed(winit_window_builder, &event_loop)
+                        .unwrap()
+                } else {
+                    panic!("{}", err);
+                }
             }
-        }
-    };
-    let windowed_context = unsafe { windowed_context.make_current().unwrap() };
+        };
+        let windowed_context = unsafe { windowed_context.make_current().unwrap() };
 
-    let window = windowed_context.window();
+        let window = windowed_context.window();
+    */
+    let (window, gl_context) = create_window_with_gl_context(&event_loop, icon, maximized);
     let initial_size = window.inner_size();
+
+    let gl_paused = GlutinPaused {
+        context: gl_context,
+    };
+    //let raw_window_handle = window.raw_window_handle();
 
     // Check that window is visible in some monitor, and reposition it if not.
     let did_reposition = window
@@ -442,11 +597,11 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
     log::trace!("repositioned window: {}", did_reposition);
 
     let editor = HeliconeEditor::new(args);
-    let scale_factor = windowed_context.window().scale_factor();
+    let scale_factor = window.scale_factor();
     let renderer = Renderer::new(scale_factor, editor);
     let saved_inner_size = window.inner_size();
 
-    let skia_renderer = SkiaRenderer::new(&windowed_context);
+    //    let skia_renderer = SkiaRenderer::new(&windowed_context);
 
     let window_command_receiver = EVENT_AGGREGATOR.register_event::<WindowCommand>();
 
@@ -458,8 +613,8 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
     );
 
     let mut window_wrapper = GlutinWindowWrapper {
-        windowed_context,
-        skia_renderer,
+        //        windowed_context,
+        window,
         renderer,
         keyboard_manager: KeyboardManager::new(),
         mouse_manager: MouseManager::new(),
@@ -471,6 +626,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         saved_inner_size,
         //        saved_grid_size: None,
         window_command_receiver,
+        glutin_context: GlutinWindowGl::Paused(gl_paused),
     };
 
     let mut previous_frame_start = Instant::now();
@@ -482,7 +638,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
     }
     let mut focused = FocusedState::Focused;
 
-    event_loop.run(move |e, _window_target, control_flow| {
+    event_loop.run(move |e, window_target, control_flow| {
         // Window focus changed
         if let Event::WindowEvent {
             event: WindowEvent::Focused(focused_event),
@@ -511,7 +667,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
 
         window_wrapper.handle_window_commands();
         window_wrapper.synchronize_settings();
-        window_wrapper.handle_event(e);
+        window_wrapper.handle_event(e, window_target);
 
         let refresh_rate = match focused {
             FocusedState::Focused | FocusedState::UnfocusedNotDrawn => {

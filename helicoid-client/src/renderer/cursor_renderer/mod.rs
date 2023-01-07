@@ -5,7 +5,7 @@ use crate::renderer::RenderedWindow;
 //use crate::renderer::GridRenderer;
 use std::collections::HashMap;
 
-use glutin::event::{Event, WindowEvent};
+use winit::event::{Event, WindowEvent};
 use skia_safe::{op, Canvas, Paint, Path, Point};
 
 use crate::{

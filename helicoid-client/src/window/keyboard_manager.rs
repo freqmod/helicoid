@@ -1,12 +1,10 @@
 use crate::event_aggregator::EVENT_AGGREGATOR;
-use glutin::{
-    event::{ElementState, Event, KeyEvent, WindowEvent},
-    keyboard::{Key, Key::Dead},
-    platform::modifier_supplement::KeyEventExtModifierSupplement,
+use winit::{
+    event::{ElementState, Event, KeyboardInput, WindowEvent},
 };
 
 enum InputEvent {
-    KeyEvent(KeyEvent),
+    KeyboardInput(KeyboardInput),
     ImeInput(String),
 }
 pub struct KeyboardManager {
@@ -45,21 +43,29 @@ impl KeyboardManager {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        event: key_event, ..
+                        input: keyboard_input, ..
                     },
                 ..
             } => {
                 // Store the event so that we can ignore it properly if the window was just
                 // focused.
                 self.queued_input_events
-                    .push(InputEvent::KeyEvent(key_event.clone()));
+                    .push(InputEvent::KeyboardInput(keyboard_input.clone()));
             }
             Event::WindowEvent {
-                event: WindowEvent::ReceivedImeText(string),
+                event: WindowEvent::Ime(ime),
                 ..
             } => {
-                self.queued_input_events
+                match ime{
+                    winit::event::Ime::Commit(string) =>{
+                                        self.queued_input_events
                     .push(InputEvent::ImeInput(string.to_string()));
+
+                    }                    
+                    _ => {
+                        /* TODO: Handle more ime events */
+                    }
+                } 
             }
             Event::WindowEvent {
                 event: WindowEvent::ModifiersChanged(modifiers),
@@ -67,10 +73,10 @@ impl KeyboardManager {
             } => {
                 // Record the modifier states so that we can properly add them to the keybinding
                 // text
-                self.shift = modifiers.shift_key();
-                self.ctrl = modifiers.control_key();
-                self.alt = modifiers.alt_key();
-                self.logo = modifiers.super_key();
+                self.shift = modifiers.shift();
+                self.ctrl = modifiers.ctrl();
+                self.alt = modifiers.alt();
+                self.logo = modifiers.logo();
             }
             Event::MainEventsCleared => {
                 // If the window wasn't just focused.
@@ -79,7 +85,7 @@ impl KeyboardManager {
                     for input_event in self.queued_input_events.iter() {
                         let mut next_dead_key = self.prev_dead_key;
                         match input_event {
-                            InputEvent::KeyEvent(key_event) => {
+                            InputEvent::KeyboardInput(key_event) => {
                                 /*
                                 // And a key was pressed
                                 if key_event.state == ElementState::Pressed {
@@ -123,8 +129,9 @@ impl KeyboardManager {
         self.ignore_input_this_frame || (self.logo && !settings.use_logo)*/
         false
     }
-
-    fn maybe_get_keybinding(&self, key_event: &KeyEvent) -> Option<String> {
+/*
+    // This function needs to be rewritten to take new-ish winit keyboard input api into account
+    fn maybe_get_keybinding(&self, key_event: &KeyboardInput) -> Option<String> {
         // Determine if this key event represents a key which won't ever
         // present text.
         if let Some(key_text) = is_control_key(key_event.logical_key) {
@@ -163,7 +170,7 @@ impl KeyboardManager {
             }
         }
     }
-
+*/
     fn format_special_key(&self, use_shift: bool, text: &str) -> String {
         let modifiers = self.format_modifier_string(use_shift);
 
@@ -204,14 +211,15 @@ fn use_alt(alt: bool) -> bool {
     let settings = SETTINGS.get::<KeyboardSettings>();
     settings.macos_alt_is_meta && alt
 }
-
+/*
 #[cfg(not(target_os = "macos"))]
-fn key_event_text(key_event: &KeyEvent) -> Option<&str> {
+fn key_event_text(key_event: &KeyboardInput) -> Option<&str> {
     key_event.key_without_modifiers().to_text()
 }
+*/
 
 #[cfg(target_os = "macos")]
-fn key_event_text(key_event: &KeyEvent) -> Option<&str> {
+fn key_event_text(key_event: &KeyboardInput) -> Option<&str> {
     let settings = SETTINGS.get::<KeyboardSettings>();
     if settings.macos_alt_is_meta {
         key_event.text
@@ -227,7 +235,7 @@ fn or_empty(condition: bool, text: &str) -> &str {
         ""
     }
 }
-
+/*
 fn is_control_key(key: Key<'static>) -> Option<&str> {
     match key {
         Key::Backspace => Some("BS"),
@@ -258,7 +266,7 @@ fn is_control_key(key: Key<'static>) -> Option<&str> {
         _ => None,
     }
 }
-
+*/
 // returns (`escaped_text`, `use_shift`)
 fn is_special(text: &str) -> Option<(&str, bool)> {
     match text {

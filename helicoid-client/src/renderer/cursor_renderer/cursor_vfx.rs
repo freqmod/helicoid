@@ -1,5 +1,5 @@
 use log::error;
-use nvim_rs::Value;
+//use nvim_rs::Value;
 use skia_safe::{paint::Style, BlendMode, Canvas, Color, Paint, Point, Rect};
 
 use crate::{
@@ -70,6 +70,7 @@ impl ParseFromValue for VfxMode {
     }
 }
 */
+/*
 impl From<VfxMode> for Value {
     fn from(mode: VfxMode) -> Self {
         match mode {
@@ -83,7 +84,7 @@ impl From<VfxMode> for Value {
         }
     }
 }
-
+*/
 pub fn new_cursor_vfx(mode: &VfxMode) -> Option<Box<dyn CursorVfx>> {
     match mode {
         VfxMode::Highlight(mode) => Some(Box::new(PointHighlight::new(mode))),

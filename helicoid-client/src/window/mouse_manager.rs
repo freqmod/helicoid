@@ -4,14 +4,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use glutin::{
+use winit::{
     self,
     dpi::PhysicalPosition,
     event::{
         DeviceId, ElementState, Event, MouseButton, MouseScrollDelta, Touch, TouchPhase,
         WindowEvent,
     },
-    PossiblyCurrent, WindowedContext,
+    //PossiblyCurrent, WindowedContext,
 };
 use skia_safe::Rect;
 
@@ -109,12 +109,12 @@ impl MouseManager {
         y: i32,
         keyboard_manager: &KeyboardManager,
         renderer: &Renderer,
-        windowed_context: &WindowedContext<PossiblyCurrent>,
+        //windowed_context: &WindowedContext<PossiblyCurrent>,
     ) {
-        let size = windowed_context.window().inner_size();
+        /*let size = windowed_context.window().inner_size();
         if x < 0 || x as u32 >= size.width || y < 0 || y as u32 >= size.height {
             return;
-        }
+        }*/
         /*
                 let position: PhysicalPosition<f32> = PhysicalPosition::new(x as f32, y as f32);
 
@@ -315,7 +315,7 @@ impl MouseManager {
         &mut self,
         keyboard_manager: &KeyboardManager,
         renderer: &Renderer,
-        windowed_context: &WindowedContext<PossiblyCurrent>,
+        //windowed_context: &WindowedContext<PossiblyCurrent>,
         finger_id: (DeviceId, u64),
         location: PhysicalPosition<f32>,
         phase: &TouchPhase,
@@ -420,9 +420,11 @@ impl MouseManager {
         event: &Event<()>,
         keyboard_manager: &KeyboardManager,
         renderer: &Renderer,
-        windowed_context: &WindowedContext<PossiblyCurrent>,
+        //windowed_context: &WindowedContext<PossiblyCurrent>,
     ) {
         match event {
+
+            /*
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
@@ -438,7 +440,7 @@ impl MouseManager {
                     windowed_context.window().set_cursor_visible(true);
                     self.mouse_hidden = false;
                 }
-            }
+            }*/
             Event::WindowEvent {
                 event:
                     WindowEvent::MouseWheel {
@@ -472,7 +474,7 @@ impl MouseManager {
             } => self.handle_touch(
                 keyboard_manager,
                 renderer,
-                windowed_context,
+                //windowed_context,
                 (*device_id, *id),
                 location.cast(),
                 phase,
@@ -485,6 +487,7 @@ impl MouseManager {
                 state == &ElementState::Pressed,
                 keyboard_manager,
             ),
+            /*
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
@@ -499,7 +502,7 @@ impl MouseManager {
                         self.mouse_hidden = true;
                     }*/
                 }
-            }
+            }*/
             _ => {}
         }
     }

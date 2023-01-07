@@ -1,37 +1,42 @@
-use std::convert::TryInto;
+use std::{
+    convert::TryInto,
+    ffi::{CStr, CString},
+};
 
 use crate::redraw_scheduler::REDRAW_SCHEDULER;
 use gl::types::*;
+use glutin::{
+    self,
+    config::{GetGlConfig, GlConfig},
+    context::{AsRawContext, GlProfile, NotCurrentContext, PossiblyCurrentContext},
+    display::{AsRawDisplay, Display, GetGlDisplay},
+    prelude::GlDisplay,
+};
 use skia_safe::{
     gpu::{gl::FramebufferInfo, BackendRenderTarget, DirectContext, SurfaceOrigin},
     Canvas, ColorType, Surface,
 };
+use winit::window::Window as WinitWindow;
 
-type WindowedContext = glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>;
+//type WindowedContext = glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>;
 
 fn create_surface(
-    windowed_context: &WindowedContext,
+    window: &mut WinitWindow,
     gr_context: &mut DirectContext,
     fb_info: FramebufferInfo,
+    num_samples: u8,
+    stencil_size: u8,
 ) -> Surface {
-    let pixel_format = windowed_context.get_pixel_format();
-    let size = windowed_context.window().inner_size();
+    //    let pixel_format = windowed_context.get_pixel_format();
+
+    let size = window.inner_size();
     let size = (
         size.width.try_into().expect("Could not convert width"),
         size.height.try_into().expect("Could not convert height"),
     );
-    let backend_render_target = BackendRenderTarget::new_gl(
-        size,
-        pixel_format
-            .multisampling
-            .map(|s| s.try_into().expect("Could not convert multisampling")),
-        pixel_format
-            .stencil_bits
-            .try_into()
-            .expect("Could not convert stencil"),
-        fb_info,
-    );
-    windowed_context.resize(size.into());
+    let backend_render_target =
+        BackendRenderTarget::new_gl(size, num_samples as usize, stencil_size as usize, fb_info);
+    //windowed_context.resize(size.into());
     Surface::from_backend_render_target(
         gr_context,
         &backend_render_target,
@@ -42,22 +47,35 @@ fn create_surface(
     )
     .expect("Could not create skia surface")
 }
-
+/* This must not outlive the GLContext & window it is created from.
+If the GL context is lost it is suggested to reconnect to the editor
+server and rentransfer any state. */
 pub struct SkiaRenderer {
-    pub gr_context: DirectContext,
+    gr_context: DirectContext,
     fb_info: FramebufferInfo,
     surface: Surface,
 }
 
 impl SkiaRenderer {
-    pub fn new(windowed_context: &WindowedContext) -> SkiaRenderer {
-        gl::load_with(|s| windowed_context.get_proc_address(s));
+    pub fn new(
+        window: &mut WinitWindow,
+        not_current_context: &mut NotCurrentContext,
+    ) -> SkiaRenderer {
+        let gl_config = not_current_context.config();
+        let num_samples = gl_config.num_samples();
+        let stencil_size = gl_config.stencil_size();
+        let gl_display = not_current_context.display();
+        /*        gl::load_with(|s| match gl_display {
+            Display::Egl(ed) => ed.get_proc_address(s),
+            Display::Glx(gd) => gd.get_proc_address(s),
+        });*/
+        gl::load_with(|s| gl_display.get_proc_address(CString::new(s).unwrap().as_c_str()));
 
         let interface = skia_safe::gpu::gl::Interface::new_load_with(|name| {
             if name == "eglGetCurrentDisplay" {
                 return std::ptr::null();
             }
-            windowed_context.get_proc_address(name)
+            gl_display.get_proc_address(CString::new(name).unwrap().as_c_str())
         })
         .expect("Could not create interface");
 
@@ -72,7 +90,7 @@ impl SkiaRenderer {
                 format: skia_safe::gpu::gl::Format::RGBA8.into(),
             }
         };
-        let surface = create_surface(windowed_context, &mut gr_context, fb_info);
+        let surface = create_surface(window, &mut gr_context, fb_info, num_samples, stencil_size);
 
         SkiaRenderer {
             gr_context,
@@ -85,8 +103,20 @@ impl SkiaRenderer {
         self.surface.canvas()
     }
 
-    pub fn resize(&mut self, windowed_context: &WindowedContext) {
-        self.surface = create_surface(windowed_context, &mut self.gr_context, self.fb_info);
+    pub fn resize(
+        &mut self,
+        window: &mut WinitWindow,
+        not_current_context: &mut PossiblyCurrentContext,
+    ) {
+        /* TODO: Find parameters to recreate surface after resize */
+        unimplemented!();
+        //        self.surface = create_surface(windowed_context, &mut self.gr_context, self.fb_info);
         REDRAW_SCHEDULER.queue_next_frame();
+    }
+    pub fn flush_and_swap_buffers(
+        &mut self,
+        window: &mut WinitWindow,
+        not_current_context: &mut PossiblyCurrentContext,
+    ) {
     }
 }

@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use glutin::event::Event;
+use winit::event::Event;
 use helicoid_protocol::{caching_shaper::CachingShaper, text::ShapableString};
 use log::error;
 use ordered_float::OrderedFloat;
