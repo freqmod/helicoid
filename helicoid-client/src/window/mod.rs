@@ -185,6 +185,7 @@ impl GlutinWindowWrapper {
     }*/
 
     fn finish_gl_initialization(&mut self, window_target: &EventLoopWindowTarget<()>) {
+        log::trace!("Start finishing gl initialization");
         let mut local_glutin_context = GlutinWindowGl::Uninitialized;
         std::mem::swap(&mut self.glutin_context, &mut local_glutin_context);
         if let GlutinWindowGl::Paused(paused_context) = local_glutin_context {
@@ -198,30 +199,11 @@ impl GlutinWindowWrapper {
             //let gl_window = GlWindow::new(window, &gl_config);
             let skia_renderer = SkiaRenderer::new(&mut self.window, not_current_context);
             self.glutin_context = GlutinWindowGl::Running(GlutinRunning { skia_renderer });
-            /* TODO: Put the initialized variables back into the right context */
-            /*
-            // Make the context it current.
-            let gl_context = not_current_context
-                .make_current(gl_surface)
-                .unwrap();
-
-            // The context needs to be current for the Renderer to set up shaders and
-            // buffers. It also performs function loading, which needs a current context on
-            // WGL.
-            renderer.get_or_insert_with(|| Renderer::new(&gl_display));
-
-            // Try setting vsync.
-            if let Err(res) = gl_window
-                .surface
-                .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
-            {
-                eprintln!("Error setting vsync: {:?}", res);
-            }
-            */
         } else {
             /* Swap context back if nothing was changed */
             std::mem::swap(&mut self.glutin_context, &mut local_glutin_context);
         }
+        log::trace!("End finishing gl initialization");
     }
     pub fn handle_event(&mut self, event: Event<()>, wt: &EventLoopWindowTarget<()>) {
         //log::info!("Got event: {:?}", event);

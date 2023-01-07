@@ -148,20 +148,20 @@ impl HeliconeEditor {
                         new_inner_size,
                     } => {}
                     WindowEvent::ThemeChanged(_) => {}
-                    WindowEvent::ReceivedCharacter(_) => todo!(),
-                    WindowEvent::Focused(_) => todo!(),
+                    WindowEvent::ReceivedCharacter(_) => {}
+                    WindowEvent::Focused(_) => {}
                     WindowEvent::KeyboardInput {
                         device_id,
                         input,
                         is_synthetic,
-                    } => todo!(),
-                    WindowEvent::Ime(_) => todo!(),
-                    WindowEvent::Occluded(_) => todo!(),
+                    } => {}
+                    WindowEvent::Ime(_) => {}
+                    WindowEvent::Occluded(_) => {}
                 },
                 Event::DeviceEvent { device_id, event } => {}
                 Event::UserEvent(_) => {}
-                Event::Suspended => todo!(),
-                Event::Resumed => todo!(),
+                Event::Suspended => {}
+                Event::Resumed => {}
                 Event::MainEventsCleared => {}
                 Event::RedrawRequested(_) => {}
                 Event::RedrawEventsCleared => {}

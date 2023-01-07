@@ -11,8 +11,8 @@ use glutin::{
     config::{GetGlConfig, GlConfig},
     context::{AsRawContext, GlProfile, NotCurrentContext, PossiblyCurrentContext},
     display::{AsRawDisplay, Display, GetGlDisplay},
-    prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor},
-    surface::{SurfaceAttributesBuilder, WindowSurface},
+    prelude::{GlDisplay, GlSurface, NotCurrentGlContextSurfaceAccessor},
+    surface::{Surface as GlutinSurface, SurfaceAttributesBuilder, WindowSurface},
 };
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe::{
@@ -57,7 +57,10 @@ pub struct SkiaRenderer {
     gr_context: DirectContext,
     gl_context: PossiblyCurrentContext,
     fb_info: FramebufferInfo,
+    gl_surface: GlutinSurface<WindowSurface>,
     surface: Surface,
+    num_samples: u8,
+    stencil_size: u8,
 }
 
 impl SkiaRenderer {
@@ -113,8 +116,11 @@ impl SkiaRenderer {
         SkiaRenderer {
             gl_context,
             gr_context,
-            fb_info,
             surface,
+            fb_info,
+            gl_surface,
+            num_samples,
+            stencil_size,
         }
     }
 
@@ -123,10 +129,29 @@ impl SkiaRenderer {
     }
 
     pub fn resize(&mut self, window: &mut WinitWindow) {
-        /* TODO: Find parameters to recreate surface after resize */
-        unimplemented!();
-        //        self.surface = create_surface(windowed_context, &mut self.gr_context, self.fb_info);
+        /* First resize the opengl drawable */
+        let (width, height): (u32, u32) = window.inner_size().into();
+        self.gl_surface.resize(
+            &self.gl_context,
+            NonZeroU32::new(width).unwrap(),
+            NonZeroU32::new(height).unwrap(),
+        );
+        /* Then resize the skia surface */
+        self.surface = create_surface(
+            window,
+            &mut self.gr_context,
+            self.fb_info,
+            self.num_samples,
+            self.stencil_size,
+        );
+
+        //self.surface = create_surface(windowed_context, &mut self.gr_context, self.fb_info);
         REDRAW_SCHEDULER.queue_next_frame();
     }
-    pub fn flush_and_swap_buffers(&mut self, window: &mut WinitWindow) {}
+    pub fn flush_and_swap_buffers(&mut self, window: &mut WinitWindow) {
+        /* Tell skia to draw */
+        //        window.request_redraw();
+        self.gr_context.flush_and_submit();
+        self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+    }
 }
