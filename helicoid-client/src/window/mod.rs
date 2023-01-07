@@ -87,8 +87,8 @@ pub enum WindowCommand {
     ListAvailableFonts,
 }
 struct GlutinRunning {
-    skia_renderer: ManuallyDrop<SkiaRenderer>,
-    context: PossiblyCurrentContext,
+    //    skia_renderer: ManuallyDrop<SkiaRenderer>,
+    skia_renderer: SkiaRenderer,
     //config: GlutinConfig,
 }
 struct GlutinPaused {
@@ -185,8 +185,10 @@ impl GlutinWindowWrapper {
     }*/
 
     fn finish_gl_initialization(&mut self, window_target: &EventLoopWindowTarget<()>) {
-        if let GlutinWindowGl::Paused(paused_context) = &mut self.glutin_context {
-            let not_current_context = &mut paused_context.context;
+        let mut local_glutin_context = GlutinWindowGl::Uninitialized;
+        std::mem::swap(&mut self.glutin_context, &mut local_glutin_context);
+        if let GlutinWindowGl::Paused(paused_context) = local_glutin_context {
+            let not_current_context = paused_context.context;
             let gl_config = not_current_context.config();
             //            let window = self.window.take().unwrap_or_else(|| {
             let window_builder = WindowBuilder::new().with_transparent(true);
@@ -195,8 +197,8 @@ impl GlutinWindowWrapper {
 
             //let gl_window = GlWindow::new(window, &gl_config);
             let skia_renderer = SkiaRenderer::new(&mut self.window, not_current_context);
+            self.glutin_context = GlutinWindowGl::Running(GlutinRunning { skia_renderer });
             /* TODO: Put the initialized variables back into the right context */
-            unimplemented!()
             /*
             // Make the context it current.
             let gl_context = not_current_context
@@ -216,6 +218,9 @@ impl GlutinWindowWrapper {
                 eprintln!("Error setting vsync: {:?}", res);
             }
             */
+        } else {
+            /* Swap context back if nothing was changed */
+            std::mem::swap(&mut self.glutin_context, &mut local_glutin_context);
         }
     }
     pub fn handle_event(&mut self, event: Event<()>, wt: &EventLoopWindowTarget<()>) {
@@ -298,9 +303,7 @@ impl GlutinWindowWrapper {
 
             //self.handle_new_grid_size(new_size);
             if let GlutinWindowGl::Running(gl_run) = &mut self.glutin_context {
-                gl_run
-                    .skia_renderer
-                    .resize(&mut self.window, &mut gl_run.context);
+                gl_run.skia_renderer.resize(&mut self.window);
             }
         }
 
@@ -311,7 +314,7 @@ impl GlutinWindowWrapper {
                     self.renderer.draw_frame(gl_run.skia_renderer.canvas(), dt);
                 gl_run
                     .skia_renderer
-                    .flush_and_swap_buffers(&mut self.window, &mut gl_run.context);
+                    .flush_and_swap_buffers(&mut self.window);
             }
         }
 
