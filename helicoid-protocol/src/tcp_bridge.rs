@@ -3,7 +3,7 @@ managed by Tokio, and connected to the user interface by channels */
 
 use async_trait::async_trait;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::IoSlice;
 use std::net::SocketAddr;
@@ -21,6 +21,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{
     broadcast::{self, Receiver as BReceiver, Sender as BSender},
     mpsc::{self, Receiver, Sender},
+    oneshot::{self, Receiver as OReceiver, Sender as OSender},
     Mutex as TMutex,
 };
 
@@ -41,10 +42,12 @@ pub struct TcpBridgeToServerMessage {
 pub struct TcpBridgeSend<M> {
     tcp_conn: OwnedWriteHalf,
     chan: Receiver<M>,
+    close_chan: OReceiver<()>,
 }
 pub struct TcpBridgeReceive<M> {
     tcp_conn: OwnedReadHalf,
     chan: Sender<M>,
+    close_chan: Option<OSender<()>>,
 }
 pub struct ClientTcpBridge {
     send: TcpBridgeSend<TcpBridgeToServerMessage>,
@@ -93,8 +96,9 @@ impl ClientTcpBridge {
         //        unimplemented!()
         let mut stream = TcpStream::connect(addr).await?;
         let (r, w) = stream.into_split();
-        let (send, send_channel) = TcpBridgeSend::new(w)?;
-        let (receive, receive_channel) = TcpBridgeReceive::new(r)?;
+        let (cs, cr) = oneshot::channel();
+        let (send, send_channel) = TcpBridgeSend::new(w, cr)?;
+        let (receive, receive_channel) = TcpBridgeReceive::new(r, cs)?;
         Ok((Self { send, receive }, send_channel, receive_channel))
     }
     pub async fn process_rxtx(&mut self) -> Result<()> {
@@ -104,6 +108,7 @@ impl ClientTcpBridge {
         let (send_proc_res, rec_proc_res) = tokio::join!(send_proc_fut, recv_proc_fut);
         send_proc_res?;
         rec_proc_res?;
+        log::trace!("TcpCB: Processrxtx complete");
         Ok(())
         // Need to call process on send and on receive
     }
@@ -117,8 +122,9 @@ impl ServerSingleTcpBridge {
         Receiver<TcpBridgeToServerMessage>,
     )> {
         let (r, w) = stream.into_split();
-        let (send, send_channel) = TcpBridgeSend::new(w)?;
-        let (receive, receive_channel) = TcpBridgeReceive::new(r)?;
+        let (cs, cr) = oneshot::channel();
+        let (send, send_channel) = TcpBridgeSend::new(w, cr)?;
+        let (receive, receive_channel) = TcpBridgeReceive::new(r, cs)?;
         Ok((Self { send, receive }, send_channel, receive_channel))
     }
     pub async fn process_rxtx(&mut self) -> Result<()> {
@@ -211,30 +217,37 @@ impl<M> TcpBridgeSend<M>
 where
     M: Serialize<TBSSerializer>,
 {
-    fn new(writer: OwnedWriteHalf) -> Result<(Self, Sender<M>)> {
+    fn new(writer: OwnedWriteHalf, close_chan: OReceiver<()>) -> Result<(Self, Sender<M>)> {
         let (tx, rx) = mpsc::channel(32);
         Ok((
             Self {
                 tcp_conn: writer,
                 chan: rx,
+                close_chan,
             },
             tx,
         ))
     }
     pub async fn process(&mut self) -> Result<()> {
         loop {
-            let received = self.chan.recv().await;
-            match received {
-                Some(message) => {
-                    let mut serializer = TBSSerializer::default();
-                    serializer.serialize_value(&message).unwrap();
-                    let bytes = serializer.into_serializer().into_inner();
-                    log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);
-                    let header = (bytes.len() as u16).to_le_bytes();
-                    let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
-                    self.tcp_conn.write_vectored(&bufs).await?;
-                }
-                None => {
+            tokio::select! {
+                received = self.chan.recv() => {
+                    match received {
+                        Some(message) => {
+                            let mut serializer = TBSSerializer::default();
+                            serializer.serialize_value(&message).unwrap();
+                            let bytes = serializer.into_serializer().into_inner();
+                            log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);
+                            let header = (bytes.len() as u16).to_le_bytes();
+                            let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
+                            self.tcp_conn.write_vectored(&bufs).await?;
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                },
+                _ = &mut self.close_chan => {
                     break;
                 }
             }
@@ -242,89 +255,115 @@ where
         Ok(())
     }
 }
+
+#[repr(C, align(16))]
+struct AlignedBuffer {
+    contents: [u8; 0x8000],
+}
+
 const PACKET_HEADER_LENGTH: usize = 2;
+const PACKET_HEADER_ADJUST: usize = 14;
 impl<M: Archive> TcpBridgeReceive<M>
 where
     M::Archived: Deserialize<M, rkyv::Infallible>,
 {
-    fn new(reader: OwnedReadHalf) -> Result<(Self, Receiver<M>)> {
+    fn new(reader: OwnedReadHalf, close_chan: OSender<()>) -> Result<(Self, Receiver<M>)> {
         let (tx, rx) = mpsc::channel(32);
         Ok((
             Self {
                 tcp_conn: reader,
                 chan: tx,
+                close_chan: Some(close_chan),
             },
             rx,
         ))
     }
     pub async fn process(&mut self) -> Result<()> {
-        let mut buffer = [0u8; 0x8000];
+        let mut backing_buffer = AlignedBuffer {
+            contents: [0u8; 0x8000],
+        };
+        let mut buffer = &mut backing_buffer.contents[PACKET_HEADER_ADJUST..];
         let mut pkg_offset: usize = 0;
         let mut pkg_len: usize = u16::MAX as usize;
         let mut buffer_filled: usize = 0;
+        log::trace!("TCPBR proc");
         loop {
             tokio::select! {
-                            readable = self.tcp_conn.readable() =>{
-                                let data_read;
-                                if pkg_len == u16::MAX as usize{
-                                    /* Read u16 length prefix */
-                                    data_read = self.tcp_conn.try_read(&mut buffer)?;
-                                    if data_read < 2{
-                                        log::warn!("Unexpectedly small data received: {}", data_read);
-                                        break;
-                                    }
-                                    pkg_len = u16::from_le_bytes(buffer[0..PACKET_HEADER_LENGTH].try_into().unwrap()) as usize;
-                                    debug_assert!(pkg_len+PACKET_HEADER_LENGTH <= u16::MAX as usize);
-                                    pkg_offset = PACKET_HEADER_LENGTH;
-                                    buffer_filled = data_read;
-                                }
-                                else{
-                                    data_read = self.tcp_conn.try_read(&mut buffer[buffer_filled..pkg_len-buffer_filled-PACKET_HEADER_LENGTH])?;
+                                        readable = self.tcp_conn.readable() =>{
+                                            log::trace!("Readable");
+                                            let data_read;
+                                            if pkg_len == u16::MAX as usize{
+                                                /* Read u16 length prefix */
+                                                data_read = self.tcp_conn.try_read(&mut buffer)?;
+                                                if data_read == 0{
+                                                    log::warn!("No data received: {}", data_read);
+                                                    break;
+                                                }
+                                                if data_read < 2{
+                                                    log::warn!("Unexpectedly small data received: {}", data_read);
+                                                    break;
+                                                }
+                                                pkg_len = u16::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap()) as usize;
+                                                debug_assert!(pkg_len+PACKET_HEADER_LENGTH <= buffer.len());
+                                                pkg_offset = PACKET_HEADER_LENGTH;
+                                                buffer_filled = 0;
+                                            }
+                                            else{
+                                                data_read = self.tcp_conn.try_read(&mut buffer[buffer_filled..pkg_len-buffer_filled-PACKET_HEADER_LENGTH])?;
 
-                                }
-                                buffer_filled += data_read;
-                                if buffer_filled >= PACKET_HEADER_LENGTH + pkg_len{
-                                        /* All the required data was transferred */
-                                        let data_sliced = &buffer[pkg_offset..(pkg_len+pkg_offset)];
-                                        /*let msg = rkyv::from_bytes::<HelicoidToClientMessage>(data_sliced)
-                                            .map_err(|_| anyhow!("Error while deserializing message from wire"))?;*/
-                                        let archived = unsafe { rkyv::archived_root::<M>(data_sliced) };
-                                        // TODO: Does the deserialized type copy or reference the archived memory (currently we assume copy)
-                                        let deserialized = Deserialize::<M, _>::deserialize(archived, &mut rkyv::Infallible).unwrap();
+                                            }
+                                            log::trace!("Received event data: {}", pkg_len);
+                                            buffer_filled += data_read;
+                                            if buffer_filled >= PACKET_HEADER_LENGTH + pkg_len{
+                                                    /* All the required data was transferred */
+                                                    let data_sliced = &buffer[pkg_offset..(pkg_len+pkg_offset)];
+            //                                        println!("Data slized ptr; 0x{:X}", data_sliced.as_ptr() as usize);
+                                                    /*let msg = rkyv::from_bytes::<HelicoidToClientMessage>(data_sliced)
+                                                        .map_err(|_| anyhow!("Error while deserializing message from wire"))?;*/
+                                                    let archived = unsafe { rkyv::archived_root::<M>(data_sliced) };
+                                                    // TODO: Does the deserialized type copy or reference the archived memory (currently we assume copy)
+                                                    let deserialized = Deserialize::<M, _>::deserialize(archived, &mut rkyv::Infallible).unwrap();
 
-            //                        let channel_message = TcpBridgeMessage{ message: deserialized };
-                                    match self.chan.send(deserialized).await {
-                                        Ok(_) =>{},
-                                        Err(e) => {
-                                            /* There are no receiver anymore, close the socket receiver */
-                                            break;
+                        //                        let channel_message = TcpBridgeMessage{ message: deserialized };
+                                                match self.chan.send(deserialized).await {
+                                                    Ok(_) =>{},
+                                                    Err(e) => {
+                                                        /* There are no receiver anymore, close the socket receiver */
+                                                        break;
+                                                    },
+                                                }
+                                                /* If not all data was read, move the extra data to the start of the buffer */
+                                                //let pkt_outer_len = pkg_len + PACKET_HEADER_LENGTH;
+                                                let pkt_end = pkg_offset + pkg_len;
+
+                                                //buffer_filled -= pkt_outer_len;
+                                                //pkg_offset += pkt_outer_len;
+                                                if buffer_filled == pkt_end{
+                                                    pkg_len = u16::MAX as usize;
+                                                    /* All other temp variable related to size are undefined at this point */
+                                                } else{
+                                                    /* There are still some data in the buffer, prepare for more data to come */
+                                                    assert!(buffer_filled > pkg_len);
+                                                    assert!(buffer_filled - pkg_len >= 2);
+                                                    buffer.copy_within(pkt_end..buffer_filled, 0);
+                                                    buffer_filled -= pkt_end;
+                                                    pkg_offset = PACKET_HEADER_LENGTH;
+                                                    pkg_len = u16::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap()) as usize;
+                                                }
+                                            }
                                         },
+                                      _ = self.chan.closed() =>{
+                                            break;
+                                        }
                                     }
-                                    /* If not all data was read, move the extra data to the start of the buffer */
-                                    //let pkt_outer_len = pkg_len + PACKET_HEADER_LENGTH;
-                                    let pkt_end = pkg_offset + pkg_len;
-
-                                    //buffer_filled -= pkt_outer_len;
-                                    //pkg_offset += pkt_outer_len;
-                                    if buffer_filled == pkt_end{
-                                        pkg_len = u16::MAX as usize;
-                                        /* All other temp variable related to size are undefined at this point */
-                                    } else{
-                                        /* There are still some data in the buffer, prepare for more data to come */
-                                        assert!(buffer_filled > pkg_len);
-                                        assert!(pkt_end - buffer_filled >=2);
-                                        buffer.copy_within(pkt_end..buffer_filled, 0);
-                                        buffer_filled -= pkt_end;
-                                        pkg_offset = PACKET_HEADER_LENGTH;
-                                        pkg_len = u16::from_le_bytes(buffer[0..PACKET_HEADER_LENGTH].try_into().unwrap()) as usize;
-                                    }
-                                }
-                            },
-                          _ = self.chan.closed() =>{
-                                break;
-                            }
-                        }
         }
+        /* Tell the sender that the connection has closed */
+        if let Some(close_chan) = self.close_chan.take() {
+            close_chan
+                .send(())
+                .map_err(|_| anyhow!("Error while notifying sender about disconnect"))?;
+        }
+        log::trace!("TCPBR proc end");
         Ok(())
     }
 }

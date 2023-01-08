@@ -53,7 +53,7 @@ fn wait_for_input() {
             }
             return;
         }
-        println!("Press q to quit");
+        log::warn!("Press q to quit");
 
         tokio::io::stdin()
             .keys_stream()

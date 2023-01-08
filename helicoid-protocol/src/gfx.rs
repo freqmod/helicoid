@@ -6,6 +6,7 @@ use num_enum::IntoPrimitive;
 use parking_lot::Mutex;
 use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
+use std::fmt;
 
 /* Simple painting interface for describing the user interface at the helix
 backend and transferring it to the front end in a render agnostic way */
@@ -29,7 +30,7 @@ pub struct SimplePaint {
     line_width: u16, // half float
     line_style: SimpleLineStyle,
 }
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct PointF16 {
@@ -142,5 +143,14 @@ impl PointF16 {
     }
     pub fn y(&self) -> f32 {
         half::f16::from_bits(self.y).to_f32()
+    }
+}
+
+impl fmt::Debug for PointF16 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PointF16")
+            .field("x", &self.x())
+            .field("y", &self.y())
+            .finish()
     }
 }

@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::HeliconeCommandLineArguments;
 use helicoid_protocol::{
-    input::ViewportInfo,
+    input::{HelicoidToServerMessage, ViewportInfo},
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
 use ordered_float::OrderedFloat;
@@ -14,7 +14,7 @@ use tokio::sync::{
 use winit::event::{Event, WindowEvent};
 
 struct HeliconeEditorInner {
-    bridge: ClientTcpBridge,
+    //bridge: ClientTcpBridge,
     sender: Option<Sender<TcpBridgeToServerMessage>>,
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
 }
@@ -23,6 +23,7 @@ pub struct HeliconeEditor {
     sender: Option<Sender<TcpBridgeToServerMessage>>,
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
     server_address: Option<String>,
+    current_viewport_info: Option<ViewportInfo>,
 }
 impl HeliconeEditor {
     pub fn new(args: &HeliconeCommandLineArguments) -> Self {
@@ -40,19 +41,27 @@ impl HeliconeEditor {
             sender: None,
             receiver: None,
             server_address: args.server_address.clone(),
+            current_viewport_info: None,
         }
     }
     fn try_connect(inner: Arc<TMutex<Option<HeliconeEditorInner>>>, addr: String) {
         let _ = tokio::spawn(async move {
             loop {
                 match ClientTcpBridge::connect(&addr).await {
-                    Ok((bridge, sender, receiver)) => {
-                        let mut inner_locked = inner.lock().await;
-                        *inner_locked = Some(HeliconeEditorInner {
-                            bridge,
-                            sender: Some(sender),
-                            receiver: Some(receiver),
-                        });
+                    Ok((mut bridge, sender, receiver)) => {
+                        {
+                            let mut inner_locked = inner.lock().await;
+                            *inner_locked = Some(HeliconeEditorInner {
+                                sender: Some(sender),
+                                receiver: Some(receiver),
+                            });
+                        }
+                        match bridge.process_rxtx().await {
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::warn!("Error during client bridge processing: {:?}", e);
+                            }
+                        }
                         break;
                     }
                     Err(e) => {
@@ -71,10 +80,28 @@ impl HeliconeEditor {
     }
     fn ensure_connected(&mut self) -> bool {
         if self.sender.is_some() && self.receiver.is_some() {
-            return true;
+            if self.sender.as_ref().unwrap().is_closed() {
+                self.sender = None;
+                self.receiver = None;
+            } else {
+                return true;
+            }
         }
-        if let Some(mut inner) = self.inner.try_lock().ok() {
-            if let Some(inner) = &mut *inner {
+        let result;
+        if let Some(mut inner_opt) = self.inner.try_lock().ok() {
+            if let Some(inner) = &mut *inner_opt {
+                if inner.sender.is_none() && inner.receiver.is_none() {
+                    /* An empty shell inner means that the contents have been moved out before,
+                    if this if still is entered it is because the connection has been lost, and
+                    a reconnection should be initiated. The inner struct is set to None to signal
+                    that connection establishement is in progress (and avoid multiple concurrent
+                    connection establishment functions). */
+                    log::trace!("Initalize reconnect");
+                    let _ = inner_opt.take();
+                    Self::try_connect(self.inner.clone(), self.server_address.clone().unwrap());
+                    return false;
+                }
+                log::trace!("Extract connection channels");
                 if let Some(sender) = inner.sender.take() {
                     self.sender = Some(sender);
                 }
@@ -82,11 +109,41 @@ impl HeliconeEditor {
                     self.receiver = Some(receiver);
                 }
                 if self.sender.is_some() && self.receiver.is_some() {
-                    return true;
+                    result = true;
+                } else {
+                    result = false;
                 }
+            } else {
+                result = false;
             }
+        } else {
+            result = false;
         }
-        false
+        if result {
+            self.post_connect();
+        }
+        result
+    }
+    pub fn post_connect(&mut self) {
+        log::trace!("Post connect");
+        /* Send information about size to the server */
+        if let Some(viewport_info) = self.current_viewport_info.as_ref() {
+            let size_msg = TcpBridgeToServerMessage {
+                message: HelicoidToServerMessage::ViewportSizeUpdate(viewport_info.clone()),
+            };
+            let _ = self
+                .sender
+                .as_mut()
+                .unwrap()
+                .blocking_send(size_msg)
+                .map_err(|e| {
+                    log::warn!(
+                        "Error while sending intitial viewport update to server: {:?}",
+                        e
+                    )
+                });
+            log::trace!("Sent viewport info");
+        }
     }
     pub fn handle_event(&mut self, event: &Event<()>) {
         if !self.ensure_connected() {
@@ -105,6 +162,22 @@ impl HeliconeEditor {
                             container_physical_size: None,
                             container_scale_factor: None,
                         };
+                        self.current_viewport_info = Some(size.clone());
+                        let size_msg = TcpBridgeToServerMessage {
+                            message: HelicoidToServerMessage::ViewportSizeUpdate(size),
+                        };
+                        let _ = self
+                            .sender
+                            .as_mut()
+                            .unwrap()
+                            .blocking_send(size_msg)
+                            .map_err(|e| {
+                                log::warn!(
+                                    "Error while sending intitial viewport update to server: {:?}",
+                                    e
+                                )
+                            });
+                        log::trace!("Resize sent viewport info");
                     }
                     WindowEvent::Moved(_) => {}
                     WindowEvent::CloseRequested => {}
@@ -183,9 +256,12 @@ impl HeliconeEditor {
         if let Some(receiver) = self.receiver.as_mut() {
             loop {
                 match receiver.try_recv() {
-                    Ok(event) => {}
+                    Ok(event) => {
+                        log::trace!("Got event from server: {:?}", event);
+                    }
                     Err(e) => match e {
                         tokio::sync::mpsc::error::TryRecvError::Empty => {
+                            log::trace!("POPevt empty");
                             break;
                         }
                         tokio::sync::mpsc::error::TryRecvError::Disconnected => {
@@ -202,9 +278,10 @@ impl HeliconeEditor {
     }
     pub fn draw_frame(&mut self, root_canvas: &mut Canvas, dt: f32) -> bool {
         if !self.ensure_connected() {
-            log::warn!("Try to handle event before connection is established to server");
+            log::warn!("Try to draw frame before connection is established to server");
             return false;
         }
+        log::trace!("Editor: got request to draw frame");
         self.peek_and_process_events();
         false
     }

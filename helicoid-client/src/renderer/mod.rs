@@ -13,12 +13,12 @@ use std::{
     sync::Arc,
 };
 
-use winit::event::Event;
 use helicoid_protocol::{caching_shaper::CachingShaper, text::ShapableString};
 use log::error;
 use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect};
 use tokio::sync::mpsc::UnboundedReceiver;
+use winit::event::Event;
 
 use crate::{
     //bridge::EditorMode,
@@ -149,7 +149,10 @@ impl Renderer {
     #[allow(clippy::needless_collect)]
     pub fn draw_frame(&mut self, root_canvas: &mut Canvas, dt: f32) -> bool {
         root_canvas.draw_color(Color::RED, None);
-        self.font_draw_test(root_canvas);
+        //self.font_draw_test(root_canvas);
+        /* Draw editor contents*/
+        self.editor.draw_frame(root_canvas, dt);
+
         /*
         let mut draw_commands = Vec::new();
         while let Ok(draw_command) = self.batched_draw_command_receiver.try_recv() {

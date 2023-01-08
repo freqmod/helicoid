@@ -75,7 +75,7 @@ use crate::{
 };
 pub use settings::{KeyboardSettings, WindowSettings};
 
-static ICON: &[u8] = include_bytes!("../../../assets/helicoid.ico");
+static ICON: &[u8] = include_bytes!("../../../assets/icon.ico");
 
 const MIN_WINDOW_WIDTH: u64 = 20;
 const MIN_WINDOW_HEIGHT: u64 = 6;
