@@ -30,7 +30,7 @@ pub struct SimplePaint {
     line_width: u16, // half float
     line_style: SimpleLineStyle,
 }
-#[derive(Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(Hash, Eq, Copy, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct PointF16 {
@@ -108,13 +108,15 @@ pub struct NewRenderBlock {
     pub contents: RenderBlockDescription,
 }
 
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(Debug, Hash, Eq, Clone, Copy, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockLocation {
     pub id: RenderBlockId,
     /* Location refers to top left corner of the render block */
     pub location: PointF16,
+    pub layer: u8, /* Render order/layer, 0 is rendered first (bottommost).
+                   Blocks with same number can be rendered in any order */
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
@@ -145,7 +147,11 @@ impl PointF16 {
         half::f16::from_bits(self.y).to_f32()
     }
 }
-
+impl Default for PointF16 {
+    fn default() -> Self {
+        Self::new(0.0, 0.0)
+    }
+}
 impl fmt::Debug for PointF16 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PointF16")

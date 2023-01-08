@@ -154,6 +154,7 @@ impl ServerState {
         let mut render_block_locations = SmallVec::with_capacity(1);
         let shaped_string_location = RenderBlockLocation {
             id: 1,
+            layer: 0,
             location: PointF16::new(1.0, 1.0),
         };
         let meta_string_block = NewRenderBlock {
@@ -162,6 +163,7 @@ impl ServerState {
                 extent: PointF16::new(1000.0, 500.0),
                 sub_blocks: smallvec![RenderBlockLocation {
                     id: 1000,
+                    layer: 0,
                     location: PointF16::new(0.0, 0.0)
                 }],
             }),

@@ -2,6 +2,7 @@ pub mod animation_utils;
 pub mod cursor_renderer;
 pub mod fonts;
 //pub mod grid_renderer;
+pub mod block_renderer;
 pub mod profiler;
 mod rendered_window;
 mod text_box_renderer;
@@ -16,7 +17,7 @@ use std::{
 use helicoid_protocol::{caching_shaper::CachingShaper, text::ShapableString};
 use log::error;
 use ordered_float::OrderedFloat;
-use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect};
+use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect, Surface};
 use tokio::sync::mpsc::UnboundedReceiver;
 use winit::event::Event;
 
@@ -150,11 +151,12 @@ impl Renderer {
     /// # Returns
     /// `bool` indicating whether or not font was changed during this frame.
     #[allow(clippy::needless_collect)]
-    pub fn draw_frame(&mut self, root_canvas: &mut Canvas, dt: f32) -> bool {
+    pub fn draw_frame(&mut self, root_surface: &mut Surface, dt: f32) -> bool {
+        let root_canvas = root_surface.canvas();
         root_canvas.draw_color(Color::RED, None);
-        //self.font_draw_test(root_canvas);
+        self.font_draw_test(root_canvas);
         /* Draw editor contents*/
-        self.editor.draw_frame(root_canvas, dt);
+        self.editor.draw_frame(root_surface, dt);
 
         /*
         let mut draw_commands = Vec::new();
@@ -263,7 +265,7 @@ impl Renderer {
         blob_builder.set_font_key(3, String::from("MissingGlyphs"));
         blob_builder.set_font_key(4, String::from("LastResort-Regular"));
         let mut string_to_shape = ShapableString::from_text(
-            "See if we can shape a simple string\n ≠ <= string Some(typeface) => { 😀🙀 What about newlines?",
+            "See if we can shape a simple local string ≠ <= string Some(tf) => { 😀🙀 What?",
         );
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
             i.font_color = 0xF000A030;
@@ -274,7 +276,8 @@ impl Renderer {
         log::trace!("Shaped: {:?}", shaped);
         let blobs = blob_builder.bulid_blobs(&shaped);
         let mut x = 0f32;
-        let y = 0f32;
+        /* Move the line a bit down to not conflict with the same line from the server */
+        let y = 200.0f32;
 
         let mut paint = Paint::default();
         //paint.set_blend_mode(BlendMode::SrcIn);

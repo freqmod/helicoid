@@ -294,7 +294,7 @@ impl GlutinWindowWrapper {
             //|| SETTINGS.get::<WindowSettings>().no_idle {
             if let GlutinWindowGl::Running(gl_run) = &mut self.glutin_context {
                 self.font_changed_last_frame =
-                    self.renderer.draw_frame(gl_run.skia_renderer.canvas(), dt);
+                    self.renderer.draw_frame(gl_run.skia_renderer.surface(), dt);
                 gl_run
                     .skia_renderer
                     .flush_and_swap_buffers(&mut self.window);

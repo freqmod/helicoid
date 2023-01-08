@@ -127,6 +127,9 @@ impl SkiaRenderer {
     pub fn canvas(&mut self) -> &mut Canvas {
         self.surface.canvas()
     }
+    pub fn surface(&mut self) -> &mut Surface {
+        &mut self.surface
+    }
 
     pub fn resize(&mut self, window: &mut WinitWindow) {
         /* First resize the opengl drawable */

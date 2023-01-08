@@ -1,12 +1,13 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::HeliconeCommandLineArguments;
+use crate::{renderer::block_renderer::BlockManager, HeliconeCommandLineArguments};
 use helicoid_protocol::{
+    gfx::{RenderBlockDescription, RenderBlockId},
     input::{HelicoidToServerMessage, ViewportInfo},
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
 use ordered_float::OrderedFloat;
-use skia_safe::Canvas;
+use skia_safe::{Canvas, Image, Surface};
 use tokio::sync::{
     mpsc::{Receiver, Sender},
     Mutex as TMutex,
@@ -24,6 +25,7 @@ pub struct HeliconeEditor {
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
     server_address: Option<String>,
     current_viewport_info: Option<ViewportInfo>,
+    renderer: BlockManager,
 }
 impl HeliconeEditor {
     pub fn new(args: &HeliconeCommandLineArguments) -> Self {
@@ -38,6 +40,7 @@ impl HeliconeEditor {
         }
         Self {
             inner,
+            renderer: BlockManager::new(),
             sender: None,
             receiver: None,
             server_address: args.server_address.clone(),
@@ -284,6 +287,8 @@ impl HeliconeEditor {
                 match receiver.try_recv() {
                     Ok(event) => {
                         log::trace!("Got event from server: {:?}", event);
+                        let update = &event.message.update;
+                        self.renderer.handle_block_update(update);
                     }
                     Err(e) => match e {
                         tokio::sync::mpsc::error::TryRecvError::Empty => {
@@ -302,13 +307,14 @@ impl HeliconeEditor {
             self.reconnect_bridge()
         }
     }
-    pub fn draw_frame(&mut self, root_canvas: &mut Canvas, dt: f32) -> bool {
+    pub fn draw_frame(&mut self, root_surface: &mut Surface, dt: f32) -> bool {
         if !self.ensure_connected() {
             log::warn!("Try to draw frame before connection is established to server");
             return false;
         }
         log::trace!("Editor: got request to draw frame");
         self.peek_and_process_events();
+        self.renderer.render(root_surface);
         false
     }
 }
