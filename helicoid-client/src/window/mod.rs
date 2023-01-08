@@ -289,6 +289,7 @@ impl GlutinWindowWrapper {
             }
         }
 
+        self.renderer.poll_events();
         if REDRAW_SCHEDULER.should_draw() {
             //|| SETTINGS.get::<WindowSettings>().no_idle {
             if let GlutinWindowGl::Running(gl_run) = &mut self.glutin_context {
@@ -666,6 +667,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         let frame_duration = Duration::from_secs_f32(expected_frame_length_seconds);
 
         if frame_start - previous_frame_start > frame_duration {
+            //            log::trace!("Evtloop refresh");
             let dt = previous_frame_start.elapsed().as_secs_f32();
             window_wrapper.draw_frame(dt);
             if let FocusedState::UnfocusedNotDrawn = focused {

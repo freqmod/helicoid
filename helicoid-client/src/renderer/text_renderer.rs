@@ -3,10 +3,10 @@ the depedenencies that are introduced */
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use winit::dpi::PhysicalSize;
 use log::trace;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
+use winit::dpi::PhysicalSize;
 
 use half::f16;
 use ordered_float::OrderedFloat;

@@ -132,6 +132,9 @@ impl Renderer {
             //window_padding,
         }
     }
+    pub fn poll_events(&mut self) {
+        self.editor.poll_events();
+    }
 
     pub fn handle_event(&mut self, event: &Event<()>) {
         self.cursor_renderer.handle_event(event);

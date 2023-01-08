@@ -1,7 +1,5 @@
 use crate::event_aggregator::EVENT_AGGREGATOR;
-use winit::{
-    event::{ElementState, Event, KeyboardInput, WindowEvent},
-};
+use winit::event::{ElementState, Event, KeyboardInput, WindowEvent};
 
 enum InputEvent {
     KeyboardInput(KeyboardInput),
@@ -43,7 +41,8 @@ impl KeyboardManager {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input: keyboard_input, ..
+                        input: keyboard_input,
+                        ..
                     },
                 ..
             } => {
@@ -56,16 +55,13 @@ impl KeyboardManager {
                 event: WindowEvent::Ime(ime),
                 ..
             } => {
-                match ime{
-                    winit::event::Ime::Commit(string) =>{
-                                        self.queued_input_events
-                    .push(InputEvent::ImeInput(string.to_string()));
-
-                    }                    
-                    _ => {
-                        /* TODO: Handle more ime events */
+                match ime {
+                    winit::event::Ime::Commit(string) => {
+                        self.queued_input_events
+                            .push(InputEvent::ImeInput(string.to_string()));
                     }
-                } 
+                    _ => { /* TODO: Handle more ime events */ }
+                }
             }
             Event::WindowEvent {
                 event: WindowEvent::ModifiersChanged(modifiers),
@@ -129,48 +125,48 @@ impl KeyboardManager {
         self.ignore_input_this_frame || (self.logo && !settings.use_logo)*/
         false
     }
-/*
-    // This function needs to be rewritten to take new-ish winit keyboard input api into account
-    fn maybe_get_keybinding(&self, key_event: &KeyboardInput) -> Option<String> {
-        // Determine if this key event represents a key which won't ever
-        // present text.
-        if let Some(key_text) = is_control_key(key_event.logical_key) {
-            if self.prev_dead_key.is_some() {
-                //recover dead key to normal character
-                let real_char = String::from(self.prev_dead_key.unwrap());
-                Some(real_char + &self.format_special_key(true, key_text))
-            } else {
-                Some(self.format_special_key(true, key_text))
-            }
-        } else {
-            let key_text = if self.prev_dead_key.is_none() {
-                key_event.text
-            } else {
-                key_event.text_with_all_modifiers()
-            };
-            if let Some(original_key_text) = key_text {
-                let mut key_text = original_key_text;
-                if self.alt {
-                    if let Some(modify) = key_event_text(key_event) {
-                        key_text = modify;
-                    }
+    /*
+        // This function needs to be rewritten to take new-ish winit keyboard input api into account
+        fn maybe_get_keybinding(&self, key_event: &KeyboardInput) -> Option<String> {
+            // Determine if this key event represents a key which won't ever
+            // present text.
+            if let Some(key_text) = is_control_key(key_event.logical_key) {
+                if self.prev_dead_key.is_some() {
+                    //recover dead key to normal character
+                    let real_char = String::from(self.prev_dead_key.unwrap());
+                    Some(real_char + &self.format_special_key(true, key_text))
+                } else {
+                    Some(self.format_special_key(true, key_text))
                 }
-                // This is not a control key, so we rely upon winit to determine if
-                // this is a deadkey or not.
-                let keybinding_string =
-                    if let Some((escaped_text, use_shift)) = is_special(key_text) {
-                        self.format_special_key(use_shift, escaped_text)
-                    } else {
-                        self.format_normal_key(key_text)
-                    };
-
-                Some(keybinding_string)
             } else {
-                None
+                let key_text = if self.prev_dead_key.is_none() {
+                    key_event.text
+                } else {
+                    key_event.text_with_all_modifiers()
+                };
+                if let Some(original_key_text) = key_text {
+                    let mut key_text = original_key_text;
+                    if self.alt {
+                        if let Some(modify) = key_event_text(key_event) {
+                            key_text = modify;
+                        }
+                    }
+                    // This is not a control key, so we rely upon winit to determine if
+                    // this is a deadkey or not.
+                    let keybinding_string =
+                        if let Some((escaped_text, use_shift)) = is_special(key_text) {
+                            self.format_special_key(use_shift, escaped_text)
+                        } else {
+                            self.format_normal_key(key_text)
+                        };
+
+                    Some(keybinding_string)
+                } else {
+                    None
+                }
             }
         }
-    }
-*/
+    */
     fn format_special_key(&self, use_shift: bool, text: &str) -> String {
         let modifiers = self.format_modifier_string(use_shift);
 

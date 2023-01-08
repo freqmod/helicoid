@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use skia_safe::Rect;
 use winit::{
     self,
     dpi::PhysicalPosition,
@@ -13,7 +14,6 @@ use winit::{
     },
     //PossiblyCurrent, WindowedContext,
 };
-use skia_safe::Rect;
 
 use crate::{
     //bridge::{SerialCommand, UiCommand},
@@ -423,7 +423,6 @@ impl MouseManager {
         //windowed_context: &WindowedContext<PossiblyCurrent>,
     ) {
         match event {
-
             /*
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },

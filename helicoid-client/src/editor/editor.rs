@@ -125,7 +125,7 @@ impl HeliconeEditor {
         result
     }
     pub fn post_connect(&mut self) {
-        log::trace!("Post connect");
+        log::trace!("Post connect: WP: {}", self.current_viewport_info.is_some());
         /* Send information about size to the server */
         if let Some(viewport_info) = self.current_viewport_info.as_ref() {
             let size_msg = TcpBridgeToServerMessage {
@@ -145,9 +145,35 @@ impl HeliconeEditor {
             log::trace!("Sent viewport info");
         }
     }
+    pub fn handle_event_disconnected(&mut self, event: &Event<()>) {
+        match event {
+            Event::WindowEvent { window_id, event } => match event {
+                WindowEvent::Resized(event) => {
+                    let size = ViewportInfo {
+                        physical_size: (event.width, event.height),
+                        scale_factor: OrderedFloat(1.0),
+                        container_physical_size: None,
+                        container_scale_factor: None,
+                    };
+                    self.current_viewport_info = Some(size.clone());
+                }
+                _ => {}
+            },
+
+            _ => {}
+        }
+    }
+    pub fn poll_events(&mut self) {
+        if !self.ensure_connected() {
+            return;
+        }
+        self.peek_and_process_events();
+    }
+
     pub fn handle_event(&mut self, event: &Event<()>) {
         if !self.ensure_connected() {
             log::warn!("Try to handle event before connection is established to server");
+            self.handle_event_disconnected(event);
             return;
         }
         if let Some(inner) = self.inner.try_lock().ok() {
@@ -261,7 +287,7 @@ impl HeliconeEditor {
                     }
                     Err(e) => match e {
                         tokio::sync::mpsc::error::TryRecvError::Empty => {
-                            log::trace!("POPevt empty");
+                            //log::trace!("POPevt empty");
                             break;
                         }
                         tokio::sync::mpsc::error::TryRecvError::Disconnected => {
