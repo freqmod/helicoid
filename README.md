@@ -1,4 +1,4 @@
-
+# Helicoid
 ![Screenshot](./assets/helicoid_logo.svg)
 
 Work in progress attempt at making a remote client for the Helix code editor. 
@@ -75,7 +75,7 @@ Server (enter build and run):
 cd helicoid-testserver
 cargo build
 RUST_LOG=trace cargo run
-# Press 'q' to exit (the message informing about this is printed using rust log)
+; Press 'q' to exit (the message informing about this is printed using rust log)
 
 Client (build in the helicoid folder):
 cargo build
