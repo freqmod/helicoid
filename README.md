@@ -42,7 +42,8 @@ using the swash rust library, so no further UI dependencies (like Skia, OpenGL e
 The text is shaped on the server on a per paragraph / shaping run basis. The shaping runs are organised in blocks
 with a certain location and extent. There are also blocks for polygon based uis, nested blocks, and planned to 
 support references to SVG/bitmap images. All the blocks are serialized using rkyv (for speed) and transfered
-to the client to be drawed. It is intended for the client to reuse text blocks in new locations when the user
+to the client to be drawed, see helicoid-protocol for the interface definitions and network logic.
+It is intended for the client to reuse text blocks in new locations when the user
 interface changes (e.g. to only send the affected paragraph when text changes). The server is expected to keep
 track of what the blocks it has sent to the client contains for reuse and to request unused blocks to be removed
 (garbage collected) at the client.
@@ -71,6 +72,7 @@ How to use:
 Enter the helicoid folder in a shell (where this readme file is) in two terminals. Build and run the server first, 
 then the client. Which should open up a window. Currently this has only been tested on (arch)linux using wayland.
 
+```
 Server (enter build and run):
 cd helicoid-testserver
 cargo build
@@ -80,4 +82,4 @@ RUST_LOG=trace cargo run
 Client (build in the helicoid folder):
 cargo build
 RUST_LOG=trace cargo run 
-
+```
