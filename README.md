@@ -72,6 +72,8 @@ How to use:
 Enter the helicoid folder in a shell (where this readme file is) in two terminals. Build and run the server first, 
 then the client. Which should open up a window. Currently this has only been tested on (arch)linux using wayland.
 
+If you have problems with missing opengl functions while linking skia skia-safe should be patched with skia-safe.patch.
+
 ```
 Server (enter build and run):
 cd helicoid-testserver

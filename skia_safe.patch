@@ -1,0 +1,12 @@
+diff --git a/skia-bindings/build_support/platform/linux.rs b/skia-bindings/build_support/platform/linux.rs
+index ddd61c67..b0f38d9a 100644
+--- a/skia-bindings/build_support/platform/linux.rs
++++ b/skia-bindings/build_support/platform/linux.rs
+@@ -22,6 +22,7 @@ pub fn link_libraries(features: &Features) -> Vec<String> {
+     if features.gl {
+         if features.egl {
+             libs.push("EGL");
++            libs.push("GL");
+         }
+
+         if features.x11 {
