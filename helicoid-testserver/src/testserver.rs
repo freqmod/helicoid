@@ -169,6 +169,7 @@ impl ServerState {
             }),
         };
         render_block_locations.push(shaped_string_location);
+        new_render_blocks.push(meta_string_block);
         let box_update = RemoteBoxUpdate {
             new_render_blocks,
             remove_render_blocks: Default::default(),

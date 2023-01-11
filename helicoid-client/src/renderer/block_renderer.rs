@@ -45,6 +45,14 @@ impl BlockManager {
         //                self.top
         let top_block_id = self.top_level_block;
         let block = self.blocks.get_mut(&top_block_id);
+        log::trace!(
+            "BM try render block:{:?} ({})",
+            block
+                .as_ref()
+                .map(|hb| hb.as_ref().map(|b| b.wire_description.clone())),
+            top_block_id
+        );
+
         if block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
             let mut moved_block = block.unwrap().take().unwrap();
             let location = RenderBlockLocation {
@@ -52,6 +60,7 @@ impl BlockManager {
                 location: PointF16::default(),
                 layer: 0,
             };
+            log::trace!("BM render block:{:?}", location);
             /* The bloc is temporary moved out of the storage, so storage can be passed on as mutable */
             moved_block.render(&location, self, target);
             // Put the block back
@@ -63,7 +72,14 @@ impl BlockManager {
     }
     pub fn handle_block_update(&mut self, update: &RemoteBoxUpdate) {
         for block in update.new_render_blocks.iter() {
-            /* TODO: Insert the block into the local structure, replace the block with the same ID if it is present */
+            log::trace!("Update render block: {}", block.id); //, block.contents);
+                                                              /* TODO: Insert the block into the local structure, replace the block with the same ID if it is present */
+            let new_rendered_block = RenderBlock::new(block.contents.clone());
+            if let Some(render_block) = self.blocks.get_mut(&block.id) {
+                *render_block = Some(new_rendered_block);
+            } else {
+                self.blocks.insert(block.id, Some(new_rendered_block));
+            }
         }
     }
 }
@@ -93,6 +109,7 @@ impl RenderBlock {
             RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, storage, target),
         }
     }
+    //    pub fn set_desc()
     pub fn render_text_box(
         &mut self,
         location: &RenderBlockLocation,
@@ -115,8 +132,7 @@ impl RenderBlock {
         let y = 0f32;
 
         let mut paint = Paint::default();
-        //paint.set_blend_mode(BlendMode::SrcIn);
-        paint.set_blend_mode(BlendMode::SrcATop);
+        paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
         let canvas = target.canvas();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
@@ -163,13 +179,31 @@ impl RenderBlock {
         target: &mut Surface,
     ) {
     }
-    fn hash_block_recursively(
+    fn hash_block_recursively<H: Hasher>(
         &self,
         storage: &BlockManager,
-        block_id: RenderBlockId,
-        hasher: &mut dyn Hasher,
+        //        location: &RenderBlockLocation,
+        hasher: &mut H,
     ) {
-        // for location in blocks {}
+        match self.wire_description {
+            RenderBlockDescription::MetaBox(_) => self.hash_meta_box_recursively(storage, hasher),
+            _ => self.wire_description.hash(hasher),
+        }
+    }
+    fn hash_meta_box_recursively<H: Hasher>(&self, storage: &BlockManager, hasher: &mut H) {
+        let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
+            panic!("Hash meta box should not be called with a description that is not a meta box")
+        };
+        mb.hash(hasher);
+        for block in mb.sub_blocks.iter() {
+            let render_block = storage.blocks.get(&block.id);
+            if render_block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
+                let extracted_block = render_block.unwrap().as_ref().unwrap();
+                extracted_block.hash_block_recursively(storage, hasher);
+            } else {
+                false.hash(hasher);
+            }
+        }
     }
     /* This function renders a box containing other boxes, using a cached texture if it exists
     and the hash of the description matches the previously rendered contents */
@@ -180,21 +214,28 @@ impl RenderBlock {
         target: &mut Surface,
     ) {
         let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
-            panic!("Render meta box should not be called with a description that is not a meta box")
+            panic!("Render simple draw should not be called with a description that is not a simple draw")
         };
         let mut hasher = DefaultHasher::new();
-        mb.hash(&mut hasher);
-        self.hash_block_recursively(storage, location.id, &mut hasher);
+        location.hash(&mut hasher);
+        //mb.hash(&mut hasher);
+        self.hash_block_recursively(storage, &mut hasher);
         /* TODO: All referenced blocks needs to be recursively hashed here for it to work */
         let hashed = hasher.finish();
+        let mut paint = Paint::default();
+        //paint.set_blend_mode(BlendMode::SrcIn);
+        paint.set_blend_mode(BlendMode::SrcOver);
+        paint.set_anti_alias(true);
         if let Some(cached) = &self.rendered {
             /* TODO: Do we trust the hash here, or do we want to store the previous contents too so
             we can do a proper equality comparision?*/
             if cached.description_hash == hashed {
                 /* Contents is already rendered, reuse the rendered image */
-                target
-                    .canvas()
-                    .draw_image(&cached.image, as_skpoint(&location.location), None);
+                target.canvas().draw_image(
+                    &cached.image,
+                    as_skpoint(&location.location),
+                    Some(&paint),
+                );
                 return;
             }
         }
@@ -214,17 +255,28 @@ impl RenderBlock {
             target_image_info.alpha_type(),
             target_image_info.color_space(),
         );
-        let mut dest_surface = build_sub_surface(&mut context, image_info);
+        let mut dest_surface = build_sub_surface(&mut context, image_info.clone());
+        log::trace!(
+            "Meta box surface: {:?} (image info: {:?})",
+            dest_surface,
+            image_info
+        );
         let adjusted_location = RenderBlockLocation {
             id: location.id,
             location: PointF16::default(),
             layer: location.layer,
         };
+        dest_surface.canvas().draw_color(0x00000000, None);
         self.render_meta_box_contents(&adjusted_location, storage, &mut dest_surface);
         self.rendered = Some(RenderedRenderBlock {
             image: dest_surface.image_snapshot(),
             description_hash: hashed,
         });
+        target.canvas().draw_image(
+            &self.rendered.as_ref().unwrap().image,
+            as_skpoint(&location.location),
+            Some(&paint),
+        );
     }
     fn render_meta_box_contents(
         &mut self,
