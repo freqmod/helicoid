@@ -72,8 +72,7 @@ impl BlockManager {
     }
     pub fn handle_block_update(&mut self, update: &RemoteBoxUpdate) {
         for block in update.new_render_blocks.iter() {
-            log::trace!("Update render block: {}", block.id); //, block.contents);
-                                                              /* TODO: Insert the block into the local structure, replace the block with the same ID if it is present */
+            log::trace!("Update render block: {}", block.id);
             let new_rendered_block = RenderBlock::new(block.contents.clone());
             if let Some(render_block) = self.blocks.get_mut(&block.id) {
                 *render_block = Some(new_rendered_block);
@@ -223,7 +222,6 @@ impl RenderBlock {
         /* TODO: All referenced blocks needs to be recursively hashed here for it to work */
         let hashed = hasher.finish();
         let mut paint = Paint::default();
-        //paint.set_blend_mode(BlendMode::SrcIn);
         paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
         if let Some(cached) = &self.rendered {
@@ -266,7 +264,6 @@ impl RenderBlock {
             location: PointF16::default(),
             layer: location.layer,
         };
-        dest_surface.canvas().draw_color(0x00000000, None);
         self.render_meta_box_contents(&adjusted_location, storage, &mut dest_surface);
         self.rendered = Some(RenderedRenderBlock {
             image: dest_surface.image_snapshot(),
