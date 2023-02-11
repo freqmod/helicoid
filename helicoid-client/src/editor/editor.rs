@@ -259,6 +259,17 @@ impl HeliconeEditor {
                     } => {}
                     WindowEvent::Ime(_) => {}
                     WindowEvent::Occluded(_) => {}
+                    WindowEvent::TouchpadMagnify {
+                        device_id,
+                        delta,
+                        phase,
+                    } => todo!(),
+                    WindowEvent::SmartMagnify { device_id } => todo!(),
+                    WindowEvent::TouchpadRotate {
+                        device_id,
+                        delta,
+                        phase,
+                    } => todo!(),
                 },
                 Event::DeviceEvent { device_id, event } => {}
                 Event::UserEvent(_) => {}
