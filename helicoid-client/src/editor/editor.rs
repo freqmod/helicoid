@@ -12,7 +12,10 @@ use tokio::sync::{
     mpsc::{Receiver, Sender},
     Mutex as TMutex,
 };
-use winit::event::{Event, WindowEvent};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::ControlFlow,
+};
 
 struct HeliconeEditorInner {
     //bridge: ClientTcpBridge,
@@ -173,11 +176,11 @@ impl HeliconeEditor {
         self.peek_and_process_events();
     }
 
-    pub fn handle_event(&mut self, event: &Event<()>) {
+    pub fn handle_event(&mut self, event: &Event<()>) -> Option<ControlFlow> {
         if !self.ensure_connected() {
             log::warn!("Try to handle event before connection is established to server");
             self.handle_event_disconnected(event);
-            return;
+            return None;
         }
         if let Some(inner) = self.inner.try_lock().ok() {
             match event {
@@ -209,7 +212,9 @@ impl HeliconeEditor {
                         log::trace!("Resize sent viewport info");
                     }
                     WindowEvent::Moved(_) => {}
-                    WindowEvent::CloseRequested => {}
+                    WindowEvent::CloseRequested => {
+                        return Some(ControlFlow::Exit);
+                    }
                     WindowEvent::Destroyed => {}
                     WindowEvent::DroppedFile(_) => {}
                     WindowEvent::HoveredFile(_) => {}
@@ -281,6 +286,7 @@ impl HeliconeEditor {
                 Event::LoopDestroyed => {}
             }
         }
+        return None;
     }
     fn reconnect_bridge(&mut self) {
         /* Set editor in disconnected state (i.e. render appropriate graphics) and try to reconnect regularly */

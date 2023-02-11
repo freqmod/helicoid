@@ -205,7 +205,11 @@ impl GlutinWindowWrapper {
         }
         log::trace!("End finishing gl initialization");
     }
-    pub fn handle_event(&mut self, event: Event<()>, wt: &EventLoopWindowTarget<()>) {
+    pub fn handle_event(
+        &mut self,
+        event: Event<()>,
+        wt: &EventLoopWindowTarget<()>,
+    ) -> Option<ControlFlow> {
         //log::info!("Got event: {:?}", event);
         self.keyboard_manager.handle_event(&event);
         self.mouse_manager.handle_event(
@@ -214,7 +218,18 @@ impl GlutinWindowWrapper {
             &self.renderer,
             //&self.windowed_context,
         );
-        self.renderer.handle_event(&event);
+        if let Some(control_flow) = self.renderer.handle_event(&event) {
+            match control_flow {
+                ControlFlow::ExitWithCode(_) | ControlFlow::Exit => {
+                    /* TODO: Something should probably be done before exit,
+                    like notifying the server */
+                    //self.handle_quit();
+                    log::debug!("Handle quit")
+                }
+                _ => {}
+            }
+            return Some(control_flow);
+        }
         match event {
             Event::LoopDestroyed => {
                 //self.handle_quit();
@@ -258,6 +273,7 @@ impl GlutinWindowWrapper {
             }
             _ => {}
         }
+        return None;
     }
 
     pub fn draw_frame(&mut self, dt: f32) {
@@ -626,16 +642,25 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
 
     event_loop.run(move |e, window_target, control_flow| {
         // Window focus changed
-        if let Event::WindowEvent {
-            event: WindowEvent::Focused(focused_event),
-            ..
-        } = e
-        {
-            focused = if focused_event {
-                FocusedState::Focused
-            } else {
-                FocusedState::UnfocusedNotDrawn
-            };
+        match e {
+            Event::WindowEvent {
+                event: WindowEvent::Focused(focused_event),
+                ..
+            } => {
+                focused = if focused_event {
+                    FocusedState::Focused
+                } else {
+                    FocusedState::UnfocusedNotDrawn
+                };
+            }
+            /*            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }*/
+            _ => {}
         }
         /*
                 if !RUNNING_TRACKER.is_running() {
@@ -653,7 +678,16 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
 
         window_wrapper.handle_window_commands();
         window_wrapper.synchronize_settings();
-        window_wrapper.handle_event(e, window_target);
+        let ctrl: Option<ControlFlow> = window_wrapper.handle_event(e, window_target);
+        if let Some(ctrl) = ctrl {
+            match ctrl {
+                ControlFlow::Exit | ControlFlow::ExitWithCode(_) => {
+                    *control_flow = ctrl;
+                    return;
+                }
+                _ => {}
+            }
+        }
 
         let refresh_rate = match focused {
             FocusedState::Focused | FocusedState::UnfocusedNotDrawn => {

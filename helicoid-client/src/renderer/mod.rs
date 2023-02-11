@@ -19,7 +19,7 @@ use log::error;
 use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect, Surface};
 use tokio::sync::mpsc::UnboundedReceiver;
-use winit::event::Event;
+use winit::{event::Event, event_loop::ControlFlow};
 
 use crate::{
     //bridge::EditorMode,
@@ -137,9 +137,9 @@ impl Renderer {
         self.editor.poll_events();
     }
 
-    pub fn handle_event(&mut self, event: &Event<()>) {
+    pub fn handle_event(&mut self, event: &Event<()>) -> Option<ControlFlow> {
         self.cursor_renderer.handle_event(event);
-        self.editor.handle_event(event);
+        self.editor.handle_event(event)
     }
     /*
         pub fn font_names(&self) -> Vec<String> {
