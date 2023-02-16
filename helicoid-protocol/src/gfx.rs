@@ -3,14 +3,22 @@ use std::{collections::HashMap, sync::Arc};
 use crate::text::ShapedTextBlock;
 use bytecheck::CheckBytes;
 use num_enum::IntoPrimitive;
-use parking_lot::Mutex;
 use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt;
 
 /* Simple painting interface for describing the user interface at the helix
 backend and transferring it to the front end in a render agnostic way */
-pub type RenderBlockId = u16;
+/* There are some special considerations to take into account for ids, see the implementation methods for details */
+#[derive(Debug, Hash, Eq, Clone, Copy, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct RenderBlockId(pub u16);
+
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct RenderBlockPath {
+    path: SmallVec<[RenderBlockId; 16]>,
+}
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
@@ -108,10 +116,10 @@ pub struct NewRenderBlock {
     pub contents: RenderBlockDescription,
 }
 
-#[derive(Debug, Hash, Eq, Clone, Copy, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
-#[archive(compare(PartialEq))]
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockLocation {
+    //    pub path: RenderBlockPath,
     pub id: RenderBlockId,
     /* Location refers to top left corner of the render block */
     pub location: PointF16,
@@ -121,10 +129,19 @@ pub struct RenderBlockLocation {
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
+pub struct RenderBlockRemoveInstruction {
+    pub offset: RenderBlockId,
+    pub mask: RenderBlockId,
+    pub parent_path: RenderBlockPath,
+}
+
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive_attr(derive(CheckBytes, Debug))]
 pub struct RemoteBoxUpdate {
+    pub parent: RenderBlockPath,
     pub new_render_blocks: SmallVec<[NewRenderBlock; 4]>,
-    pub remove_render_blocks: SmallVec<[RenderBlockId; 4]>,
-    pub render_block_locations: SmallVec<[RenderBlockLocation; 128]>,
+    pub remove_render_blocks: SmallVec<[RenderBlockRemoveInstruction; 4]>,
+    pub move_block_locations: SmallVec<[RenderBlockLocation; 128]>,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
@@ -159,4 +176,92 @@ impl fmt::Debug for PointF16 {
             .field("y", &self.y())
             .finish()
     }
+}
+
+impl RenderBlockPath {
+    pub fn new(path: SmallVec<[RenderBlockId; 16]>) -> Self {
+        Self { path }
+    }
+    pub fn path(&self) -> &SmallVec<[RenderBlockId; 16]> {
+        &self.path
+    }
+    pub fn is_relative(&self) -> bool {
+        if !self.path.is_empty() {
+            return !self.path[0].is_relative_id();
+        } else {
+            false
+        }
+    }
+    pub fn common_start(&self, other: &Self) -> bool {
+        let common_length = self.path.len().min(other.path.len());
+        self.path[0..common_length] == other.path[0..common_length]
+    }
+    pub fn resolve<C: BlockContainer>(&self, container: &C) -> anyhow::Result<()>{
+        if !self.is_relative() {
+            // Check that the start of this path matches the start of the container
+            self.common_start(container.)
+        }
+    }
+}
+
+/* TODO: Retrieve this from the refactored helicone code */
+pub struct RenderBlock {
+    path: RenderBlockPath,
+}
+
+impl RenderBlockId {
+    const PARENT_ID: u16 = 0xFFFF;
+    const RELATIVE_ID: u16 = 0xFFFE; // Not sure how to use relative id's yet
+    const RESERVED_MIN_ID: u16 = 0xFFF0;
+    pub fn normal(value: u16) -> anyhow::Result<Self> {
+        if value >= Self::RESERVED_MIN_ID {
+            Err(anyhow::anyhow!(
+                "Tried to contruct a reserved id value as a normal value {}",
+                value
+            ))
+        } else {
+            Ok(Self(value))
+        }
+    }
+    pub fn parent() -> Self {
+        Self(Self::PARENT_ID)
+    }
+    pub fn relative() -> Self {
+        Self(Self::RELATIVE_ID)
+    }
+    pub fn from_wire(value: u16) -> Self {
+        Self(value)
+    }
+    pub fn is_parent_id(&self) -> bool {
+        self.0 == Self::PARENT_ID
+    }
+    pub fn is_relative_id(&self) -> bool {
+        self.0 == Self::RELATIVE_ID
+    }
+}
+
+impl RenderBlock {
+    pub fn as_container(&self) -> Option<&dyn BlockContainer> {
+        None
+    }
+    pub fn as_container_mut(&mut self) -> Option<&mut dyn BlockContainer> {
+        None
+    }
+    pub fn path(&self) -> &RenderBlockPath {
+        &self.path
+    }
+}
+
+pub trait BlockContainer {
+    fn path(&self) -> &RenderBlockPath;
+    fn block(&self, id: RenderBlockId) -> &RenderBlock;
+    fn block_mut(&mut self, id: RenderBlockId) -> &RenderBlock;
+    fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId);
+    fn move_blocks(
+        &mut self,
+        mask_id: RenderBlockId,
+        dst_mask_id: RenderBlockId,
+        base_id: RenderBlockId,
+    );
+    // Not sure if the ability to add blocks should be part of this interface
 }

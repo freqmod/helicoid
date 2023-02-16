@@ -4,7 +4,7 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate,
-        RenderBlockDescription, RenderBlockLocation,
+        RenderBlockDescription, RenderBlockLocation, RenderBlockPath,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -153,7 +153,7 @@ impl ServerState {
         new_render_blocks.push(new_shaped_string_block);
         let mut render_block_locations = SmallVec::with_capacity(1);
         let shaped_string_location = RenderBlockLocation {
-            id: 1,
+            path: RenderBlockPath::new(smallvec![1]),
             layer: 0,
             location: PointF16::new(1.0, 1.0),
         };
@@ -162,7 +162,7 @@ impl ServerState {
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
                 extent: PointF16::new(1000.0, 500.0),
                 sub_blocks: smallvec![RenderBlockLocation {
-                    id: 1000,
+                    path: RenderBlockPath::new(smallvec![1000]),
                     layer: 0,
                     location: PointF16::new(0.0, 0.0)
                 }],
@@ -173,7 +173,7 @@ impl ServerState {
         let box_update = RemoteBoxUpdate {
             new_render_blocks,
             remove_render_blocks: Default::default(),
-            render_block_locations,
+            move_block_locations: render_block_locations,
         };
         let msg = TcpBridgeToClientMessage {
             message: HelicoidToClientMessage { update: box_update },

@@ -214,43 +214,43 @@ impl RenderedWindow {
 
     pub fn update(&mut self, settings: &RendererSettings, dt: f32) -> bool {
         let mut animating = false;
+        /*
+                {
+                    if 1.0 - self.position_t < std::f32::EPSILON {
+                        // We are at destination, move t out of 0-1 range to stop the animation.
+                        self.position_t = 2.0;
+                    } else {
+                        animating = true;
+                        self.position_t =
+                            (self.position_t + dt / settings.position_animation_length).min(1.0);
+                    }
 
-        {
-            if 1.0 - self.position_t < std::f32::EPSILON {
-                // We are at destination, move t out of 0-1 range to stop the animation.
-                self.position_t = 2.0;
-            } else {
-                animating = true;
-                self.position_t =
-                    (self.position_t + dt / settings.position_animation_length).min(1.0);
-            }
+                    self.grid_current_position = ease_point(
+                        ease_out_expo,
+                        self.grid_start_position,
+                        self.grid_destination,
+                        self.position_t,
+                    );
+                }
 
-            self.grid_current_position = ease_point(
-                ease_out_expo,
-                self.grid_start_position,
-                self.grid_destination,
-                self.position_t,
-            );
-        }
+                {
+                    if 1.0 - self.scroll_t < std::f32::EPSILON {
+                        // We are at destination, move t out of 0-1 range to stop the animation.
+                        self.scroll_t = 2.0;
+                        self.snapshots.clear();
+                    } else {
+                        animating = true;
+                        self.scroll_t = (self.scroll_t + dt / settings.scroll_animation_length).min(1.0);
+                    }
 
-        {
-            if 1.0 - self.scroll_t < std::f32::EPSILON {
-                // We are at destination, move t out of 0-1 range to stop the animation.
-                self.scroll_t = 2.0;
-                self.snapshots.clear();
-            } else {
-                animating = true;
-                self.scroll_t = (self.scroll_t + dt / settings.scroll_animation_length).min(1.0);
-            }
-
-            self.current_scroll = ease(
-                ease_out_expo,
-                self.start_scroll,
-                self.scroll_destination,
-                self.scroll_t,
-            );
-        }
-
+                    self.current_scroll = ease(
+                        ease_out_expo,
+                        self.start_scroll,
+                        self.scroll_destination,
+                        self.scroll_t,
+                    );
+                }
+        */
         animating
     }
 
