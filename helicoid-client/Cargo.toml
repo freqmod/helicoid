@@ -51,7 +51,7 @@ rkyv = { version = "0.7", features = ["validation", "smallvec"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
 anyhow = {version="1.0.68"}
 #skia-safe = {path = "/home/freqmod/Downloads/rust-skia/skia-safe/",features = ["gl"]}
-skia-safe = {verson="0.58",features = ["gl"]}
+skia-safe = {version="0.58",features = ["gl"]}
 
 
 [dev-dependencies]

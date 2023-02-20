@@ -151,9 +151,12 @@ impl HeliconeEditor {
             log::trace!("Sent viewport info");
         }
     }
-    pub fn handle_event_disconnected(&mut self, event: &Event<()>) {
+    pub fn handle_event_disconnected(&mut self, event: &Event<()>) -> Option<ControlFlow> {
         match event {
             Event::WindowEvent { window_id, event } => match event {
+                WindowEvent::CloseRequested => {
+                    return Some(ControlFlow::Exit);
+                }
                 WindowEvent::Resized(event) => {
                     let size = ViewportInfo {
                         physical_size: (event.width, event.height),
@@ -168,6 +171,7 @@ impl HeliconeEditor {
 
             _ => {}
         }
+        None
     }
     pub fn poll_events(&mut self) {
         if !self.ensure_connected() {
@@ -179,8 +183,7 @@ impl HeliconeEditor {
     pub fn handle_event(&mut self, event: &Event<()>) -> Option<ControlFlow> {
         if !self.ensure_connected() {
             log::warn!("Try to handle event before connection is established to server");
-            self.handle_event_disconnected(event);
-            return None;
+            return self.handle_event_disconnected(event);
         }
         if let Some(inner) = self.inner.try_lock().ok() {
             match event {
