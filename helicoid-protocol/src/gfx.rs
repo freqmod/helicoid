@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::text::ShapedTextBlock;
+use crate::{
+    block_manager::{BlockContainer, BlockGfx},
+    text::ShapedTextBlock,
+};
 use bytecheck::CheckBytes;
 use num_enum::IntoPrimitive;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -179,12 +182,19 @@ impl fmt::Debug for PointF16 {
 }
 
 impl RenderBlockPath {
+    pub fn top() -> Self {
+        Self {
+            path: smallvec::smallvec![],
+        }
+    }
     pub fn new(path: SmallVec<[RenderBlockId; 16]>) -> Self {
         Self { path }
     }
+
     pub fn path(&self) -> &SmallVec<[RenderBlockId; 16]> {
         &self.path
     }
+
     pub fn is_relative(&self) -> bool {
         if !self.path.is_empty() {
             return !self.path[0].is_relative_id();
@@ -192,22 +202,66 @@ impl RenderBlockPath {
             false
         }
     }
+
     pub fn common_start(&self, other: &Self) -> bool {
         let common_length = self.path.len().min(other.path.len());
         self.path[0..common_length] == other.path[0..common_length]
     }
-    pub fn resolve<C: BlockContainer>(&self, container: &C) -> anyhow::Result<()>{
+
+    pub fn resolved<C: BlockContainer<G>, G: BlockGfx>(
+        &self,
+        container: &C,
+    ) -> anyhow::Result<Self> {
         if !self.is_relative() {
             // Check that the start of this path matches the start of the container
-            self.common_start(container.)
+            if !self.common_start(container.path()) {
+                /* If the start is not common this is not a compatible path to
+                   resolve, so return an error. In the future make a proper error
+                type so the callers of this function get structured error information
+                that can be acted upon */
+                return Err(anyhow::anyhow!("Incompatible path"));
+            } else {
+                Ok(self.clone())
+            }
+        } else {
+            /* Make this path absolute */
+            /* First concatenate the root and the relative path, then call a
+            function that removes relativeness */
+            container.path().concatenated(self).remove_parent_segments()
         }
+    }
+
+    pub fn concatenated(&self, other: &RenderBlockPath) -> RenderBlockPath {
+        let mut new_vec = self.path.clone();
+        new_vec.extend_from_slice(other.path.as_slice());
+        Self { path: new_vec }
+    }
+
+    fn remove_parent_segments(&self) -> anyhow::Result<Self> {
+        let mut new_path = self.clone();
+        let mut i = 0;
+        while i < new_path.path.len() {
+            if new_path.path[i].is_parent_id() {
+                if i < 1 {
+                    /* Try to get parent when at top, bail */
+                    return Err(anyhow::anyhow!(
+                        "Invalid parent at root for path: {:?}",
+                        self
+                    ));
+                }
+                /* Remove current element, and element with index before */
+                new_path.path.remove(i - 1);
+                new_path.path.remove(i - 1);
+                i -= 1;
+            } else {
+                i += 1;
+            }
+        }
+        Ok(new_path)
     }
 }
 
 /* TODO: Retrieve this from the refactored helicone code */
-pub struct RenderBlock {
-    path: RenderBlockPath,
-}
 
 impl RenderBlockId {
     const PARENT_ID: u16 = 0xFFFF;
@@ -238,30 +292,4 @@ impl RenderBlockId {
     pub fn is_relative_id(&self) -> bool {
         self.0 == Self::RELATIVE_ID
     }
-}
-
-impl RenderBlock {
-    pub fn as_container(&self) -> Option<&dyn BlockContainer> {
-        None
-    }
-    pub fn as_container_mut(&mut self) -> Option<&mut dyn BlockContainer> {
-        None
-    }
-    pub fn path(&self) -> &RenderBlockPath {
-        &self.path
-    }
-}
-
-pub trait BlockContainer {
-    fn path(&self) -> &RenderBlockPath;
-    fn block(&self, id: RenderBlockId) -> &RenderBlock;
-    fn block_mut(&mut self, id: RenderBlockId) -> &RenderBlock;
-    fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId);
-    fn move_blocks(
-        &mut self,
-        mask_id: RenderBlockId,
-        dst_mask_id: RenderBlockId,
-        base_id: RenderBlockId,
-    );
-    // Not sure if the ability to add blocks should be part of this interface
 }

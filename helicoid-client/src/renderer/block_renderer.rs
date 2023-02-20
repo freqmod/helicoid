@@ -37,7 +37,7 @@ impl BlockManager {
         Self {
             layers: Default::default(),
             blocks: Default::default(),
-            top_level_block: 1, /* TODO: The server have to specify this more properly? */
+            top_level_block: RenderBlockId::normal(1).unwrap(), /* TODO: The server have to specify this more properly? */
         }
     }
     pub fn render(&mut self, target: &mut Surface) {
@@ -46,7 +46,7 @@ impl BlockManager {
         let top_block_id = self.top_level_block;
         let block = self.blocks.get_mut(&top_block_id);
         log::trace!(
-            "BM try render block:{:?} ({})",
+            "BM try render block:{:?} ({:?})",
             block
                 .as_ref()
                 .map(|hb| hb.as_ref().map(|b| b.wire_description.clone())),
@@ -72,7 +72,7 @@ impl BlockManager {
     }
     pub fn handle_block_update(&mut self, update: &RemoteBoxUpdate) {
         for block in update.new_render_blocks.iter() {
-            log::trace!("Update render block: {}", block.id);
+            log::trace!("Update render block: {:?}", block.id);
             let new_rendered_block = RenderBlock::new(block.contents.clone());
             if let Some(render_block) = self.blocks.get_mut(&block.id) {
                 *render_block = Some(new_rendered_block);
@@ -287,7 +287,7 @@ impl RenderBlock {
         // How do we sort the blocks?
         let mut blocks =
             SmallVec::<[(RenderBlockLocation); 64]>::with_capacity(mb.sub_blocks.len());
-        blocks.extend_from_slice(mb.sub_blocks.as_slice());
+        blocks.extend(mb.sub_blocks.iter().map(|b| b.clone()));
         //blocks.extend(mb.sub_blocks.iter().map(|b| (b.id, b.layer, b.location)));
         blocks.sort_by(|a, b| a.layer.cmp(&b.layer));
         for location in blocks {
