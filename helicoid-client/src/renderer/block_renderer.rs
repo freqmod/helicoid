@@ -1,6 +1,9 @@
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
+use helicoid_protocol::block_manager::{
+    BlockContainer, BlockGfx, InteriorBlockContainer, MetaBlock, RenderBlockFullId,
+};
 use helicoid_protocol::gfx::{PointF16, RemoteBoxUpdate, RenderBlockLocation};
 use helicoid_protocol::{
     gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
@@ -18,12 +21,12 @@ struct RenderedRenderBlock {
     image: Image,
     description_hash: u64,
 }
-pub struct RenderBlock {
+pub struct SkiaClientRenderBlock {
     rendered: Option<RenderedRenderBlock>,
     //    id: RenderBlockId,
     wire_description: RenderBlockDescription,
 }
-
+/*
 pub struct BlockManager {
     layers: Vec<Option<Vec<RenderBlockId>>>,
     /* The blocks are options so they can be moved out while rendering to enable the manager to be
@@ -82,8 +85,8 @@ impl BlockManager {
         }
     }
 }
-
-impl RenderBlock {
+*/
+impl SkiaClientRenderBlock {
     pub fn new(desc: RenderBlockDescription) -> Self {
         Self {
             rendered: None,
@@ -92,28 +95,27 @@ impl RenderBlock {
     }
     pub fn render(
         &mut self,
-        //desc: &RenderBlockDescription,
         location: &RenderBlockLocation,
-        storage: &mut BlockManager,
         target: &mut Surface,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         //        s
         match self.wire_description {
             RenderBlockDescription::ShapedTextBlock(_) => {
-                self.render_text_box(location, storage, target)
+                self.render_text_box(location, target, meta)
             }
             RenderBlockDescription::SimpleDraw(_) => {
-                self.render_simple_draw(location, storage, target)
+                self.render_simple_draw(location, target, meta)
             }
-            RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, storage, target),
+            RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, target, meta),
         }
     }
     //    pub fn set_desc()
     pub fn render_text_box(
         &mut self,
         location: &RenderBlockLocation,
-        storage: &mut BlockManager,
         target: &mut Surface,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let RenderBlockDescription::ShapedTextBlock(stb) = &self.wire_description else {
             panic!("Render text box should not be called with a description that is not a ShapedTextBlock")
@@ -174,34 +176,18 @@ impl RenderBlock {
     pub fn render_simple_draw(
         &mut self,
         location: &RenderBlockLocation,
-        storage: &mut BlockManager,
         target: &mut Surface,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
     }
-    fn hash_block_recursively<H: Hasher>(
-        &self,
-        storage: &BlockManager,
-        //        location: &RenderBlockLocation,
-        hasher: &mut H,
-    ) {
+    fn hash_block_recursively<H: Hasher>(&self, hasher: &mut H) {
         match self.wire_description {
-            RenderBlockDescription::MetaBox(_) => self.hash_meta_box_recursively(storage, hasher),
-            _ => self.wire_description.hash(hasher),
-        }
-    }
-    fn hash_meta_box_recursively<H: Hasher>(&self, storage: &BlockManager, hasher: &mut H) {
-        let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
-            panic!("Hash meta box should not be called with a description that is not a meta box")
-        };
-        mb.hash(hasher);
-        for block in mb.sub_blocks.iter() {
-            let render_block = storage.blocks.get(&block.id);
-            if render_block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
-                let extracted_block = render_block.unwrap().as_ref().unwrap();
-                extracted_block.hash_block_recursively(storage, hasher);
-            } else {
-                false.hash(hasher);
+            RenderBlockDescription::MetaBox(_) => {
+                // TODO: Handle none containers better here
+                todo!("Hash from the protocol")
+                //self.hash_meta_box_recursively(hasher)
             }
+            _ => self.wire_description.hash(hasher),
         }
     }
     /* This function renders a box containing other boxes, using a cached texture if it exists
@@ -209,8 +195,8 @@ impl RenderBlock {
     pub fn render_meta_box(
         &mut self,
         location: &RenderBlockLocation,
-        storage: &mut BlockManager,
         target: &mut Surface,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
             panic!("Render simple draw should not be called with a description that is not a simple draw")
@@ -218,7 +204,7 @@ impl RenderBlock {
         let mut hasher = DefaultHasher::new();
         location.hash(&mut hasher);
         //mb.hash(&mut hasher);
-        self.hash_block_recursively(storage, &mut hasher);
+        self.hash_block_recursively(&mut hasher);
         /* TODO: All referenced blocks needs to be recursively hashed here for it to work */
         let hashed = hasher.finish();
         let mut paint = Paint::default();
@@ -264,7 +250,7 @@ impl RenderBlock {
             location: PointF16::default(),
             layer: location.layer,
         };
-        self.render_meta_box_contents(&adjusted_location, storage, &mut dest_surface);
+        self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
         self.rendered = Some(RenderedRenderBlock {
             image: dest_surface.image_snapshot(),
             description_hash: hashed,
@@ -278,12 +264,15 @@ impl RenderBlock {
     fn render_meta_box_contents(
         &mut self,
         _location: &RenderBlockLocation,
-        storage: &mut BlockManager,
         target: &mut Surface,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
             panic!("Render meta box should not be called with a description that is not a meta box")
         };
+        let container = meta
+            .as_container_mut()
+            .expect("Expecting block to have container if wire description has children");
         // How do we sort the blocks?
         let mut blocks =
             SmallVec::<[(RenderBlockLocation); 64]>::with_capacity(mb.sub_blocks.len());
@@ -291,19 +280,22 @@ impl RenderBlock {
         //blocks.extend(mb.sub_blocks.iter().map(|b| (b.id, b.layer, b.location)));
         blocks.sort_by(|a, b| a.layer.cmp(&b.layer));
         for location in blocks {
-            let block = storage.blocks.get_mut(&location.id);
+            let block = container.block_ref_mut(location.id);
             if block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
                 let mut moved_block = block.unwrap().take().unwrap();
                 /* The bloc is temporary moved out of the storage, so storage can be passed on as mutable */
-                moved_block.render(&location, storage, target);
+                let (block, gfx) = moved_block.destruct_mut();
+                gfx.render(&location, target, block);
                 // Put the block back
-                let post_block = storage.blocks.get_mut(&location.id);
+                let post_block = container.block_ref_mut(location.id);
                 let post_block_inner = post_block.unwrap();
                 *post_block_inner = Some(moved_block);
             }
         }
     }
 }
+
+impl BlockGfx for SkiaClientRenderBlock {}
 
 fn build_sub_surface(context: &mut DirectContext, image_info: ImageInfo) -> Surface {
     let budgeted = Budgeted::Yes;

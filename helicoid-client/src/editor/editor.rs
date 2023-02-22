@@ -1,7 +1,8 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::{renderer::block_renderer::BlockManager, HeliconeCommandLineArguments};
+use crate::{renderer::block_renderer::SkiaClientRenderBlock, HeliconeCommandLineArguments};
 use helicoid_protocol::{
+    block_manager::Manager,
     gfx::{RenderBlockDescription, RenderBlockId},
     input::{HelicoidToServerMessage, ViewportInfo},
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
@@ -28,7 +29,7 @@ pub struct HeliconeEditor {
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
     server_address: Option<String>,
     current_viewport_info: Option<ViewportInfo>,
-    renderer: BlockManager,
+    renderer: Manager<SkiaClientRenderBlock>,
 }
 impl HeliconeEditor {
     pub fn new(args: &HeliconeCommandLineArguments) -> Self {
@@ -43,7 +44,7 @@ impl HeliconeEditor {
         }
         Self {
             inner,
-            renderer: BlockManager::new(),
+            renderer: Manager::new(),
             sender: None,
             receiver: None,
             server_address: args.server_address.clone(),
@@ -308,7 +309,8 @@ impl HeliconeEditor {
                     Ok(event) => {
                         log::trace!("Got event from server: {:?}", event);
                         let update = &event.message.update;
-                        self.renderer.handle_block_update(update);
+                        todo!("Instantiate GFX manager, and call handle block update")
+                        //                        self.renderer.handle_block_update(update);
                     }
                     Err(e) => match e {
                         tokio::sync::mpsc::error::TryRecvError::Empty => {
@@ -334,7 +336,8 @@ impl HeliconeEditor {
         }
         log::trace!("Editor: got request to draw frame");
         self.peek_and_process_events();
-        self.renderer.render(root_surface);
+        todo!("Reinstate render");
+        //        self.renderer.render(root_surface);
         false
     }
 }

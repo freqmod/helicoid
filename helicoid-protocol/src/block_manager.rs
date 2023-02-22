@@ -7,6 +7,7 @@ use crate::gfx::RenderBlockPath;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::marker::PhantomData;
 
 /* Ideally we want clear ownership of render blocks, like having a set of top level blocks, and then
 add/ remove those wilth all their descendents. */
@@ -28,6 +29,7 @@ pub trait BlockContainer<G: BlockGfx> {
     fn add_block(&self, id: RenderBlockId, block: Block<G>) -> anyhow::Result<()>;
     fn block(&self, id: RenderBlockId) -> Option<&Block<G>>;
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<G>>;
+    fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<G>>>;
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId);
     fn move_blocks(
         &mut self,
@@ -38,17 +40,27 @@ pub trait BlockContainer<G: BlockGfx> {
     // Not sure if the ability to add blocks should be part of this interface
 }
 
-struct InteriorBlockContainer<G: BlockGfx> {
+pub struct InteriorBlockContainer<G: BlockGfx> {
     path: RenderBlockPath,
     blocks: HashMap<RenderBlockId, Option<Block<G>>>,
     layers: Vec<Option<Vec<RenderBlockId>>>,
 }
+
+#[derive(Debug, Hash, Eq, Clone, PartialEq)]
+pub struct RenderBlockFullId {
+    pub id: RenderBlockId,
+    pub parent_path: RenderBlockPath,
+}
+
+pub struct MetaBlock<G: BlockGfx> {
+    id: RenderBlockFullId,
+    wire_description: RenderBlockDescription,
+    container: Option<InteriorBlockContainer<G>>,
+    gfx_type: PhantomData<G>,
+}
 pub struct Block<G: BlockGfx> {
     render_info: G,
-    id: RenderBlockId,
-    parent_path: RenderBlockPath,
-    wire_description: RenderBlockDescription,
-    container: InteriorBlockContainer<G>,
+    meta: MetaBlock<G>,
 }
 
 pub struct Manager<BG: BlockGfx> {
@@ -112,34 +124,53 @@ impl<BG: BlockGfx> Block<BG> {
     ) -> Self {
         Self {
             render_info,
-            wire_description: desc,
-            parent_path,
-            id,
+            meta: MetaBlock {
+                wire_description: desc,
+                id: RenderBlockFullId { id, parent_path },
+                container: None,
+                gfx_type: PhantomData::<BG>,
+            },
         }
     }
-
-    pub fn hash_block_recursively<H: Hasher>(
-        &self,
-        storage: &Manager<BG>,
-        //location: &RenderBlockLocation,
-        hasher: &mut H,
-    ) {
+    pub fn meta(&self) -> &MetaBlock<BG> {
+        &self.meta
+    }
+    pub fn meta_mut(&mut self) -> &mut MetaBlock<BG> {
+        &mut self.meta
+    }
+    pub fn render_info(&self) -> &BG {
+        &self.render_info
+    }
+    pub fn render_info_mut(&mut self) -> &mut BG {
+        &mut self.render_info
+    }
+    pub fn destruct(&self) -> (&MetaBlock<BG>, &BG) {
+        let Self { render_info, meta } = self;
+        (meta, render_info)
+    }
+    pub fn destruct_mut(&mut self) -> (&mut MetaBlock<BG>, &mut BG) {
+        let Self { render_info, meta } = self;
+        (meta, render_info)
+    }
+}
+impl<BG: BlockGfx> MetaBlock<BG> {
+    pub fn hash_block_recursively<H: Hasher>(&self, hasher: &mut H) {
         match self.wire_description {
-            RenderBlockDescription::MetaBox(_) => self.hash_meta_box_recursively(storage, hasher),
+            RenderBlockDescription::MetaBox(_) => self.hash_meta_box_recursively(hasher),
             _ => self.wire_description.hash(hasher),
         }
     }
 
-    pub fn hash_meta_box_recursively<H: Hasher>(&self, storage: &Manager<BG>, hasher: &mut H) {
+    pub fn hash_meta_box_recursively<H: Hasher>(&self, hasher: &mut H) {
         let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
             panic!("Hash meta box should not be called with a description that is not a meta box")
         };
         mb.hash(hasher);
         for block in mb.sub_blocks.iter() {
-            let render_block = storage.blocks.get(&block.id);
-            if render_block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
-                let extracted_block = render_block.unwrap().as_ref().unwrap();
-                extracted_block.hash_block_recursively(storage, hasher);
+            let render_block = self.container.as_ref().map(|c| c.block(block.id)).flatten();
+            if render_block.is_some() {
+                let extracted_block = render_block.unwrap();
+                extracted_block.meta().hash_block_recursively(hasher);
             } else {
                 false.hash(hasher);
             }
@@ -152,7 +183,7 @@ impl<BG: BlockGfx> Block<BG> {
         None
     }
     pub fn parent_path(&self) -> &RenderBlockPath {
-        &self.parent_path
+        &self.id.parent_path
     }
 }
 
@@ -171,6 +202,45 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
 
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<BG>> {
         self.blocks.get_mut(&id).map(|b| b.as_mut()).flatten()
+    }
+
+    fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
+        self.blocks.get_mut(&id)
+    }
+
+    fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {
+        todo!()
+    }
+
+    fn move_blocks(
+        &mut self,
+        mask_id: RenderBlockId,
+        dst_mask_id: RenderBlockId,
+        base_id: RenderBlockId,
+    ) {
+        todo!()
+    }
+}
+
+impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
+    fn path(&self) -> &RenderBlockPath {
+        &self.container.path
+    }
+
+    fn add_block(&self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    fn block(&self, id: RenderBlockId) -> Option<&Block<BG>> {
+        self.container.block(id)
+    }
+
+    fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<BG>> {
+        self.block_mut(id)
+    }
+
+    fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
+        self.block_ref_mut(id)
     }
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {
