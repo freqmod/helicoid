@@ -185,6 +185,17 @@ impl<BG: BlockGfx> MetaBlock<BG> {
     pub fn parent_path(&self) -> &RenderBlockPath {
         &self.id.parent_path
     }
+    pub fn wire_description(&self) -> &RenderBlockDescription {
+        &self.wire_description
+    }
+    pub fn destruct_mut(
+        &mut self,
+    ) -> (
+        &mut RenderBlockDescription,
+        &mut Option<InteriorBlockContainer<BG>>,
+    ) {
+        (&mut self.wire_description, &mut self.container)
+    }
 }
 
 impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
