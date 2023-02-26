@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    block_manager::{BlockContainer, BlockGfx},
+    block_manager::{Block, BlockContainer, BlockGfx},
     text::ShapedTextBlock,
 };
 use bytecheck::CheckBytes;
@@ -228,6 +228,39 @@ impl RenderBlockPath {
             /* First concatenate the root and the relative path, then call a
             function that removes relativeness */
             container.path().concatenated(self).remove_parent_segments()
+        }
+    }
+
+    fn resolve_block_mut_internal<'b, G: BlockGfx>(
+        &self,
+        block: &'b mut Block<G>,
+        idx: usize,
+    ) -> Option<&'b mut Block<G>> {
+        if let Some(container) = block.meta_mut().as_container_mut() {
+            let id = self.path[idx];
+            let child = container.block_mut(id);
+            if idx == self.path.len() - 1 {
+                child
+            } else {
+                if let Some(child) = child {
+                    self.resolve_block_mut_internal(child, idx + 1)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn resolve_block_mut<'b, G: BlockGfx>(
+        &self,
+        block: &'b mut Block<G>,
+    ) -> Option<&'b mut Block<G>> {
+        if block.meta_mut().as_container_mut().is_some() && !self.path.is_empty() {
+            self.resolve_block_mut_internal(block, 0)
+        } else {
+            None
         }
     }
 

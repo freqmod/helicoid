@@ -67,8 +67,8 @@ pub struct Manager<BG: BlockGfx> {
     /* The blocks are options so they can be moved out while rendering to enable the manager to be
     passed mutable for sub-blocks */
     //    blocks: HashMap<RenderBlockId, Option<Block<BG>>>,
-    top_level_block: RenderBlockId,
-    container: InteriorBlockContainer<BG>,
+    containers: HashMap<RenderBlockId, Block<BG>>,
+    path: RenderBlockPath,
 }
 
 impl<G: BlockGfx> InteriorBlockContainer<G> {
@@ -84,33 +84,56 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
 impl<BG: BlockGfx> Manager<BG> {
     pub fn new() -> Self {
         Self {
-            top_level_block: RenderBlockId::normal(1).unwrap(), /* TODO: The server have to specify this more properly? */
-            container: InteriorBlockContainer::new(RenderBlockPath::top()),
+            //top_level_block: RenderBlockId::normal(1).unwrap(), /* TODO: The server have to specify this more properly? */
+            containers: Default::default(), //InteriorBlockContainer::new(RenderBlockPath::top()),
+            path: RenderBlockPath::top(),
         }
     }
 
     pub fn handle_block_update<MG: ManagerGfx<BG>>(
         &mut self,
+        client_id: RenderBlockId,
         update: &RemoteBoxUpdate,
         gfx_manager: &mut MG,
     ) {
-        for block in update.new_render_blocks.iter() {
-            log::trace!("Update render block: {:?}", block.id);
-            //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
-            let new_rendered_block = Block::new(
-                block.contents.clone(),
-                gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
-                block.id,
-                update.parent.clone(),
-            );
-            if let Some(render_block) = self.container.block_mut(block.id) {
-                *render_block = new_rendered_block;
-            } else {
-                /* TODO: Replace unwrap with proper error handling */
-                self.container
-                    .add_block(block.id, new_rendered_block)
-                    .unwrap();
+        if update.parent.path().is_empty() {
+            /* If the block update is for a top level block */
+            for block in update.new_render_blocks.iter() {
+                log::trace!("Update render block: {:?}", block.id);
+                //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
+                let new_rendered_block = Block::new(
+                    block.contents.clone(),
+                    gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
+                    block.id,
+                    update.parent.clone(),
+                );
+                if let Some(render_block) = self.containers.get_mut(&block.id) {
+                    //                *render_block = new_rendered_block;
+                    *render_block = new_rendered_block; //.handle_block_update(update, gfx_manager);
+                } else {
+                    /* TODO: Replace unwrap with proper error handling */
+                    assert!(self
+                        .containers
+                        .insert(block.id, new_rendered_block)
+                        .is_none());
+                }
             }
+        } else {
+            /* If the block update has a parent, find the parent and forward the update */
+            if let Some(parent_block) = self.block_for_path_mut(client_id, &update.parent) {
+                parent_block.handle_block_update(update, gfx_manager);
+            }
+        }
+    }
+    pub fn block_for_path_mut(
+        &mut self,
+        id: RenderBlockId,
+        path: &RenderBlockPath,
+    ) -> Option<&mut Block<BG>> {
+        if let Some(render_block) = self.containers.get_mut(&id) {
+            path.resolve_block_mut(render_block)
+        } else {
+            None
         }
     }
 }
@@ -151,6 +174,12 @@ impl<BG: BlockGfx> Block<BG> {
     pub fn destruct_mut(&mut self) -> (&mut MetaBlock<BG>, &mut BG) {
         let Self { render_info, meta } = self;
         (meta, render_info)
+    }
+    pub fn handle_block_update<MG: ManagerGfx<BG>>(
+        &mut self,
+        update: &RemoteBoxUpdate,
+        gfx_manager: &mut MG,
+    ) {
     }
 }
 impl<BG: BlockGfx> MetaBlock<BG> {
@@ -235,7 +264,7 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
 
 impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
     fn path(&self) -> &RenderBlockPath {
-        &self.container.path
+        &self.path
     }
 
     fn add_block(&self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
@@ -243,15 +272,15 @@ impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
     }
 
     fn block(&self, id: RenderBlockId) -> Option<&Block<BG>> {
-        self.container.block(id)
+        self.containers.get(&id)
     }
 
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<BG>> {
-        self.block_mut(id)
+        self.containers.get_mut(&id)
     }
 
     fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
-        self.block_ref_mut(id)
+        None /* Not supported for (top level) block manager */
     }
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {

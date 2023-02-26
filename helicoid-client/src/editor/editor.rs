@@ -315,8 +315,11 @@ impl HeliconeEditor {
                         log::trace!("Got event from server: {:?}", event);
                         let update = &event.message.update;
                         //todo!("Instantiate GFX manager, and call handle block update")
-                        self.renderer
-                            .handle_block_update(update, &mut self.graphics_manager);
+                        self.renderer.handle_block_update(
+                            RenderBlockId::normal(0).unwrap(),
+                            update,
+                            &mut self.graphics_manager,
+                        );
                     }
                     Err(e) => match e {
                         tokio::sync::mpsc::error::TryRecvError::Empty => {
