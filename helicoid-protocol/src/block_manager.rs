@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use crate::gfx::BlockLayer;
 use crate::gfx::PointF16;
 use crate::gfx::RemoteBoxUpdate;
@@ -17,9 +19,15 @@ pub type ChangeGeneration = u8;
 
 /* This file contains renderer agnostic render block logic for keeping track of a (client side)
 tree of render blocks */
-pub trait BlockGfx: std::fmt::Debug {
+pub trait BlockGfx: std::fmt::Debug + Sized {
     //    fn hash(); // consider if we can use ownership to mark stuff as dirty
     //    fn render();
+    fn render(
+        &mut self,
+        location: &RenderBlockLocation,
+        parent: &mut Self,
+        block: &mut MetaBlock<Self>,
+    );
 }
 
 pub trait ManagerGfx<B: BlockGfx> {
@@ -302,6 +310,35 @@ impl<BG: BlockGfx> MetaBlock<BG> {
             }
         }
     }
+    pub fn process_block_recursively(&mut self, parent_gfx: &mut BG) {
+        let (wire_description, container) = self.destruct_mut();
+        let RenderBlockDescription::MetaBox(mb) = wire_description else {
+            panic!("Render meta box should not be called with a description that is not a meta box")
+        };
+        let container = container
+            .as_mut()
+            .expect("Expecting block to have container if wire description has children");
+        // How do we sort the blocks?
+        let mut blocks =
+            SmallVec::<[(RenderBlockLocation); 64]>::with_capacity(mb.sub_blocks.len());
+        blocks.extend(mb.sub_blocks.iter().map(|b| b.clone()));
+        //blocks.extend(mb.sub_blocks.iter().map(|b| (b.id, b.layer, b.location)));
+        blocks.sort_by(|a, b| a.layer.cmp(&b.layer));
+        for location in blocks {
+            let block = container.block_ref_mut(location.id);
+            if block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
+                let mut moved_block = block.unwrap().take().unwrap();
+                /* The bloc is temporary moved out of the storage, so storage can be passed on as mutable */
+                let (block, gfx) = moved_block.destruct_mut();
+                gfx.render(&location, parent_gfx, block);
+                // Put the block back
+                let post_block = container.block_ref_mut(location.id);
+                let post_block_inner = post_block.unwrap();
+                *post_block_inner = Some(moved_block);
+            }
+        }
+    }
+
     pub fn as_container(&self) -> Option<&dyn BlockContainer<BG>> {
         None
     }
@@ -338,11 +375,21 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     }
 
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<BG>> {
-        self.blocks.get_mut(&id).map(|b| b.block.as_mut()).flatten()
+        self.blocks
+            .get_mut(&id)
+            .map(|b| {
+                b.last_changed = b.last_changed.wrapping_add(1);
+                b.block.as_mut()
+            })
+            .flatten()
     }
 
     fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
-        self.blocks.get_mut(&id).map(|b| &mut b.block)
+        self.blocks.get_mut(&id).map(|b| {
+            b.last_changed = b.last_changed.wrapping_add(1);
+
+            &mut b.block
+        })
     }
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {

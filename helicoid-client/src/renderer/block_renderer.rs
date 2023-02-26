@@ -303,7 +303,16 @@ impl SkiaClientRenderBlock {
     }
 }
 
-impl BlockGfx for SkiaClientRenderBlock {}
+impl BlockGfx for SkiaClientRenderBlock {
+    fn render(
+        &mut self,
+        location: &RenderBlockLocation,
+        parent: &mut Self,
+        block: &mut MetaBlock<Self>,
+    ) {
+        todo!()
+    }
+}
 
 impl ManagerGfx<SkiaClientRenderBlock> for SkiaGfxManager {
     fn create_gfx_block(
