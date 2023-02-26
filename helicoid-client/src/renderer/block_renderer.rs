@@ -19,10 +19,12 @@ use smallvec::SmallVec;
 use crate::renderer::fonts::blob_builder::ShapedBlobBuilder;
 pub struct SkiaGfxManager {}
 
+#[derive(Debug)]
 struct RenderedRenderBlock {
     image: Image,
     description_hash: u64,
 }
+#[derive(Debug)]
 pub struct SkiaClientRenderBlock {
     rendered: Option<RenderedRenderBlock>,
     //    id: RenderBlockId,
@@ -229,7 +231,6 @@ impl SkiaClientRenderBlock {
                 return;
             }
         }
-        //        let dest_image
         let mut context: DirectContext = target
             .recording_context()
             .map(|mut c| c.as_direct_context())

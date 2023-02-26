@@ -345,7 +345,7 @@ impl HeliconeEditor {
         }
         log::trace!("Editor: got request to draw frame");
         self.peek_and_process_events();
-        //        self.renderer.container.render()
+        //        self.renderer.render(root_surface);
         // render(root_surface);
         false
     }

@@ -1,3 +1,4 @@
+use crate::gfx::BlockLayer;
 use crate::gfx::PointF16;
 use crate::gfx::RemoteBoxUpdate;
 use crate::gfx::RenderBlockDescription;
@@ -12,9 +13,15 @@ use std::marker::PhantomData;
 /* Ideally we want clear ownership of render blocks, like having a set of top level blocks, and then
 add/ remove those wilth all their descendents. */
 
+pub type ChangeGeneration = u8;
+
 /* This file contains renderer agnostic render block logic for keeping track of a (client side)
 tree of render blocks */
-pub trait BlockGfx {}
+pub trait BlockGfx: std::fmt::Debug {
+    //    fn hash(); // consider if we can use ownership to mark stuff as dirty
+    //    fn render();
+}
+
 pub trait ManagerGfx<B: BlockGfx> {
     fn create_gfx_block(
         &mut self,
@@ -40,10 +47,19 @@ pub trait BlockContainer<G: BlockGfx> {
     // Not sure if the ability to add blocks should be part of this interface
 }
 
+#[derive(Debug)]
+struct ContainerBlock<G: BlockGfx> {
+    layer: BlockLayer,
+    block: Option<Block<G>>,
+    hash: u64,
+    last_changed: ChangeGeneration,
+}
+
+#[derive(Debug)]
 pub struct InteriorBlockContainer<G: BlockGfx> {
     path: RenderBlockPath,
-    blocks: HashMap<RenderBlockId, Option<Block<G>>>,
-    layers: Vec<Option<Vec<RenderBlockId>>>,
+    blocks: HashMap<RenderBlockId, ContainerBlock<G>>,
+    layers: HashMap<BlockLayer, Vec<(RenderBlockId, PointF16)>>,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq)]
@@ -52,12 +68,14 @@ pub struct RenderBlockFullId {
     pub parent_path: RenderBlockPath,
 }
 
+#[derive(Debug)]
 pub struct MetaBlock<G: BlockGfx> {
     id: RenderBlockFullId,
     wire_description: RenderBlockDescription,
     container: Option<InteriorBlockContainer<G>>,
     gfx_type: PhantomData<G>,
 }
+#[derive(Debug)]
 pub struct Block<G: BlockGfx> {
     render_info: G,
     meta: MetaBlock<G>,
@@ -77,6 +95,49 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
             layers: Default::default(),
             blocks: Default::default(),
             path,
+        }
+    }
+    pub fn update_location(&mut self, new_location: &RenderBlockLocation) {
+        let Some(cblock) = self.blocks.get_mut(&new_location.id) else {
+            log::warn!("Tried to update location on a non existing block container: {:?} update: {:?}", self, new_location);
+            return;
+        };
+
+        if cblock.layer != new_location.layer {
+            /* Remove from old layer */
+            if let Some(old_layer) = self.layers.get_mut(&cblock.layer) {
+                if let Some(old_block_idx) =
+                    old_layer.iter().enumerate().find_map(|(idx, (id, _))| {
+                        if *id == new_location.id {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    old_layer.swap_remove(old_block_idx);
+                }
+            }
+            /* Add to new layer */
+            self.layers
+                .entry(new_location.layer)
+                .or_insert(Default::default())
+                .push((new_location.id, new_location.location));
+        } else {
+            /* Change the location in the layer in place, if it exists */
+            if let Some(current_layer) = self.layers.get_mut(&cblock.layer) {
+                if let Some(current_block_idx) =
+                    current_layer.iter().enumerate().find_map(|(idx, (id, _))| {
+                        if *id == new_location.id {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    current_layer[current_block_idx].1 = new_location.location;
+                }
+            }
         }
     }
 }
@@ -118,6 +179,11 @@ impl<BG: BlockGfx> Manager<BG> {
                         .is_none());
                 }
             }
+            for update in update.remove_render_blocks.iter() {
+                //                if let Some(render_block) = self.containers.get_mut(&block.id) {
+                assert!(update.mask.0 == 0xFF);
+                self.containers.remove(&update.offset);
+            }
         } else {
             /* If the block update has a parent, find the parent and forward the update */
             if let Some(parent_block) = self.block_for_path_mut(client_id, &update.parent) {
@@ -134,6 +200,17 @@ impl<BG: BlockGfx> Manager<BG> {
             path.resolve_block_mut(render_block)
         } else {
             None
+        }
+    }
+}
+
+impl<BG: BlockGfx> ContainerBlock<BG> {
+    pub fn new(block: Block<BG>, layer: BlockLayer) -> Self {
+        Self {
+            layer: 0,
+            block: Some(block),
+            hash: 0,
+            last_changed: 0,
         }
     }
 }
@@ -180,6 +257,26 @@ impl<BG: BlockGfx> Block<BG> {
         update: &RemoteBoxUpdate,
         gfx_manager: &mut MG,
     ) {
+        let Some(container) = self.meta.container.as_mut() else{
+            log::debug!("Trying to send RemoteBoxUpdate to a block that isn't a container");
+            return;
+        };
+        for instruction in update.remove_render_blocks.iter() {
+            container.remove_blocks(instruction.mask, instruction.offset);
+        }
+        for block in update.new_render_blocks.iter() {
+            let new_rendered_block = Block::new(
+                block.contents.clone(),
+                gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
+                block.id,
+                update.parent.clone(),
+            );
+            /* TODO: Replace unwrap with proper error handling */
+            container.add_block(block.id, new_rendered_block).unwrap();
+        }
+        for new_location in update.move_block_locations.iter() {
+            container.update_location(new_location);
+        }
     }
 }
 impl<BG: BlockGfx> MetaBlock<BG> {
@@ -237,15 +334,15 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     }
 
     fn block(&self, id: RenderBlockId) -> Option<&Block<BG>> {
-        self.blocks.get(&id).map(|b| b.as_ref()).flatten()
+        self.blocks.get(&id).map(|b| b.block.as_ref()).flatten()
     }
 
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<BG>> {
-        self.blocks.get_mut(&id).map(|b| b.as_mut()).flatten()
+        self.blocks.get_mut(&id).map(|b| b.block.as_mut()).flatten()
     }
 
     fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
-        self.blocks.get_mut(&id)
+        self.blocks.get_mut(&id).map(|b| &mut b.block)
     }
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {

@@ -17,6 +17,8 @@ backend and transferring it to the front end in a render agnostic way */
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockId(pub u16);
 
+pub type BlockLayer = u8;
+
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockPath {
@@ -135,7 +137,6 @@ pub struct RenderBlockLocation {
 pub struct RenderBlockRemoveInstruction {
     pub offset: RenderBlockId,
     pub mask: RenderBlockId,
-    pub parent_path: RenderBlockPath,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
@@ -231,6 +232,9 @@ impl RenderBlockPath {
         }
     }
 
+    /** Resolves / gets a reference to the block at a given path
+     * this internal variant of the function is used to traverse the path
+     * (using idx) recursively */
     fn resolve_block_mut_internal<'b, G: BlockGfx>(
         &self,
         block: &'b mut Block<G>,
@@ -253,6 +257,7 @@ impl RenderBlockPath {
         }
     }
 
+    /** Resolves / gets a reference to the block at a given path */
     pub fn resolve_block_mut<'b, G: BlockGfx>(
         &self,
         block: &'b mut Block<G>,
