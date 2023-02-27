@@ -12,6 +12,11 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
 
+pub struct BlockRenderParents<'a, 'p, G: BlockGfx> {
+    parent: Option<&'a mut BlockRenderParents<'p, 'p, G>>,
+    gfx_block: &'a mut G,
+}
+
 /* Ideally we want clear ownership of render blocks, like having a set of top level blocks, and then
 add/ remove those wilth all their descendents. */
 
@@ -25,7 +30,7 @@ pub trait BlockGfx: std::fmt::Debug + Sized {
     fn render(
         &mut self,
         location: &RenderBlockLocation,
-        parent: &mut Self,
+        parents: &BlockRenderParents<Self>,
         block: &mut MetaBlock<Self>,
     );
 }
@@ -287,6 +292,7 @@ impl<BG: BlockGfx> Block<BG> {
         }
     }
 }
+
 impl<BG: BlockGfx> MetaBlock<BG> {
     pub fn hash_block_recursively<H: Hasher>(&self, hasher: &mut H) {
         match self.wire_description {
@@ -310,7 +316,12 @@ impl<BG: BlockGfx> MetaBlock<BG> {
             }
         }
     }
-    pub fn process_block_recursively(&mut self, parent_gfx: &mut BG) {
+    // TODO: Figure out how to best pass parent references in a stack here
+    pub fn process_block_recursively<'a, 'p>(
+        &mut self,
+        parent_gfx: &'a mut BG,
+        grandparent_gfx: &'p mut BlockRenderParents<'a, 'p, BG>,
+    ) {
         let (wire_description, container) = self.destruct_mut();
         let RenderBlockDescription::MetaBox(mb) = wire_description else {
             panic!("Render meta box should not be called with a description that is not a meta box")
@@ -330,7 +341,11 @@ impl<BG: BlockGfx> MetaBlock<BG> {
                 let mut moved_block = block.unwrap().take().unwrap();
                 /* The bloc is temporary moved out of the storage, so storage can be passed on as mutable */
                 let (block, gfx) = moved_block.destruct_mut();
-                gfx.render(&location, parent_gfx, block);
+                let new_parent = BlockRenderParents {
+                    gfx_block: parent_gfx,
+                    parent: Some(grandparent_gfx),
+                };
+                gfx.render(&location, &new_parent, block);
                 // Put the block back
                 let post_block = container.block_ref_mut(location.id);
                 let post_block_inner = post_block.unwrap();

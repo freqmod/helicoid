@@ -2,7 +2,8 @@ use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
 use helicoid_protocol::block_manager::{
-    BlockContainer, BlockGfx, InteriorBlockContainer, ManagerGfx, MetaBlock, RenderBlockFullId,
+    BlockContainer, BlockGfx, BlockRenderParents, InteriorBlockContainer, ManagerGfx, MetaBlock,
+    RenderBlockFullId,
 };
 use helicoid_protocol::gfx::{PointF16, RemoteBoxUpdate, RenderBlockLocation};
 use helicoid_protocol::{
@@ -307,7 +308,7 @@ impl BlockGfx for SkiaClientRenderBlock {
     fn render(
         &mut self,
         location: &RenderBlockLocation,
-        parent: &mut Self,
+        parents: &BlockRenderParents<Self>,
         block: &mut MetaBlock<Self>,
     ) {
         todo!()
