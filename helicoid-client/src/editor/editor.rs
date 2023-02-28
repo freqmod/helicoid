@@ -57,7 +57,7 @@ impl HeliconeEditor {
         }
     }
     fn try_connect(inner: Arc<TMutex<Option<HeliconeEditorInner>>>, addr: String) {
-        let _ = tokio::spawn(async move {
+        let _ = tokio::task::spawn_local(async move {
             loop {
                 match ClientTcpBridge::connect(&addr).await {
                     Ok((mut bridge, sender, receiver)) => {

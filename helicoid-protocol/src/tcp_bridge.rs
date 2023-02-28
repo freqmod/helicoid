@@ -160,7 +160,7 @@ impl<S: TcpBridgeServerConnectionState> TcpBridgeServer<S> {
         log::trace!("Handle connection");
         let (mut bridge, channel_tx, channel_rx) =
             ServerSingleTcpBridge::handle_connection(stream).unwrap();
-        tokio::spawn(async move { bridge.process_rxtx().await.unwrap() });
+        tokio::task::spawn_local(async move { bridge.process_rxtx().await.unwrap() });
         let mut connection_state = S::new_state(
             peer_addr,
             channel_tx,
@@ -212,7 +212,7 @@ impl<S> Drop for TcpBridgeServer<S> {
     }
 }
 
-type TBSSerializer = AllocSerializer<0x8000>;
+type TBSSerializer = AllocSerializer<0x4000>;
 impl<M> TcpBridgeSend<M>
 where
     M: Serialize<TBSSerializer>,
