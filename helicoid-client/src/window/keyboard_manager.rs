@@ -202,10 +202,13 @@ fn use_alt(alt: bool) -> bool {
 
 // The option or alt key is used on Macos for character set changes
 // and does not operate the same as other systems.
+
 #[cfg(target_os = "macos")]
 fn use_alt(alt: bool) -> bool {
-    let settings = SETTINGS.get::<KeyboardSettings>();
-    settings.macos_alt_is_meta && alt
+    /* TODO: Create logic for getting this from settings again */
+    //    let settings = SETTINGS.get::<KeyboardSettings>();
+    //    settings.macos_alt_is_meta && alt
+    false
 }
 /*
 #[cfg(not(target_os = "macos"))]
@@ -213,16 +216,16 @@ fn key_event_text(key_event: &KeyboardInput) -> Option<&str> {
     key_event.key_without_modifiers().to_text()
 }
 */
-
+/*
 #[cfg(target_os = "macos")]
 fn key_event_text(key_event: &KeyboardInput) -> Option<&str> {
     let settings = SETTINGS.get::<KeyboardSettings>();
     if settings.macos_alt_is_meta {
-        key_event.text
+        key_event.
     } else {
         key_event.text_with_all_modifiers()
     }
-}
+}*/
 
 fn or_empty(condition: bool, text: &str) -> &str {
     if condition {

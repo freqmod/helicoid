@@ -25,13 +25,17 @@ pub type ChangeGeneration = u8;
 /* This file contains renderer agnostic render block logic for keeping track of a (client side)
 tree of render blocks */
 pub trait BlockGfx: std::fmt::Debug + Sized {
+    type RenderTarget<'a>
+    where
+        Self: 'a;
     //    fn hash(); // consider if we can use ownership to mark stuff as dirty
     //    fn render();
-    fn render(
+    fn render<'b>(
         &mut self,
         location: &RenderBlockLocation,
         parents: &BlockRenderParents<Self>,
         block: &mut MetaBlock<Self>,
+        target: &mut Self::RenderTarget<'b>,
     );
 }
 
@@ -321,6 +325,7 @@ impl<BG: BlockGfx> MetaBlock<BG> {
         &mut self,
         parent_gfx: &'a mut BG,
         grandparent_gfx: &'p mut BlockRenderParents<'a, 'p, BG>,
+        target: &mut BG::RenderTarget<'a>,
     ) {
         let (wire_description, container) = self.destruct_mut();
         let RenderBlockDescription::MetaBox(mb) = wire_description else {
@@ -339,13 +344,13 @@ impl<BG: BlockGfx> MetaBlock<BG> {
             let block = container.block_ref_mut(location.id);
             if block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
                 let mut moved_block = block.unwrap().take().unwrap();
-                /* The bloc is temporary moved out of the storage, so storage can be passed on as mutable */
+                /* The block is temporary moved out of the storage, so storage can be passed on as mutable */
                 let (block, gfx) = moved_block.destruct_mut();
                 let new_parent = BlockRenderParents {
                     gfx_block: parent_gfx,
                     parent: Some(grandparent_gfx),
                 };
-                gfx.render(&location, &new_parent, block);
+                gfx.render(&location, &new_parent, block, target);
                 // Put the block back
                 let post_block = container.block_ref_mut(location.id);
                 let post_block_inner = post_block.unwrap();

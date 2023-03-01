@@ -12,8 +12,8 @@ use helicoid_protocol::{
 };
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
-    BlendMode, Budgeted, Color, ISize, Image, ImageInfo, Paint, Point, Surface, SurfaceProps,
-    SurfacePropsFlags, Vector,
+    BlendMode, Budgeted, Canvas, Color, ISize, Image, ImageInfo, Paint, Point, Surface,
+    SurfaceProps, SurfacePropsFlags, Vector,
 };
 use smallvec::SmallVec;
 
@@ -28,6 +28,7 @@ struct RenderedRenderBlock {
 #[derive(Debug)]
 pub struct SkiaClientRenderBlock {
     rendered: Option<RenderedRenderBlock>,
+    //    canvas: Option<Canvas>
     //    id: RenderBlockId,
     //    wire_description: RenderBlockDescription,
 }
@@ -101,25 +102,29 @@ impl SkiaClientRenderBlock {
     pub fn render(
         &mut self,
         location: &RenderBlockLocation,
-        target: &mut Surface,
+        target_surface: &mut Surface,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         //        s
+        let mut target = SkiaClientRenderTarget {
+            location,
+            target_surface,
+        };
         match meta.wire_description() {
             RenderBlockDescription::ShapedTextBlock(_) => {
-                self.render_text_box(location, target, meta)
+                self.render_text_box(location, &mut target, meta)
             }
             RenderBlockDescription::SimpleDraw(_) => {
-                self.render_simple_draw(location, target, meta)
+                self.render_simple_draw(location, &mut target, meta)
             }
-            RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, target, meta),
+            RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, &mut target, meta),
         }
     }
     //    pub fn set_desc()
     pub fn render_text_box(
         &mut self,
         location: &RenderBlockLocation,
-        target: &mut Surface,
+        target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let RenderBlockDescription::ShapedTextBlock(stb) = &meta.wire_description() else {
@@ -140,7 +145,7 @@ impl SkiaClientRenderBlock {
         let mut paint = Paint::default();
         paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
-        let canvas = target.canvas();
+        let canvas = target.target_surface.canvas();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
         log::trace!("Draw text: {:?}", blobs);
@@ -181,7 +186,7 @@ impl SkiaClientRenderBlock {
     pub fn render_simple_draw(
         &mut self,
         location: &RenderBlockLocation,
-        target: &mut Surface,
+        target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
     }
@@ -199,17 +204,19 @@ impl SkiaClientRenderBlock {
             _ => self.wire_description().hash(hasher),
         }
     }*/
+
     /* This function renders a box containing other boxes, using a cached texture if it exists
     and the hash of the description matches the previously rendered contents */
     pub fn render_meta_box(
         &mut self,
         location: &RenderBlockLocation,
-        target: &mut Surface,
+        target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let RenderBlockDescription::MetaBox(mb) = &meta.wire_description() else {
             panic!("Render simple draw should not be called with a description that is not a simple draw")
         };
+        let target_surface = &mut target.target_surface;
         let mut hasher = DefaultHasher::new();
         location.hash(&mut hasher);
         //mb.hash(&mut hasher);
@@ -224,7 +231,7 @@ impl SkiaClientRenderBlock {
             we can do a proper equality comparision?*/
             if cached.description_hash == hashed {
                 /* Contents is already rendered, reuse the rendered image */
-                target.canvas().draw_image(
+                target_surface.canvas().draw_image(
                     &cached.image,
                     as_skpoint(&location.location),
                     Some(&paint),
@@ -232,12 +239,12 @@ impl SkiaClientRenderBlock {
                 return;
             }
         }
-        let mut context: DirectContext = target
+        let mut context: DirectContext = target_surface
             .recording_context()
             .map(|mut c| c.as_direct_context())
             .flatten()
             .unwrap();
-        let target_image_info = target.image_info();
+        let target_image_info = target_surface.image_info();
         let image_info = ImageInfo::new(
             ISize {
                 width: mb.extent.x() as i32,
@@ -263,7 +270,7 @@ impl SkiaClientRenderBlock {
             image: dest_surface.image_snapshot(),
             description_hash: hashed,
         });
-        target.canvas().draw_image(
+        target_surface.canvas().draw_image(
             &self.rendered.as_ref().unwrap().image,
             as_skpoint(&location.location),
             Some(&paint),
@@ -304,14 +311,33 @@ impl SkiaClientRenderBlock {
     }
 }
 
+pub struct SkiaClientRenderTarget<'a> {
+    location: &'a RenderBlockLocation,
+    target_surface: &'a mut Surface,
+}
 impl BlockGfx for SkiaClientRenderBlock {
+    type RenderTarget<'b> = SkiaClientRenderTarget<'b>;
+
     fn render(
         &mut self,
         location: &RenderBlockLocation,
         parents: &BlockRenderParents<Self>,
         block: &mut MetaBlock<Self>,
+        target: &mut Self::RenderTarget<'_>,
     ) {
-        todo!()
+        //        let target = parents.gfx_block.painter;
+        //        let desc = block.wire_description();
+        match block.wire_description() {
+            RenderBlockDescription::ShapedTextBlock(_) => {
+                //                self.render_text_box(location, target, meta)
+            }
+            RenderBlockDescription::SimpleDraw(_) => {
+                //                self.render_simple_draw(location, target, meta)
+            }
+            RenderBlockDescription::MetaBox(_) => {
+                self.render_meta_box(location, target, block);
+            }
+        }
     }
 }
 

@@ -8,3 +8,6 @@ members = [
 default-members = [
     "helicoid-client"
 ]
+
+[patch.crates-io]
+rkyv = { path = "../../Downloads/rkyv/rkyv" }

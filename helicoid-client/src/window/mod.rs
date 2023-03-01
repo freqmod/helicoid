@@ -529,8 +529,8 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         cmd_line_settings.x11_wm_class,
     );*/
 
-    #[cfg(target_os = "macos")]
-    let winit_window_builder = winit_window_builder.with_accepts_first_mouse(false);
+    //    #[cfg(target_os = "macos")]
+    //    let winit_window_builder = winit_window_builder.with_accepts_first_mouse(false);
 
     /*
         let builder = ContextBuilder::new()
@@ -708,8 +708,8 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
                 focused = FocusedState::Unfocused;
             }
             previous_frame_start = frame_start;
-            #[cfg(target_os = "macos")]
-            draw_background(&window_wrapper.windowed_context);
+            //            #[cfg(target_os = "macos")]
+            //            draw_background(&window_wrapper.windowed_context);
         }
 
         *control_flow = ControlFlow::WaitUntil(previous_frame_start + frame_duration)
