@@ -308,8 +308,8 @@ where
                         buffer_filled = 0;
                     }
                     else{
-                        data_read = self.tcp_conn.try_read(&mut buffer[buffer_filled..pkg_len-buffer_filled-PACKET_HEADER_LENGTH])?;
-
+                        //log::trace!("Read: {}..{}+{}-{} (of {})", buffer_filled, pkg_len, buffer_filled, PACKET_HEADER_LENGTH, buffer.len());
+                        data_read = self.tcp_conn.try_read(&mut buffer[buffer_filled..pkg_len+buffer_filled-PACKET_HEADER_LENGTH])?;
                     }
                     log::trace!("Received event data: {}", pkg_len);
                     buffer_filled += data_read;

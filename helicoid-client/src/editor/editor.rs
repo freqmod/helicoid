@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
-    renderer::block_renderer::{SkiaClientRenderBlock, SkiaGfxManager},
+    renderer::block_renderer::{SkiaClientRenderBlock, SkiaClientRenderTarget, SkiaGfxManager},
     HeliconeCommandLineArguments,
 };
 use helicoid_protocol::{
     block_manager::Manager,
-    gfx::{RenderBlockDescription, RenderBlockId},
+    gfx::{PointF16, RenderBlockDescription, RenderBlockId, RenderBlockLocation},
     input::{HelicoidToServerMessage, ViewportInfo},
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
@@ -345,7 +345,17 @@ impl HeliconeEditor {
         }
         log::trace!("Editor: got request to draw frame");
         self.peek_and_process_events();
-        //        self.renderer.render(root_surface);
+        let location = RenderBlockLocation {
+            id: RenderBlockId::normal(0).unwrap(),
+            location: PointF16::new(0.0, 0.0),
+            layer: 0,
+        };
+        let mut target = SkiaClientRenderTarget {
+            location: &location,
+            target_surface: root_surface,
+        };
+        self.renderer
+            .process_blocks_for_client(RenderBlockId::normal(1).unwrap(), &mut target);
         // render(root_surface);
         false
     }

@@ -218,6 +218,17 @@ impl<BG: BlockGfx> Manager<BG> {
             None
         }
     }
+
+    pub fn process_blocks_for_client<'t>(
+        &mut self,
+        client_id: RenderBlockId,
+        target: &mut BG::RenderTarget<'t>,
+    ) {
+        if let Some(render_block) = self.containers.get_mut(&client_id) {
+            let (mb, bg) = render_block.destruct_mut();
+            mb.process_block_recursively(bg, target);
+        }
+    }
 }
 
 impl<BG: BlockGfx> ContainerBlock<BG> {

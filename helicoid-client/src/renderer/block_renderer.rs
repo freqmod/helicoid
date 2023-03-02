@@ -329,8 +329,8 @@ impl SkiaClientRenderBlock {
 }
 
 pub struct SkiaClientRenderTarget<'a> {
-    location: &'a RenderBlockLocation,
-    target_surface: &'a mut Surface,
+    pub location: &'a RenderBlockLocation,
+    pub target_surface: &'a mut Surface,
 }
 impl BlockGfx for SkiaClientRenderBlock {
     type RenderTarget<'b> = SkiaClientRenderTarget<'b>;
