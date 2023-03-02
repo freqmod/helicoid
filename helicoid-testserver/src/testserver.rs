@@ -4,7 +4,7 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate,
-        RenderBlockDescription, RenderBlockLocation, RenderBlockPath,
+        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -147,22 +147,23 @@ impl ServerState {
         let mut shaped = shaper.shape(&string_to_shape, &None);
         let mut new_render_blocks = SmallVec::with_capacity(1);
         let new_shaped_string_block = NewRenderBlock {
-            id: 1000,
+            id: RenderBlockId::normal(1000).unwrap(),
             contents: RenderBlockDescription::ShapedTextBlock(shaped),
         };
         new_render_blocks.push(new_shaped_string_block);
         let mut render_block_locations = SmallVec::with_capacity(1);
         let shaped_string_location = RenderBlockLocation {
-            path: RenderBlockPath::new(smallvec![1]),
+            //path: RenderBlockPath::new(smallvec![1]),
+            id: RenderBlockId::normal(1000).unwrap(),
             layer: 0,
             location: PointF16::new(1.0, 1.0),
         };
         let meta_string_block = NewRenderBlock {
-            id: 1,
+            id: RenderBlockId::normal(1).unwrap(),
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
                 extent: PointF16::new(1000.0, 500.0),
                 sub_blocks: smallvec![RenderBlockLocation {
-                    path: RenderBlockPath::new(smallvec![1000]),
+                    id: RenderBlockId::normal(1000).unwrap(),
                     layer: 0,
                     location: PointF16::new(0.0, 0.0)
                 }],
@@ -171,6 +172,7 @@ impl ServerState {
         render_block_locations.push(shaped_string_location);
         new_render_blocks.push(meta_string_block);
         let box_update = RemoteBoxUpdate {
+            parent: RenderBlockPath::top(),
             new_render_blocks,
             remove_render_blocks: Default::default(),
             move_block_locations: render_block_locations,
