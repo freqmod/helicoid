@@ -212,6 +212,7 @@ impl SkiaClientRenderBlock {
         location: &RenderBlockLocation,
         target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
+        //        parents: &mut BlockRenderParents<Self>,
     ) {
         let RenderBlockDescription::MetaBox(mb) = &meta.wire_description() else {
             panic!("Render simple draw should not be called with a description that is not a simple draw")
@@ -266,20 +267,20 @@ impl SkiaClientRenderBlock {
             layer: location.layer,
         };
         self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
-        self.rendered = Some(RenderedRenderBlock {
+        /*        self.rendered = Some(RenderedRenderBlock {
             image: dest_surface.image_snapshot(),
             description_hash: hashed,
-        });
+        });*/
         target_surface.canvas().draw_image(
             &self.rendered.as_ref().unwrap().image,
             as_skpoint(&location.location),
             Some(&paint),
         );
     }
-    fn render_meta_box_contents(
-        &mut self,
-        _location: &RenderBlockLocation,
-        target: &mut Surface,
+    fn render_meta_box_contents<'a, 't, 'p>(
+        &'a mut self,
+        location: &'t RenderBlockLocation,
+        target: &'t mut Surface,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let (wire_description, container) = meta.destruct_mut();
@@ -289,6 +290,22 @@ impl SkiaClientRenderBlock {
         let container = container
             .as_mut()
             .expect("Expecting block to have container if wire description has children");
+        /*let mut target = SkiaClientRenderTarget {
+            location,
+            target_surface,
+        };*/
+        //        let popt = parents.parent.as_ref();
+        /*      let mut parents = BlockRenderParents::<Self> {
+            parent: popt,
+            gfx_block: &mut parents.gfx_block,
+        };*/
+        let mut skr_target = SkiaClientRenderTarget::<'t> {
+            location,
+            target_surface: target,
+        };
+        meta.process_block_recursively(self, &mut skr_target);
+
+        /*
         // How do we sort the blocks?
         let mut blocks =
             SmallVec::<[(RenderBlockLocation); 64]>::with_capacity(mb.sub_blocks.len());
@@ -307,7 +324,7 @@ impl SkiaClientRenderBlock {
                 let post_block_inner = post_block.unwrap();
                 *post_block_inner = Some(moved_block);
             }
-        }
+        }*/
     }
 }
 
@@ -321,7 +338,7 @@ impl BlockGfx for SkiaClientRenderBlock {
     fn render(
         &mut self,
         location: &RenderBlockLocation,
-        parents: &BlockRenderParents<Self>,
+        //        parents: &mut BlockRenderParents<Self>,
         block: &mut MetaBlock<Self>,
         target: &mut Self::RenderTarget<'_>,
     ) {

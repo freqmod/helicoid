@@ -12,9 +12,9 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
 
-pub struct BlockRenderParents<'a, 'p, G: BlockGfx> {
-    parent: Option<&'a mut BlockRenderParents<'p, 'p, G>>,
-    gfx_block: &'a mut G,
+pub struct BlockRenderParents<'a, 'b, 'p, G: BlockGfx> {
+    pub parent: Option<&'a mut BlockRenderParents<'p, 'p, 'p, G>>,
+    pub gfx_block: &'b mut G,
 }
 
 /* Ideally we want clear ownership of render blocks, like having a set of top level blocks, and then
@@ -33,7 +33,6 @@ pub trait BlockGfx: std::fmt::Debug + Sized {
     fn render<'b>(
         &mut self,
         location: &RenderBlockLocation,
-        parents: &BlockRenderParents<Self>,
         block: &mut MetaBlock<Self>,
         target: &mut Self::RenderTarget<'b>,
     );
@@ -321,11 +320,10 @@ impl<BG: BlockGfx> MetaBlock<BG> {
         }
     }
     // TODO: Figure out how to best pass parent references in a stack here
-    pub fn process_block_recursively<'a, 'p>(
+    pub fn process_block_recursively<'a, 't, 'p>(
         &mut self,
         parent_gfx: &'a mut BG,
-        grandparent_gfx: &'p mut BlockRenderParents<'a, 'p, BG>,
-        target: &mut BG::RenderTarget<'a>,
+        target: &mut BG::RenderTarget<'t>,
     ) {
         let (wire_description, container) = self.destruct_mut();
         let RenderBlockDescription::MetaBox(mb) = wire_description else {
@@ -346,11 +344,7 @@ impl<BG: BlockGfx> MetaBlock<BG> {
                 let mut moved_block = block.unwrap().take().unwrap();
                 /* The block is temporary moved out of the storage, so storage can be passed on as mutable */
                 let (block, gfx) = moved_block.destruct_mut();
-                let new_parent = BlockRenderParents {
-                    gfx_block: parent_gfx,
-                    parent: Some(grandparent_gfx),
-                };
-                gfx.render(&location, &new_parent, block, target);
+                gfx.render(&location, block, target);
                 // Put the block back
                 let post_block = container.block_ref_mut(location.id);
                 let post_block_inner = post_block.unwrap();
