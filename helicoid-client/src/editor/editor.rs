@@ -355,7 +355,7 @@ impl HeliconeEditor {
             target_surface: root_surface,
         };
         self.renderer
-            .process_blocks_for_client(RenderBlockId::normal(1).unwrap(), &mut target);
+            .process_blocks_for_client(RenderBlockId::normal(0).unwrap(), &mut target);
         // render(root_surface);
         false
     }

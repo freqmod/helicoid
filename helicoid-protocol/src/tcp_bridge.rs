@@ -293,7 +293,15 @@ where
                     let data_read;
                     if pkg_len == u16::MAX as usize{
                         /* Read u16 length prefix */
-                        data_read = self.tcp_conn.try_read(&mut buffer)?;
+                        data_read = match self.tcp_conn.try_read(&mut buffer){
+                            Ok(0) => {continue;},
+                            Ok(n) => {n},
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                continue;
+                            },
+                            Err(e) => { return Err(e.into())},
+                        };
+
                         if data_read == 0{
                             log::warn!("No data received: {}", data_read);
                             break;
@@ -330,6 +338,7 @@ where
                             Ok(_) =>{},
                             Err(e) => {
                                 /* There are no receiver anymore, close the socket receiver */
+                                log::trace!("Client channel send error");
                                 break;
                             },
                         }
@@ -354,6 +363,7 @@ where
                     }
                 },
               _ = self.chan.closed() =>{
+                    log::trace!("Client channel closed");
                     break;
                 }
             }

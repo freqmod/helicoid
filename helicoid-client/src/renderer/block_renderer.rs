@@ -99,6 +99,9 @@ impl SkiaClientRenderBlock {
             //            wire_description: desc,
         }
     }
+    pub fn new_top_block() -> Self {
+        Self { rendered: None }
+    }
     pub fn render(
         &mut self,
         location: &RenderBlockLocation,
@@ -110,14 +113,18 @@ impl SkiaClientRenderBlock {
             location,
             target_surface,
         };
-        match meta.wire_description() {
-            RenderBlockDescription::ShapedTextBlock(_) => {
-                self.render_text_box(location, &mut target, meta)
+        if let Some(wire_description) = meta.wire_description().as_ref() {
+            match wire_description {
+                RenderBlockDescription::ShapedTextBlock(_) => {
+                    self.render_text_box(location, &mut target, meta)
+                }
+                RenderBlockDescription::SimpleDraw(_) => {
+                    self.render_simple_draw(location, &mut target, meta)
+                }
+                RenderBlockDescription::MetaBox(_) => {
+                    self.render_meta_box(location, &mut target, meta)
+                }
             }
-            RenderBlockDescription::SimpleDraw(_) => {
-                self.render_simple_draw(location, &mut target, meta)
-            }
-            RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, &mut target, meta),
         }
     }
     //    pub fn set_desc()
@@ -127,9 +134,10 @@ impl SkiaClientRenderBlock {
         target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
-        let RenderBlockDescription::ShapedTextBlock(stb) = &meta.wire_description() else {
+        let Some(RenderBlockDescription::ShapedTextBlock(stb)) = &meta.wire_description() else {
             panic!("Render text box should not be called with a description that is not a ShapedTextBlock")
         };
+        log::trace!("Render text box: {:?} {:?}", meta.parent_path(), meta.id());
         /* TODO: Use and configuration  of blob builder and storage of fonts should be improved,
         probably delegated to storage */
         let mut blob_builder = ShapedBlobBuilder::new();
@@ -214,7 +222,7 @@ impl SkiaClientRenderBlock {
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
         //        parents: &mut BlockRenderParents<Self>,
     ) {
-        let RenderBlockDescription::MetaBox(mb) = &meta.wire_description() else {
+        let Some(RenderBlockDescription::MetaBox(mb)) = &meta.wire_description() else {
             panic!("Render simple draw should not be called with a description that is not a simple draw")
         };
         let target_surface = &mut target.target_surface;
@@ -267,10 +275,10 @@ impl SkiaClientRenderBlock {
             layer: location.layer,
         };
         self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
-        /*        self.rendered = Some(RenderedRenderBlock {
+        self.rendered = Some(RenderedRenderBlock {
             image: dest_surface.image_snapshot(),
             description_hash: hashed,
-        });*/
+        });
         target_surface.canvas().draw_image(
             &self.rendered.as_ref().unwrap().image,
             as_skpoint(&location.location),
@@ -284,7 +292,7 @@ impl SkiaClientRenderBlock {
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let (wire_description, container) = meta.destruct_mut();
-        let RenderBlockDescription::MetaBox(mb) = wire_description else {
+        let Some(RenderBlockDescription::MetaBox(mb)) = wire_description else {
             panic!("Render meta box should not be called with a description that is not a meta box")
         };
         let container = container
@@ -342,17 +350,18 @@ impl BlockGfx for SkiaClientRenderBlock {
         block: &mut MetaBlock<Self>,
         target: &mut Self::RenderTarget<'_>,
     ) {
+        log::trace!("Render block gfx");
         //        let target = parents.gfx_block.painter;
         //        let desc = block.wire_description();
-        match block.wire_description() {
-            RenderBlockDescription::ShapedTextBlock(_) => {
-                //                self.render_text_box(location, target, meta)
-            }
-            RenderBlockDescription::SimpleDraw(_) => {
-                //                self.render_simple_draw(location, target, meta)
-            }
-            RenderBlockDescription::MetaBox(_) => {
-                self.render_meta_box(location, target, block);
+        if let Some(wire_description) = block.wire_description().as_ref() {
+            match wire_description {
+                RenderBlockDescription::ShapedTextBlock(_) => {
+                    self.render_text_box(location, target, block)
+                }
+                RenderBlockDescription::SimpleDraw(_) => {
+                    self.render_simple_draw(location, target, block)
+                }
+                RenderBlockDescription::MetaBox(_) => self.render_meta_box(location, target, block),
             }
         }
     }
@@ -366,6 +375,10 @@ impl ManagerGfx<SkiaClientRenderBlock> for SkiaGfxManager {
         _id: RenderBlockId,
     ) -> SkiaClientRenderBlock {
         SkiaClientRenderBlock::new(wire_description)
+    }
+
+    fn create_top_block(&mut self, id: RenderBlockId) -> SkiaClientRenderBlock {
+        SkiaClientRenderBlock::new_top_block()
     }
 }
 impl SkiaGfxManager {

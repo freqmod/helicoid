@@ -191,7 +191,11 @@ impl RenderBlockPath {
     pub fn new(path: SmallVec<[RenderBlockId; 16]>) -> Self {
         Self { path }
     }
-
+    pub fn child(parent: &RenderBlockPath, child_id: RenderBlockId) -> Self {
+        let mut path = parent.path.clone();
+        path.push(child_id);
+        Self { path }
+    }
     pub fn path(&self) -> &SmallVec<[RenderBlockId; 16]> {
         &self.path
     }
@@ -241,6 +245,7 @@ impl RenderBlockPath {
         idx: usize,
     ) -> Option<&'b mut Block<G>> {
         if let Some(container) = block.meta_mut().as_container_mut() {
+            log::trace!("Resolve internal: {:?} ({})", container.path(), idx);
             let id = self.path[idx];
             let child = container.block_mut(id);
             if idx == self.path.len() - 1 {
@@ -265,6 +270,11 @@ impl RenderBlockPath {
         if block.meta_mut().as_container_mut().is_some() && !self.path.is_empty() {
             self.resolve_block_mut_internal(block, 0)
         } else {
+            log::trace!(
+                "Trying to resolve in empty container or empty path: {:?} / {:?}",
+                block.meta_mut().as_container_mut(),
+                self.path
+            );
             None
         }
     }

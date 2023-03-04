@@ -45,11 +45,12 @@ pub trait ManagerGfx<B: BlockGfx> {
         parent_path: RenderBlockPath,
         id: RenderBlockId,
     ) -> B;
+    fn create_top_block(&mut self, id: RenderBlockId) -> B;
 }
 
-pub trait BlockContainer<G: BlockGfx> {
+pub trait BlockContainer<G: BlockGfx>: std::fmt::Debug {
     fn path(&self) -> &RenderBlockPath;
-    fn add_block(&self, id: RenderBlockId, block: Block<G>) -> anyhow::Result<()>;
+    fn add_block(&mut self, id: RenderBlockId, block: Block<G>) -> anyhow::Result<()>;
     fn block(&self, id: RenderBlockId) -> Option<&Block<G>>;
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<G>>;
     fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<G>>>;
@@ -66,6 +67,7 @@ pub trait BlockContainer<G: BlockGfx> {
 #[derive(Debug)]
 struct ContainerBlock<G: BlockGfx> {
     layer: BlockLayer,
+    //location: PointF16,
     block: Option<Block<G>>,
     hash: u64,
     last_changed: ChangeGeneration,
@@ -87,7 +89,7 @@ pub struct RenderBlockFullId {
 #[derive(Debug)]
 pub struct MetaBlock<G: BlockGfx> {
     id: RenderBlockFullId,
-    wire_description: RenderBlockDescription,
+    wire_description: Option<RenderBlockDescription>,
     container: Option<InteriorBlockContainer<G>>,
     gfx_type: PhantomData<G>,
 }
@@ -97,6 +99,7 @@ pub struct Block<G: BlockGfx> {
     meta: MetaBlock<G>,
 }
 
+#[derive(Debug)]
 pub struct Manager<BG: BlockGfx> {
     /* The blocks are options so they can be moved out while rendering to enable the manager to be
     passed mutable for sub-blocks */
@@ -155,6 +158,14 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
                 }
             }
         }
+        cblock.layer = new_location.layer;
+        //        cblock.location = new_location.location;
+    }
+    fn container_block_mut(&mut self, id: RenderBlockId) -> Option<&mut ContainerBlock<G>> {
+        self.blocks.get_mut(&id).map(|b| {
+            b.last_changed = b.last_changed.wrapping_add(1);
+            b
+        })
     }
 }
 //MG: ManagerGfx<BG>
@@ -174,36 +185,75 @@ impl<BG: BlockGfx> Manager<BG> {
         gfx_manager: &mut MG,
     ) {
         if update.parent.path().is_empty() {
+            let mgr_entry = self.containers.entry(client_id).or_insert({
+                log::trace!("Make container entry for: {:?}", client_id);
+                Block::new(
+                    None,
+                    gfx_manager.create_top_block(client_id),
+                    client_id,
+                    RenderBlockPath::top(),
+                    Some(InteriorBlockContainer::new(RenderBlockPath::top())),
+                )
+            });
+
             /* If the block update is for a top level block */
             for block in update.new_render_blocks.iter() {
-                log::trace!("Update render block: {:?}", block.id);
+                log::trace!("Update new render block: {:?}", block.id);
                 //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
+                let container = match block.contents {
+                    RenderBlockDescription::ShapedTextBlock(_) => None,
+                    RenderBlockDescription::SimpleDraw(_) => None,
+                    RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
+                        RenderBlockPath::child(&update.parent, block.id),
+                    )),
+                };
                 let new_rendered_block = Block::new(
-                    block.contents.clone(),
+                    Some(block.contents.clone()),
                     gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
                     block.id,
                     update.parent.clone(),
+                    container,
                 );
-                if let Some(render_block) = self.containers.get_mut(&block.id) {
+                log::trace!("Render block to add: {:?}", new_rendered_block);
+                mgr_entry
+                    .meta
+                    .container
+                    .as_mut()
+                    .unwrap()
+                    .add_block(block.id, new_rendered_block)
+                    .unwrap();
+                /*                if let Some(render_block) =
+                    mgr_entry.meta.container.unwrap().blocks.get_mut(&block.id)
+                {
                     //                *render_block = new_rendered_block;
                     *render_block = new_rendered_block; //.handle_block_update(update, gfx_manager);
                 } else {
                     /* TODO: Replace unwrap with proper error handling */
-                    assert!(self
-                        .containers
-                        .insert(block.id, new_rendered_block)
-                        .is_none());
-                }
+                    /*                    assert!(self
+                    .containers
+                    .insert(block.id, new_rendered_block)
+                    .is_none());*/
+                }*/
             }
             for update in update.remove_render_blocks.iter() {
                 //                if let Some(render_block) = self.containers.get_mut(&block.id) {
-                assert!(update.mask.0 == 0xFF);
-                self.containers.remove(&update.offset);
+                mgr_entry
+                    .meta
+                    .container
+                    .as_mut()
+                    .unwrap()
+                    .remove_blocks(update.mask, update.offset);
             }
         } else {
             /* If the block update has a parent, find the parent and forward the update */
             if let Some(parent_block) = self.block_for_path_mut(client_id, &update.parent) {
                 parent_block.handle_block_update(update, gfx_manager);
+            } else {
+                log::debug!(
+                    "Could not get block for path: {:?} {:?}",
+                    client_id,
+                    update.parent
+                )
             }
         }
     }
@@ -213,8 +263,10 @@ impl<BG: BlockGfx> Manager<BG> {
         path: &RenderBlockPath,
     ) -> Option<&mut Block<BG>> {
         if let Some(render_block) = self.containers.get_mut(&id) {
+            log::trace!("Resolve {:?} in {:?}", path, render_block);
             path.resolve_block_mut(render_block)
         } else {
+            log::debug!("No container for client id: {:?}", id);
             None
         }
     }
@@ -225,8 +277,11 @@ impl<BG: BlockGfx> Manager<BG> {
         target: &mut BG::RenderTarget<'t>,
     ) {
         if let Some(render_block) = self.containers.get_mut(&client_id) {
+            log::trace!("Process blocks recursively for client id: {:?}", client_id);
             let (mb, bg) = render_block.destruct_mut();
             mb.process_block_recursively(bg, target);
+        } else {
+            log::trace!("Could not find any block to process for: {:?}", client_id);
         }
     }
 }
@@ -234,7 +289,8 @@ impl<BG: BlockGfx> Manager<BG> {
 impl<BG: BlockGfx> ContainerBlock<BG> {
     pub fn new(block: Block<BG>, layer: BlockLayer) -> Self {
         Self {
-            layer: 0,
+            layer,
+            //location,
             block: Some(block),
             hash: 0,
             last_changed: 0,
@@ -244,17 +300,18 @@ impl<BG: BlockGfx> ContainerBlock<BG> {
 
 impl<BG: BlockGfx> Block<BG> {
     pub fn new(
-        desc: RenderBlockDescription,
+        desc: Option<RenderBlockDescription>,
         render_info: BG,
         id: RenderBlockId,
         parent_path: RenderBlockPath,
+        container: Option<InteriorBlockContainer<BG>>,
     ) -> Self {
         Self {
             render_info,
             meta: MetaBlock {
                 wire_description: desc,
                 id: RenderBlockFullId { id, parent_path },
-                container: None,
+                container,
                 gfx_type: PhantomData::<BG>,
             },
         }
@@ -284,6 +341,11 @@ impl<BG: BlockGfx> Block<BG> {
         update: &RemoteBoxUpdate,
         gfx_manager: &mut MG,
     ) {
+        log::trace!(
+            "Block: Handle update: {:?}, {:?}",
+            self.meta.parent_path(),
+            self.meta.id
+        );
         let Some(container) = self.meta.container.as_mut() else{
             log::debug!("Trying to send RemoteBoxUpdate to a block that isn't a container");
             return;
@@ -292,11 +354,19 @@ impl<BG: BlockGfx> Block<BG> {
             container.remove_blocks(instruction.mask, instruction.offset);
         }
         for block in update.new_render_blocks.iter() {
+            let new_block_container = match block.contents {
+                RenderBlockDescription::ShapedTextBlock(_) => None,
+                RenderBlockDescription::SimpleDraw(_) => None,
+                RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
+                    RenderBlockPath::child(&update.parent, block.id),
+                )),
+            };
             let new_rendered_block = Block::new(
-                block.contents.clone(),
+                Some(block.contents.clone()),
                 gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
                 block.id,
                 update.parent.clone(),
+                new_block_container,
             );
             /* TODO: Replace unwrap with proper error handling */
             container.add_block(block.id, new_rendered_block).unwrap();
@@ -309,14 +379,16 @@ impl<BG: BlockGfx> Block<BG> {
 
 impl<BG: BlockGfx> MetaBlock<BG> {
     pub fn hash_block_recursively<H: Hasher>(&self, hasher: &mut H) {
-        match self.wire_description {
-            RenderBlockDescription::MetaBox(_) => self.hash_meta_box_recursively(hasher),
-            _ => self.wire_description.hash(hasher),
+        if let Some(wire_description) = self.wire_description.as_ref() {
+            match wire_description {
+                RenderBlockDescription::MetaBox(_) => self.hash_meta_box_recursively(hasher),
+                _ => self.wire_description.hash(hasher),
+            }
         }
     }
 
     pub fn hash_meta_box_recursively<H: Hasher>(&self, hasher: &mut H) {
-        let RenderBlockDescription::MetaBox(mb) = &self.wire_description else {
+        let Some(RenderBlockDescription::MetaBox(mb)) = &self.wire_description else {
             panic!("Hash meta box should not be called with a description that is not a meta box")
         };
         mb.hash(hasher);
@@ -330,56 +402,66 @@ impl<BG: BlockGfx> MetaBlock<BG> {
             }
         }
     }
-    // TODO: Figure out how to best pass parent references in a stack here
+
     pub fn process_block_recursively<'a, 't, 'p>(
         &mut self,
-        parent_gfx: &'a mut BG,
+        _parent_gfx: &'a mut BG,
         target: &mut BG::RenderTarget<'t>,
     ) {
-        let (wire_description, container) = self.destruct_mut();
-        let RenderBlockDescription::MetaBox(mb) = wire_description else {
-            panic!("Render meta box should not be called with a description that is not a meta box")
-        };
-        let container = container
+        log::trace!("Rendering block: {:?} ", self.id);
+        let container = self
+            .container
             .as_mut()
             .expect("Expecting block to have container if wire description has children");
-        // How do we sort the blocks?
-        let mut blocks =
-            SmallVec::<[(RenderBlockLocation); 64]>::with_capacity(mb.sub_blocks.len());
-        blocks.extend(mb.sub_blocks.iter().map(|b| b.clone()));
-        //blocks.extend(mb.sub_blocks.iter().map(|b| (b.id, b.layer, b.location)));
-        blocks.sort_by(|a, b| a.layer.cmp(&b.layer));
-        for location in blocks {
-            let block = container.block_ref_mut(location.id);
-            if block.as_ref().map(|b| b.is_some()).unwrap_or(false) {
-                let mut moved_block = block.unwrap().take().unwrap();
-                /* The block is temporary moved out of the storage, so storage can be passed on as mutable */
-                let (block, gfx) = moved_block.destruct_mut();
-                gfx.render(&location, block, target);
-                // Put the block back
-                let post_block = container.block_ref_mut(location.id);
-                let post_block_inner = post_block.unwrap();
-                *post_block_inner = Some(moved_block);
+        for (_layer_id, layer_blocks) in container.layers.iter() {
+            log::trace!(
+                "Render layer: {}: {:?}",
+                _layer_id,
+                layer_blocks.iter().map(|(b, _)| b.clone())
+            );
+            for (block_id, location) in layer_blocks {
+                let block_id = block_id.clone();
+                let container_block = container.blocks.get_mut(&block_id);
+                if let Some(container_block) = container_block {
+                    let mut moved_block = container_block.block.take().unwrap();
+                    /* The block is temporary moved out of the storage, so storage can be passed on as mutable */
+                    let (block, gfx) = moved_block.destruct_mut();
+                    let location = RenderBlockLocation {
+                        id: block_id,
+                        location: location.clone(),
+                        layer: container_block.layer,
+                    };
+                    gfx.render(&location, block, target);
+                    // Put the block back
+                    container_block.block = Some(moved_block);
+                }
             }
         }
     }
 
     pub fn as_container(&self) -> Option<&dyn BlockContainer<BG>> {
-        None
+        self.container
+            .as_ref()
+            .map(|c| c as &dyn BlockContainer<BG>)
     }
     pub fn as_container_mut(&mut self) -> Option<&mut dyn BlockContainer<BG>> {
-        None
+        self.container
+            .as_mut()
+            .map(|c| c as &mut dyn BlockContainer<BG>)
     }
     pub fn parent_path(&self) -> &RenderBlockPath {
         &self.id.parent_path
     }
-    pub fn wire_description(&self) -> &RenderBlockDescription {
+    pub fn id(&self) -> &RenderBlockId {
+        &self.id.id
+    }
+    pub fn wire_description(&self) -> &Option<RenderBlockDescription> {
         &self.wire_description
     }
     pub fn destruct_mut(
         &mut self,
     ) -> (
-        &mut RenderBlockDescription,
+        &mut Option<RenderBlockDescription>,
         &mut Option<InteriorBlockContainer<BG>>,
     ) {
         (&mut self.wire_description, &mut self.container)
@@ -391,8 +473,27 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
         &self.path
     }
 
-    fn add_block(&self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
-        todo!()
+    fn add_block(&mut self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
+        log::trace!("Adding block {:?} <- {:?}", self.path, id);
+        let container_block = ContainerBlock::new(block, 0);
+        if self.blocks.insert(id, container_block).is_none() {
+            log::trace!("Adding to layer");
+            /* TODO: Consider remove: Should we require a new location before displaying or display
+            items at a default location by this (which is slightly inefficent in the most likely case)*/
+            self.layers
+                .entry(0)
+                .or_insert(Default::default())
+                .push((id, PointF16::new(0f32, 0f32)));
+            Ok(())
+        } else {
+            /* TODO: Make a better, more structred error return */
+            log::warn!(
+                "Trying to add block when it already is present: {:?} {:?}",
+                self.path,
+                id
+            );
+            Ok(())
+        }
     }
 
     fn block(&self, id: RenderBlockId) -> Option<&Block<BG>> {
@@ -436,7 +537,7 @@ impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
         &self.path
     }
 
-    fn add_block(&self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
+    fn add_block(&mut self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
         todo!()
     }
 

@@ -145,13 +145,13 @@ impl ServerState {
             i.font_info.font_parameters.size = OrderedFloat(80.0f32);
         });
         let mut shaped = shaper.shape(&string_to_shape, &None);
-        let mut new_render_blocks = SmallVec::with_capacity(1);
+        //        let mut new_render_blocks = SmallVec::with_capacity(1);
         let new_shaped_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1000).unwrap(),
             contents: RenderBlockDescription::ShapedTextBlock(shaped),
         };
-        new_render_blocks.push(new_shaped_string_block);
-        let mut render_block_locations = SmallVec::with_capacity(1);
+        //        new_render_blocks.push(new_shaped_string_block);
+        //        let mut render_block_locations = SmallVec::with_capacity(1);
         let shaped_string_location = RenderBlockLocation {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1000).unwrap(),
@@ -169,19 +169,43 @@ impl ServerState {
                 }],
             }),
         };
-        render_block_locations.push(shaped_string_location);
-        new_render_blocks.push(meta_string_block);
+        let meta_block_location = RenderBlockLocation {
+            //path: RenderBlockPath::new(smallvec![1]),
+            id: RenderBlockId::normal(1).unwrap(),
+            layer: 0,
+            location: PointF16::new(1.0, 1.0),
+        };
+        //        render_block_locations.push(shaped_string_location);
+        //        render_block_locations.push(meta_block_location);
+        //        new_render_blocks.push(meta_string_block);
+
         let box_update = RemoteBoxUpdate {
             parent: RenderBlockPath::top(),
-            new_render_blocks,
+            new_render_blocks: smallvec![meta_string_block],
             remove_render_blocks: Default::default(),
-            move_block_locations: render_block_locations,
+            move_block_locations: smallvec![meta_block_location],
         };
         let msg = TcpBridgeToClientMessage {
             message: HelicoidToClientMessage { update: box_update },
         };
-        log::trace!("Prepared message, now sending it to the tcp bridge");
+        log::trace!("Prepared message1, now sending it to the tcp bridge");
         self.channel_tx.send(msg).await?;
+
+        let box_text_update = RemoteBoxUpdate {
+            parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+            new_render_blocks: smallvec![new_shaped_string_block],
+            remove_render_blocks: Default::default(),
+            move_block_locations: smallvec![shaped_string_location],
+        };
+        log::trace!("Prepared message2, now sending it to the tcp bridge");
+        self.channel_tx
+            .send(TcpBridgeToClientMessage {
+                message: HelicoidToClientMessage {
+                    update: box_text_update,
+                },
+            })
+            .await?;
+
         Ok(())
     }
 }
