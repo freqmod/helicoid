@@ -20,10 +20,17 @@ use smallvec::SmallVec;
 use crate::renderer::fonts::blob_builder::ShapedBlobBuilder;
 pub struct SkiaGfxManager {}
 
-#[derive(Debug)]
 struct RenderedRenderBlock {
     image: Image,
     description_hash: u64,
+}
+/* Implement debug manually as skia sometime panics when printing debug info for its images */
+impl std::fmt::Debug for RenderedRenderBlock{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+           f.debug_struct("RenderedRenderBlock")
+         .field("description_hash", &self.description_hash)
+         .finish()
+    }
 }
 #[derive(Debug)]
 pub struct SkiaClientRenderBlock {

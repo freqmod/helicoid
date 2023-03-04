@@ -142,7 +142,7 @@ impl ServerState {
         );
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
             i.font_color = 0xF000A030;
-            i.font_info.font_parameters.size = OrderedFloat(80.0f32);
+            i.font_info.font_parameters.size = OrderedFloat(20.0f32);
         });
         let mut shaped = shaper.shape(&string_to_shape, &None);
         //        let mut new_render_blocks = SmallVec::with_capacity(1);
