@@ -131,9 +131,9 @@ impl ServerState {
     async fn send_simple_test_shaped_string(&mut self) -> Result<()> {
         //        let editor = self.state_data.editor.lock();
         let mut shaper = CachingShaper::new(1.0f32);
-        //shaper.set_font_key(0, String::from("Anonymous Pro"));
+        shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
-        shaper.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
         shaper.set_font_key(2, String::from("NotoColorEmoji"));
         shaper.set_font_key(3, String::from("MissingGlyphs"));
         shaper.set_font_key(4, String::from("LastResort-Regular"));

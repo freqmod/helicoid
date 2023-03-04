@@ -14,9 +14,9 @@ half = {version = "2.1", features=["serde", "bytemuck"]}
 bytecheck = { version = "0.6.9", features = [] }
 rkyv = { version = "0.7", features = ["validation", "smallvec", "bytecheck"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
-swash = "0.1.4"
+swash = "0.1.6"
 lru = "0.9"
-unicode-segmentation = "1.10.0"
+unicode-segmentation = "1.10.1"
 derive-new = "0.5.9"
 itertools = "0.10.5"
 anyhow = {version="1.0.68"}

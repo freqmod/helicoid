@@ -41,7 +41,7 @@ swash = "0.1.6"
 time = "0.3.9"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7.1", features = ["compat"] }
-unicode-segmentation = "1.10.0"
+unicode-segmentation = "1.10.1"
 which = "4.2.5"
 winit = { version = "0.28"}
 xdg = "2.4.1"

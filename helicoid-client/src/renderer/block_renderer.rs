@@ -141,10 +141,13 @@ impl SkiaClientRenderBlock {
         /* TODO: Use and configuration  of blob builder and storage of fonts should be improved,
         probably delegated to storage */
         let mut blob_builder = ShapedBlobBuilder::new();
-        blob_builder.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        blob_builder.set_font_key(0, String::from("Anonymous Pro"));
+        //blob_builder.set_font_key(1, String::from("NotoSansMono-Regular"));
+        blob_builder.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
         blob_builder.set_font_key(2, String::from("NotoColorEmoji"));
         blob_builder.set_font_key(3, String::from("MissingGlyphs"));
         blob_builder.set_font_key(4, String::from("LastResort-Regular"));
+
         let shaped = stb;
         let blobs = blob_builder.bulid_blobs(&shaped);
         let mut x = 0f32;
