@@ -38,10 +38,10 @@ pub enum SimpleLineStyle {
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimplePaint {
-    line_color: u32,
-    fill_color: u32,
+    pub line_color: u32,
+    pub fill_color: u32,
     line_width: u16, // half float
-    line_style: SimpleLineStyle,
+    pub line_style: SimpleLineStyle,
 }
 #[derive(Hash, Eq, Copy, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
@@ -86,6 +86,8 @@ pub struct SimpleDrawPolygon {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleFill {
     pub paint: SimplePaint,
+    pub w: u16,
+    pub h: u16,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
@@ -154,6 +156,28 @@ pub struct HelicoidToClientMessage {
     pub update: RemoteBoxUpdate,
 }
 
+impl SimplePaint {
+    pub fn set_line_width(&mut self, line_width: f32) {
+        self.line_width = half::f16::from_f32(line_width).to_bits();
+    }
+    pub fn line_width(&self) -> f32 {
+        half::f16::from_bits(self.line_width).to_f32()
+    }
+}
+impl SimpleFill {
+    pub fn set_w(&mut self, w: f32) {
+        self.w = half::f16::from_f32(w).to_bits();
+    }
+    pub fn w(&self) -> f32 {
+        half::f16::from_bits(self.w).to_f32()
+    }
+    pub fn set_h(&mut self, h: f32) {
+        self.h = half::f16::from_f32(h).to_bits();
+    }
+    pub fn h(&self) -> f32 {
+        half::f16::from_bits(self.h).to_f32()
+    }
+}
 impl PointF16 {
     pub fn new(x: f32, y: f32) -> Self {
         Self {

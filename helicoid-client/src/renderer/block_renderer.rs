@@ -5,11 +5,14 @@ use helicoid_protocol::block_manager::{
     BlockContainer, BlockGfx, BlockRenderParents, InteriorBlockContainer, ManagerGfx, MetaBlock,
     RenderBlockFullId,
 };
-use helicoid_protocol::gfx::{PointF16, RemoteBoxUpdate, RenderBlockLocation};
+use helicoid_protocol::gfx::{
+    PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement, SimplePaint,
+};
 use helicoid_protocol::{
     gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
     text::ShapedTextBlock,
 };
+use skia_safe::canvas::PointMode;
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
     BlendMode, Budgeted, Canvas, Color, ISize, Image, ImageInfo, Paint, Point, Surface,
@@ -99,6 +102,20 @@ impl BlockManager {
     }
 }
 */
+fn simple_paint_to_sk_paint(sm_paint: &SimplePaint, fill: bool) -> Paint {
+    let mut sk_paint = Paint::default();
+    sk_paint.set_blend_mode(BlendMode::SrcOver);
+    sk_paint.set_anti_alias(true);
+    if fill {
+        sk_paint.set_color(sm_paint.fill_color);
+        sk_paint.set_style(skia_safe::PaintStyle::Fill);
+    } else {
+        sk_paint.set_style(skia_safe::PaintStyle::Stroke);
+        sk_paint.set_color(sm_paint.line_color);
+        sk_paint.set_stroke_width(sm_paint.line_width());
+    }
+    sk_paint
+}
 impl SkiaClientRenderBlock {
     pub fn new(_desc: &RenderBlockDescription) -> Self {
         Self {
@@ -207,6 +224,53 @@ impl SkiaClientRenderBlock {
         target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
+        let Some(RenderBlockDescription::SimpleDraw(sd)) = &meta.wire_description() else {
+            panic!("Render simple draw should not be called with a description that is not SimpleDraw")
+        };
+        log::trace!(
+            "Render simple draw: {:?} {:?}",
+            meta.parent_path(),
+            meta.id()
+        );
+        let mut paint = Paint::default();
+        paint.set_blend_mode(BlendMode::SrcOver);
+        paint.set_anti_alias(true);
+        let canvas = target.target_surface.canvas();
+        canvas.translate(Vector::new(location.location.x(), location.location.y()));
+
+        for element in &sd.draw_elements {
+            match element {
+                SimpleDrawElement::Polygon(sdp) => {
+                    let mut points =
+                        SmallVec::<[skia_safe::Point; 16]>::with_capacity(sdp.draw_elements.len());
+                    points.extend(
+                        sdp.draw_elements
+                            .iter()
+                            .map(|p| skia_safe::Point::new(p.x(), p.y())),
+                    );
+
+                    if (sdp.paint.fill_color >> 24 & 0xFF) != 0 {
+                        let polygon_fill_paint = simple_paint_to_sk_paint(&sdp.paint, true);
+                        canvas.draw_points(PointMode::Polygon, &points, &polygon_fill_paint);
+                    }
+                    if sdp.paint.line_width() != 0.0 {
+                        let polygon_stroke_paint = simple_paint_to_sk_paint(&sdp.paint, false);
+                        canvas.draw_points(PointMode::Polygon, &points, &polygon_stroke_paint);
+                    }
+                }
+                SimpleDrawElement::Fill(f) => {
+                    let rect = skia_safe::Rect::new(0f32, 0f32, f.w(), f.h());
+                    if (f.paint.fill_color >> 24 & 0xFF) != 0 {
+                        let rect_fill_paint = simple_paint_to_sk_paint(&f.paint, true);
+                        canvas.draw_rect(rect, &rect_fill_paint);
+                    }
+                    if f.paint.line_width() != 0.0 {
+                        let rect_stroke_paint = simple_paint_to_sk_paint(&f.paint, false);
+                        canvas.draw_rect(rect, &rect_stroke_paint);
+                    }
+                }
+            }
+        }
     }
 
     /* // Remove the hashing from the renderer, that is the domain of the meta
