@@ -6,7 +6,7 @@ use helicoid_protocol::{
         HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
         RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
         RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
-        SimplePaint, SimpleRoundRect,
+        SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -163,7 +163,7 @@ impl ServerState {
         let meta_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1).unwrap(),
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
-                extent: PointF16::new(1000.0, 500.0),
+                extent: PointF16::new(1500.0, 1500.0),
                 sub_blocks: smallvec![RenderBlockLocation {
                     id: RenderBlockId::normal(1000).unwrap(),
                     layer: 1,
@@ -214,25 +214,25 @@ impl ServerState {
             draw_elements: smallvec![
                 (
                     PathVerb::Move,
-                    PointF16::new(25.0, 25.0),
+                    PointF16::new(250.0, 250.0),
                     Default::default(),
                     Default::default()
                 ),
                 (
                     PathVerb::Cubic,
-                    PointF16::new(50.0, 50.0),
-                    PointF16::new(10.0, 20.0),
-                    PointF16::new(70.0, 80.0),
+                    PointF16::new(500.0, 500.0),
+                    PointF16::new(100.0, 200.0),
+                    PointF16::new(700.0, 800.0),
                 ),
                 (
                     PathVerb::Quad,
-                    PointF16::new(40.0, 90.0),
-                    PointF16::new(30.0, 80.0),
+                    PointF16::new(400.0, 900.0),
+                    PointF16::new(300.0, 800.0),
                     Default::default(),
                 ),
                 (
                     PathVerb::Line,
-                    PointF16::new(10.0, 30.0),
+                    PointF16::new(100.0, 300.0),
                     Default::default(),
                     Default::default(),
                 ),
@@ -244,19 +244,25 @@ impl ServerState {
                 ),
             ],
         };
+        let svg = SimpleSvg {
+            paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA3311DD), Some(5.0)),
+            location: PointF16::new(90.0, 60.0),
+            resource_name: smallvec![b't', b'e', b's', b't'],
+        };
         let fill_block = NewRenderBlock {
             id: RenderBlockId::normal(1001).unwrap(),
             contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
-                extent: PointF16::new(100f32, 30f32),
+                extent: PointF16::new(1000f32, 1000f32),
                 draw_elements: smallvec![
                     SimpleDrawElement::Polygon(polygon),
                     SimpleDrawElement::fill(SimplePaint::new(
                         Some(0xFF110022),
-                        Some(0x88009255),
+                        Some(0x11009255),
                         Some(0.5)
                     )),
                     SimpleDrawElement::RoundRect(rrect),
                     SimpleDrawElement::Path(path),
+                    SimpleDrawElement::SvgResource(svg),
                 ],
             }),
         };

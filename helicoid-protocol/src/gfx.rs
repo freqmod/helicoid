@@ -10,6 +10,8 @@ use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt;
 
+const SVG_RESOURCE_NAME_LEN: usize = 32;
+
 /* Simple painting interface for describing the user interface at the helix
 backend and transferring it to the front end in a render agnostic way */
 /* There are some special considerations to take into account for ids, see the implementation methods for details */
@@ -97,12 +99,21 @@ pub struct SimpleRoundRect {
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct SimpleSvg {
+    pub resource_name: SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>,
+    pub location: PointF16,
+    pub paint: SimplePaint,
+}
+
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub enum SimpleDrawElement {
     Path(SimpleDrawPath),
     Polygon(SimpleDrawPolygon),
     Fill(SimpleFill),
     RoundRect(SimpleRoundRect),
+    SvgResource(SimpleSvg),
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]

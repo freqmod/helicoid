@@ -15,8 +15,8 @@ use helicoid_protocol::{
 use skia_safe::canvas::PointMode;
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
-    BlendMode, Budgeted, Canvas, Color, ISize, Image, ImageInfo, Paint, Path, PathFillType, Point,
-    Surface, SurfaceProps, SurfacePropsFlags, Vector,
+    BlendMode, Budgeted, Canvas, Color, Data, Handle, ISize, Image, ImageInfo, Paint, Path,
+    PathFillType, Point, Size, Surface, SurfaceProps, SurfacePropsFlags, Vector,
 };
 use smallvec::SmallVec;
 
@@ -345,6 +345,70 @@ impl SkiaClientRenderBlock {
                     if f.paint.line_width() != 0.0 {
                         let rect_stroke_paint = simple_paint_to_sk_paint(&f.paint, false);
                         canvas.draw_rect(rect, &rect_stroke_paint);
+                    }
+                }
+                SimpleDrawElement::SvgResource(svg) => {
+                    /* TODO: We should really cache this svg as a pixmap */
+                    log::warn!("Currently svg drawing is unsupported");
+                    let resource_name_str = std::str::from_utf8(&svg.resource_name).unwrap();
+                    /* Make sure this is an acceptable / valid resource name */
+                    log::trace!("Render svg: {:?}", resource_name_str);
+                    assert!(resource_name_str.chars().all(|c| (('A' <= c && c <= 'Z')
+                        || ('a' <= c && c <= 'z')
+                        || ('0' <= c && c <= '9'))));
+                    assert!(resource_name_str.len() < 64);
+                    //                    let resource_re = Regex::new("^[A-Za-z0-9_]*$");
+                    let exe_path = std::env::current_exe().unwrap();
+                    let resource_path = exe_path
+                        .as_path()
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .join("assets")
+                        .join(resource_name_str)
+                        .with_extension("svg");
+                    let Ok(resource_contents) = std::fs::read_to_string(resource_path) else {
+                        log::trace!("Could not load data from svg path");
+                        continue};
+
+                    if let Ok(svg_tree) =
+                        usvg::Tree::from_str(&resource_contents, &Default::default())
+                    {
+                        let sk_paint = simple_paint_to_sk_paint(&svg.paint, true);
+                        let mut pixmap = tiny_skia::Pixmap::new(
+                            svg_tree.size.width() as u32,
+                            svg_tree.size.height() as u32,
+                        )
+                        .unwrap();
+                        let rendered = resvg::render(
+                            &svg_tree,
+                            usvg::FitTo::Original,
+                            tiny_skia::Transform::identity(),
+                            pixmap.as_mut(),
+                        );
+                        let pixmap_img = Image::from_raster_data(
+                            &ImageInfo::new(
+                                ISize::new(pixmap.width() as i32, pixmap.height() as i32),
+                                skia_safe::ColorType::RGBA8888,
+                                skia_safe::AlphaType::Premul,
+                                None,
+                            ),
+                            unsafe { Data::new_bytes(pixmap.data()) },
+                            4 * pixmap.width() as usize,
+                        )
+                        .unwrap();
+                        canvas.draw_image(
+                            pixmap_img,
+                            Point::new(location.location.x(), location.location.y()),
+                            Some(&sk_paint),
+                        );
+                    //                        let svg_paint = simple_paint_to_sk_paint(&svg.paint, true);
+                    //                        canvas.draw_path(&svg_h, &svg_paint);
+                    } else {
+                        log::trace!("Coult not parse svg");
                     }
                 }
             }

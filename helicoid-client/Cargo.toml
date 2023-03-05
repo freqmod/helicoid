@@ -53,6 +53,9 @@ anyhow = {version="1.0.68"}
 #skia-safe = {path = "/home/freqmod/Downloads/rust-skia/skia-safe/",features = ["gl"]}
 skia-safe = {version="0.58",features = ["gl"]}
 
+resvg = {version="0.29"}
+usvg = {version="0.29"}
+tiny-skia = {version="0.8.3"}
 
 [dev-dependencies]
 mockall = "0.11.0"
