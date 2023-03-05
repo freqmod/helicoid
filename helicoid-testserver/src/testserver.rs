@@ -3,9 +3,10 @@ use async_trait::async_trait;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
-        HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate,
-        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
-        SimpleDrawBlock, SimpleDrawElement, SimpleDrawPolygon, SimplePaint,
+        HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
+        RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
+        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
+        SimplePaint, SimpleRoundRect,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -202,6 +203,47 @@ impl ServerState {
             ],
             closed: true,
         };
+        let rrect = SimpleRoundRect {
+            paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA3311DD), Some(5.0)),
+            topleft: PointF16::new(50.0, 60.0),
+            bottomright: PointF16::new(100.0, 80.0),
+            roundedness: PointF16::new(5.0, 5.5),
+        };
+        let path = SimpleDrawPath {
+            paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAABB99DD), Some(5.0)),
+            draw_elements: smallvec![
+                (
+                    PathVerb::Move,
+                    PointF16::new(25.0, 25.0),
+                    Default::default(),
+                    Default::default()
+                ),
+                (
+                    PathVerb::Cubic,
+                    PointF16::new(50.0, 50.0),
+                    PointF16::new(10.0, 20.0),
+                    PointF16::new(70.0, 80.0),
+                ),
+                (
+                    PathVerb::Quad,
+                    PointF16::new(40.0, 90.0),
+                    PointF16::new(30.0, 80.0),
+                    Default::default(),
+                ),
+                (
+                    PathVerb::Line,
+                    PointF16::new(10.0, 30.0),
+                    Default::default(),
+                    Default::default(),
+                ),
+                (
+                    PathVerb::Close,
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                ),
+            ],
+        };
         let fill_block = NewRenderBlock {
             id: RenderBlockId::normal(1001).unwrap(),
             contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
@@ -213,6 +255,8 @@ impl ServerState {
                         Some(0x88009255),
                         Some(0.5)
                     )),
+                    SimpleDrawElement::RoundRect(rrect),
+                    SimpleDrawElement::Path(path),
                 ],
             }),
         };

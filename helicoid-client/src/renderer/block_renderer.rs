@@ -6,7 +6,7 @@ use helicoid_protocol::block_manager::{
     RenderBlockFullId,
 };
 use helicoid_protocol::gfx::{
-    PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement, SimplePaint,
+    PathVerb, PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement, SimplePaint,
 };
 use helicoid_protocol::{
     gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
@@ -260,6 +260,80 @@ impl SkiaClientRenderBlock {
                     if sdp.paint.line_width() != 0.0 {
                         let polygon_stroke_paint = simple_paint_to_sk_paint(&sdp.paint, false);
                         canvas.draw_path(&path, &polygon_stroke_paint);
+                    }
+                }
+                SimpleDrawElement::Path(sdp) => {
+                    let mut path = Path::new();
+                    for (verb, p1, p2, p3) in sdp.draw_elements.iter() {
+                        match verb {
+                            PathVerb::Move => {
+                                path.move_to(skia_safe::Point::new(p1.x(), p1.y()));
+                            }
+                            PathVerb::Line => {
+                                path.line_to(skia_safe::Point::new(p1.x(), p1.y()));
+                            }
+                            PathVerb::Quad => {
+                                path.quad_to(
+                                    skia_safe::Point::new(p1.x(), p1.y()),
+                                    skia_safe::Point::new(p2.x(), p2.y()),
+                                );
+                            }
+                            PathVerb::Conic => {
+                                path.conic_to(
+                                    skia_safe::Point::new(p1.x(), p1.y()),
+                                    skia_safe::Point::new(p2.x(), p2.y()),
+                                    p3.x(),
+                                );
+                            }
+                            PathVerb::Cubic => {
+                                path.cubic_to(
+                                    skia_safe::Point::new(p1.x(), p1.y()),
+                                    skia_safe::Point::new(p2.x(), p2.y()),
+                                    skia_safe::Point::new(p3.x(), p3.y()),
+                                );
+                            }
+                            PathVerb::Close => {
+                                path.close();
+                            }
+                            PathVerb::Done => {
+                                break;
+                            }
+                        }
+                    }
+                    log::trace!("Draw path: {:?} {:?}", path, sdp.paint);
+                    if (sdp.paint.fill_color >> 24 & 0xFF) != 0 {
+                        let polygon_fill_paint = simple_paint_to_sk_paint(&sdp.paint, true);
+                        canvas.draw_path(&path, &polygon_fill_paint);
+                    }
+                    if sdp.paint.line_width() != 0.0 {
+                        let polygon_stroke_paint = simple_paint_to_sk_paint(&sdp.paint, false);
+                        canvas.draw_path(&path, &polygon_stroke_paint);
+                    }
+                }
+                SimpleDrawElement::RoundRect(rr) => {
+                    let rect = skia_safe::Rect::new(
+                        rr.topleft.x(),
+                        rr.topleft.y(),
+                        rr.bottomright.x(),
+                        rr.bottomright.y(),
+                    );
+                    if (rr.paint.fill_color >> 24 & 0xFF) != 0 {
+                        let rect_fill_paint = simple_paint_to_sk_paint(&rr.paint, true);
+                        canvas.draw_round_rect(
+                            rect,
+                            rr.roundedness.x(),
+                            rr.roundedness.y(),
+                            &rect_fill_paint,
+                        );
+                    }
+                    if rr.paint.line_width() != 0.0 {
+                        let rect_stroke_paint = simple_paint_to_sk_paint(&rr.paint, false);
+                        canvas.draw_round_rect(
+                            rect,
+                            rr.roundedness.x(),
+                            rr.roundedness.y(),
+                            &rect_stroke_paint,
+                        );
                     }
                 }
                 SimpleDrawElement::Fill(f) => {

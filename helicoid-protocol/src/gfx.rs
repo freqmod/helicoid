@@ -50,12 +50,10 @@ pub struct PointF16 {
     x: u16, // half float
     y: u16, // half float
 }
-/*
-/// To be implemented
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[derive(IntoPrimitive)]
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, IntoPrimitive)]
+#[archive_attr(derive(Debug))]
 #[repr(u8)]
-enum PathVerb {
+pub enum PathVerb {
     Move,
     Line,
     Quad,
@@ -66,11 +64,11 @@ enum PathVerb {
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
-struct SimpleDrawPath {
-    paint: SimplePaint,
-    draw_elements: SmallVec<[(PathVerb, PointF16, PointF16, PointF16); 16]>,
+#[archive_attr(derive(Debug))]
+pub struct SimpleDrawPath {
+    pub paint: SimplePaint,
+    pub draw_elements: SmallVec<[(PathVerb, PointF16, PointF16, PointF16); 16]>,
 }
-*/
 
 /// Shorthand for draw path for simple polygons: The first element is move,
 /// the rest are points on the polygon. The polygon is then closed.
@@ -89,11 +87,22 @@ pub struct SimpleFill {
     pub paint: SimplePaint,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct SimpleRoundRect {
+    pub paint: SimplePaint,
+    pub topleft: PointF16,
+    pub bottomright: PointF16,
+    pub roundedness: PointF16,
+}
+
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
 pub enum SimpleDrawElement {
-    //    Path(SimpleDrawPath),
+    Path(SimpleDrawPath),
     Polygon(SimpleDrawPolygon),
     Fill(SimpleFill),
+    RoundRect(SimpleRoundRect),
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
