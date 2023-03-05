@@ -15,8 +15,8 @@ use helicoid_protocol::{
 use skia_safe::canvas::PointMode;
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
-    BlendMode, Budgeted, Canvas, Color, ISize, Image, ImageInfo, Paint, Point, Surface,
-    SurfaceProps, SurfacePropsFlags, Vector,
+    BlendMode, Budgeted, Canvas, Color, ISize, Image, ImageInfo, Paint, Path, PathFillType, Point,
+    Surface, SurfaceProps, SurfacePropsFlags, Vector,
 };
 use smallvec::SmallVec;
 
@@ -181,6 +181,7 @@ impl SkiaClientRenderBlock {
         paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
         let canvas = target.target_surface.canvas();
+        canvas.save();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
         log::trace!("Draw text: {:?}", blobs);
@@ -217,6 +218,7 @@ impl SkiaClientRenderBlock {
             );*/
             x += metadata_run.advance_x();
         }
+        canvas.restore();
     }
     pub fn render_simple_draw(
         &mut self,
@@ -236,6 +238,7 @@ impl SkiaClientRenderBlock {
         paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
         let canvas = target.target_surface.canvas();
+        canvas.save();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
         for element in &sd.draw_elements {
@@ -248,18 +251,19 @@ impl SkiaClientRenderBlock {
                             .iter()
                             .map(|p| skia_safe::Point::new(p.x(), p.y())),
                     );
-
+                    let path = Path::polygon(&points, sdp.closed, PathFillType::Winding, None);
+                    log::trace!("Draw polygon: {:?} {:?}", points, sdp.paint);
                     if (sdp.paint.fill_color >> 24 & 0xFF) != 0 {
                         let polygon_fill_paint = simple_paint_to_sk_paint(&sdp.paint, true);
-                        canvas.draw_points(PointMode::Polygon, &points, &polygon_fill_paint);
+                        canvas.draw_path(&path, &polygon_fill_paint);
                     }
                     if sdp.paint.line_width() != 0.0 {
                         let polygon_stroke_paint = simple_paint_to_sk_paint(&sdp.paint, false);
-                        canvas.draw_points(PointMode::Polygon, &points, &polygon_stroke_paint);
+                        canvas.draw_path(&path, &polygon_stroke_paint);
                     }
                 }
                 SimpleDrawElement::Fill(f) => {
-                    let rect = skia_safe::Rect::new(0f32, 0f32, f.w(), f.h());
+                    let rect = skia_safe::Rect::new(0f32, 0f32, sd.extent.x(), sd.extent.y());
                     if (f.paint.fill_color >> 24 & 0xFF) != 0 {
                         let rect_fill_paint = simple_paint_to_sk_paint(&f.paint, true);
                         canvas.draw_rect(rect, &rect_fill_paint);
@@ -271,6 +275,7 @@ impl SkiaClientRenderBlock {
                 }
             }
         }
+        canvas.restore();
     }
 
     /* // Remove the hashing from the renderer, that is the domain of the meta

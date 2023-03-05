@@ -5,6 +5,7 @@ use helicoid_protocol::{
     gfx::{
         HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate,
         RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
+        SimpleDrawBlock, SimpleDrawElement, SimpleDrawPolygon, SimplePaint,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -155,7 +156,7 @@ impl ServerState {
         let shaped_string_location = RenderBlockLocation {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1000).unwrap(),
-            layer: 0,
+            layer: 2,
             location: PointF16::new(1.0, 1.0),
         };
         let meta_string_block = NewRenderBlock {
@@ -164,7 +165,7 @@ impl ServerState {
                 extent: PointF16::new(1000.0, 500.0),
                 sub_blocks: smallvec![RenderBlockLocation {
                     id: RenderBlockId::normal(1000).unwrap(),
-                    layer: 0,
+                    layer: 1,
                     location: PointF16::new(0.0, 0.0)
                 }],
             }),
@@ -190,12 +191,43 @@ impl ServerState {
         };
         log::trace!("Prepared message1, now sending it to the tcp bridge");
         self.channel_tx.send(msg).await?;
+        let polygon = SimpleDrawPolygon {
+            paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAABB55DD), Some(5.0)),
+            draw_elements: smallvec![
+                PointF16::new(0.0, 0.0),
+                PointF16::new(150.0, 0.0),
+                PointF16::new(200.7, 300.9),
+                PointF16::new(150.3, 150.6),
+                PointF16::new(70.1, 20.5),
+            ],
+            closed: true,
+        };
+        let fill_block = NewRenderBlock {
+            id: RenderBlockId::normal(1001).unwrap(),
+            contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
+                extent: PointF16::new(100f32, 30f32),
+                draw_elements: smallvec![
+                    SimpleDrawElement::Polygon(polygon),
+                    SimpleDrawElement::fill(SimplePaint::new(
+                        Some(0xFF110022),
+                        Some(0x88009255),
+                        Some(0.5)
+                    )),
+                ],
+            }),
+        };
+        let fill_location = RenderBlockLocation {
+            //path: RenderBlockPath::new(smallvec![1]),
+            id: RenderBlockId::normal(1001).unwrap(),
+            layer: 0,
+            location: PointF16::new(10.0, 10.0),
+        };
 
         let box_text_update = RemoteBoxUpdate {
             parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
-            new_render_blocks: smallvec![new_shaped_string_block],
+            new_render_blocks: smallvec![new_shaped_string_block, fill_block],
             remove_render_blocks: Default::default(),
-            move_block_locations: smallvec![shaped_string_location],
+            move_block_locations: smallvec![shaped_string_location, fill_location],
         };
         log::trace!("Prepared message2, now sending it to the tcp bridge");
         self.channel_tx

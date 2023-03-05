@@ -79,6 +79,7 @@ struct SimpleDrawPath {
 pub struct SimpleDrawPolygon {
     pub paint: SimplePaint,
     pub draw_elements: SmallVec<[PointF16; 16]>,
+    pub closed: bool,
 }
 /// This element just fill the whole surface with the paint
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -86,8 +87,6 @@ pub struct SimpleDrawPolygon {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleFill {
     pub paint: SimplePaint,
-    pub w: u16,
-    pub h: u16,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
@@ -157,6 +156,14 @@ pub struct HelicoidToClientMessage {
 }
 
 impl SimplePaint {
+    pub fn new(line_color: Option<u32>, fill_color: Option<u32>, line_width: Option<f32>) -> Self {
+        Self {
+            line_color: line_color.unwrap_or(0),
+            fill_color: fill_color.unwrap_or(0),
+            line_width: half::f16::from_f32(line_width.unwrap_or(0f32)).to_bits(),
+            line_style: SimpleLineStyle::None,
+        }
+    }
     pub fn set_line_width(&mut self, line_width: f32) {
         self.line_width = half::f16::from_f32(line_width).to_bits();
     }
@@ -164,18 +171,9 @@ impl SimplePaint {
         half::f16::from_bits(self.line_width).to_f32()
     }
 }
-impl SimpleFill {
-    pub fn set_w(&mut self, w: f32) {
-        self.w = half::f16::from_f32(w).to_bits();
-    }
-    pub fn w(&self) -> f32 {
-        half::f16::from_bits(self.w).to_f32()
-    }
-    pub fn set_h(&mut self, h: f32) {
-        self.h = half::f16::from_f32(h).to_bits();
-    }
-    pub fn h(&self) -> f32 {
-        half::f16::from_bits(self.h).to_f32()
+impl SimpleDrawElement {
+    pub fn fill(paint: SimplePaint) -> Self {
+        Self::Fill(SimpleFill { paint })
     }
 }
 impl PointF16 {
