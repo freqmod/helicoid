@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
+    redraw_scheduler::REDRAW_SCHEDULER,
     renderer::block_renderer::{SkiaClientRenderBlock, SkiaClientRenderTarget, SkiaGfxManager},
     HeliconeCommandLineArguments,
 };
@@ -320,6 +321,7 @@ impl HeliconeEditor {
                             update,
                             &mut self.graphics_manager,
                         );
+                        REDRAW_SCHEDULER.queue_next_frame();
                     }
                     Err(e) => match e {
                         tokio::sync::mpsc::error::TryRecvError::Empty => {
