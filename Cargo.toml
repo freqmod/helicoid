@@ -10,4 +10,4 @@ default-members = [
 ]
 
 [patch.crates-io]
-rkyv = { path = "../../Downloads/rkyv/rkyv" }
+rkyv = { git = "https://github.com/rkyv/rkyv.git"}

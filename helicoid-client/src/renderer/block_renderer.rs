@@ -25,11 +25,11 @@ struct RenderedRenderBlock {
     description_hash: u64,
 }
 /* Implement debug manually as skia sometime panics when printing debug info for its images */
-impl std::fmt::Debug for RenderedRenderBlock{
+impl std::fmt::Debug for RenderedRenderBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-           f.debug_struct("RenderedRenderBlock")
-         .field("description_hash", &self.description_hash)
-         .finish()
+        f.debug_struct("RenderedRenderBlock")
+            .field("description_hash", &self.description_hash)
+            .finish()
     }
 }
 #[derive(Debug)]
