@@ -10,7 +10,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt;
 
-const SVG_RESOURCE_NAME_LEN: usize = 32;
+pub const SVG_RESOURCE_NAME_LEN: usize = 32;
 
 /* Simple painting interface for describing the user interface at the helix
 backend and transferring it to the front end in a render agnostic way */
@@ -103,6 +103,7 @@ pub struct SimpleRoundRect {
 pub struct SimpleSvg {
     pub resource_name: SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>,
     pub location: PointF16,
+    pub extent: PointF16,
     pub paint: SimplePaint,
 }
 

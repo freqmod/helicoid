@@ -1,5 +1,5 @@
-use std::collections::{hash_map::DefaultHasher, HashMap};
-use std::hash::{Hash, Hasher};
+use hashbrown::HashMap;
+use std::hash::{BuildHasher, Hash, Hasher};
 
 use helicoid_protocol::block_manager::{
     BlockContainer, BlockGfx, BlockRenderParents, InteriorBlockContainer, ManagerGfx, MetaBlock,
@@ -7,11 +7,13 @@ use helicoid_protocol::block_manager::{
 };
 use helicoid_protocol::gfx::{
     PathVerb, PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement, SimplePaint,
+    SVG_RESOURCE_NAME_LEN,
 };
 use helicoid_protocol::{
     gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
     text::ShapedTextBlock,
 };
+use parking_lot::Mutex;
 use skia_safe::canvas::PointMode;
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
@@ -21,6 +23,78 @@ use skia_safe::{
 use smallvec::SmallVec;
 
 use crate::renderer::fonts::blob_builder::ShapedBlobBuilder;
+
+lazy_static! {
+    static ref SVG_CACHE: SvgResourcePixmapCache = SvgResourcePixmapCache::new();
+}
+
+struct SvgResourcePixmapCache {
+    resources: Mutex<HashMap<SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>, HashMap<(u16, u16), Vec<u8>>>>,
+}
+impl SvgResourcePixmapCache {
+    pub fn new() -> Self {
+        Self {
+            resources: Mutex::new(Default::default()),
+        }
+    }
+    pub fn fetch_resource<F: FnOnce(&Vec<u8>, u32, u32) -> V, V>(
+        &self,
+        name: &SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>,
+        size: &PointF16,
+        handle: F,
+    ) -> Option<V> {
+        let mut res = self.resources.lock();
+        if !res.contains_key(name) {
+            res.insert(name.clone(), HashMap::default());
+        }
+        let name_resource = res.get_mut(name).unwrap();
+        let resource_name_str = std::str::from_utf8(name).unwrap();
+        let sx = size.x().round() as u16;
+        let sy = size.y().round() as u16;
+        match name_resource.entry((sx, sy)) {
+            hashbrown::hash_map::Entry::Occupied(e) => {
+                Some(handle(e.into_mut(), sx as u32, sy as u32))
+            }
+            hashbrown::hash_map::Entry::Vacant(ve) => {
+                let exe_path = std::env::current_exe().unwrap();
+                let resource_path = exe_path
+                    .as_path()
+                    .parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .join("assets")
+                    .join(resource_name_str)
+                    .with_extension("svg");
+                let Ok(resource_contents) = std::fs::read_to_string(resource_path) else {
+                        log::trace!("Could not load data from svg path");
+                return None;
+            };
+
+                if let Ok(svg_tree) = usvg::Tree::from_str(&resource_contents, &Default::default())
+                {
+                    let mut pixmap = tiny_skia::Pixmap::new(sx as u32, sy as u32).unwrap();
+                    resvg::render(
+                        &svg_tree,
+                        usvg::FitTo::Size(sx as u32, sy as u32),
+                        tiny_skia::Transform::identity(),
+                        pixmap.as_mut(),
+                    )
+                    .unwrap();
+                    let rdata = pixmap.data();
+                    let mut rvec = Vec::with_capacity(rdata.len());
+                    rvec.extend_from_slice(rdata);
+                    Some(handle(ve.insert(rvec), sx as u32, sy as u32))
+                } else {
+                    log::trace!("Coult not parse svg");
+                    None
+                }
+            }
+        }
+    }
+}
 pub struct SkiaGfxManager {}
 
 struct RenderedRenderBlock {
@@ -357,47 +431,17 @@ impl SkiaClientRenderBlock {
                         || ('a' <= c && c <= 'z')
                         || ('0' <= c && c <= '9'))));
                     assert!(resource_name_str.len() < 64);
-                    //                    let resource_re = Regex::new("^[A-Za-z0-9_]*$");
-                    let exe_path = std::env::current_exe().unwrap();
-                    let resource_path = exe_path
-                        .as_path()
-                        .parent()
-                        .unwrap()
-                        .parent()
-                        .unwrap()
-                        .parent()
-                        .unwrap()
-                        .join("assets")
-                        .join(resource_name_str)
-                        .with_extension("svg");
-                    let Ok(resource_contents) = std::fs::read_to_string(resource_path) else {
-                        log::trace!("Could not load data from svg path");
-                        continue};
-
-                    if let Ok(svg_tree) =
-                        usvg::Tree::from_str(&resource_contents, &Default::default())
-                    {
+                    SVG_CACHE.fetch_resource(&svg.resource_name, &svg.extent, |data, sx, sy| {
                         let sk_paint = simple_paint_to_sk_paint(&svg.paint, true);
-                        let mut pixmap = tiny_skia::Pixmap::new(
-                            svg_tree.size.width() as u32,
-                            svg_tree.size.height() as u32,
-                        )
-                        .unwrap();
-                        let rendered = resvg::render(
-                            &svg_tree,
-                            usvg::FitTo::Original,
-                            tiny_skia::Transform::identity(),
-                            pixmap.as_mut(),
-                        );
                         let pixmap_img = Image::from_raster_data(
                             &ImageInfo::new(
-                                ISize::new(pixmap.width() as i32, pixmap.height() as i32),
+                                ISize::new(sx as i32, sy as i32),
                                 skia_safe::ColorType::RGBA8888,
                                 skia_safe::AlphaType::Premul,
                                 None,
                             ),
-                            unsafe { Data::new_bytes(pixmap.data()) },
-                            4 * pixmap.width() as usize,
+                            unsafe { Data::new_bytes(&data) },
+                            4 * sx as usize,
                         )
                         .unwrap();
                         canvas.draw_image(
@@ -405,11 +449,7 @@ impl SkiaClientRenderBlock {
                             Point::new(location.location.x(), location.location.y()),
                             Some(&sk_paint),
                         );
-                    //                        let svg_paint = simple_paint_to_sk_paint(&svg.paint, true);
-                    //                        canvas.draw_path(&svg_h, &svg_paint);
-                    } else {
-                        log::trace!("Coult not parse svg");
-                    }
+                    });
                 }
             }
         }
@@ -443,7 +483,7 @@ impl SkiaClientRenderBlock {
             panic!("Render simple draw should not be called with a description that is not a simple draw")
         };
         let target_surface = &mut target.target_surface;
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = ahash::random_state::RandomState::new().build_hasher();
         location.hash(&mut hasher);
         //mb.hash(&mut hasher);
         meta.hash_block_recursively(&mut hasher);

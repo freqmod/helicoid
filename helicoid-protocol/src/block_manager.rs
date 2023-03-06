@@ -7,9 +7,8 @@ use crate::gfx::RenderBlockDescription;
 use crate::gfx::RenderBlockId;
 use crate::gfx::RenderBlockLocation;
 use crate::gfx::RenderBlockPath;
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::hash::Hasher;
+use hashbrown::HashMap;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 pub struct BlockRenderParents<'a, 'b, 'p, G: BlockGfx> {
@@ -185,7 +184,7 @@ impl<BG: BlockGfx> Manager<BG> {
         gfx_manager: &mut MG,
     ) {
         if update.parent.path().is_empty() {
-            let mgr_entry = self.containers.entry(client_id).or_insert({
+            let mgr_entry = self.containers.entry(client_id).or_insert_with(|| {
                 log::trace!("Make container entry for: {:?}", client_id);
                 Block::new(
                     None,

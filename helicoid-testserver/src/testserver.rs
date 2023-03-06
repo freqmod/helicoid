@@ -247,6 +247,7 @@ impl ServerState {
         let svg = SimpleSvg {
             paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA3311DD), Some(5.0)),
             location: PointF16::new(90.0, 60.0),
+            extent: PointF16::new(512.0, 512.0),
             resource_name: smallvec![b't', b'e', b's', b't'],
         };
         let fill_block = NewRenderBlock {

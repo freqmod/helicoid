@@ -24,4 +24,5 @@ num_enum = {version= "0.5.7"}
 tokio = { version = "1", features = ["full"] , optional = true}
 async-trait={version ="0.1.60"}
 futures = { version = "0.3.25" }
+hashbrown = {version = "0.13.2"}
 
