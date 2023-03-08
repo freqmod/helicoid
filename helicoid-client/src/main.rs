@@ -26,7 +26,7 @@ fn main() {
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_time()
-        .thread_stack_size(4 * 1024 * 1024) // Especially in debug mode the font shaping stuff may need some more stack
+        .thread_stack_size(16 * 1024 * 1024) // Especially in debug mode the font shaping stuff may need some more stack
         .enable_io()
         .build()
         .unwrap();

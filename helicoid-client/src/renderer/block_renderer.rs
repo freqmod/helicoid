@@ -14,6 +14,7 @@ use helicoid_protocol::{
     text::ShapedTextBlock,
 };
 use parking_lot::Mutex;
+use skia_safe as skia;
 use skia_safe::canvas::PointMode;
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
@@ -178,13 +179,13 @@ impl BlockManager {
 */
 fn simple_paint_to_sk_paint(sm_paint: &SimplePaint, fill: bool) -> Paint {
     let mut sk_paint = Paint::default();
-    sk_paint.set_blend_mode(BlendMode::SrcOver);
+    sk_paint.set_blend_mode(BlendMode::Overlay);
     sk_paint.set_anti_alias(true);
     if fill {
         sk_paint.set_color(sm_paint.fill_color);
-        sk_paint.set_style(skia_safe::PaintStyle::Fill);
+        sk_paint.set_style(skia::PaintStyle::Fill);
     } else {
-        sk_paint.set_style(skia_safe::PaintStyle::Stroke);
+        sk_paint.set_style(skia::PaintStyle::Stroke);
         sk_paint.set_color(sm_paint.line_color);
         sk_paint.set_stroke_width(sm_paint.line_width());
     }
@@ -265,7 +266,7 @@ impl SkiaClientRenderBlock {
         }
         let mut rect_paint = Paint::default();
         rect_paint.set_stroke_width(1.0);
-        rect_paint.set_style(skia_safe::PaintStyle::Stroke);
+        rect_paint.set_style(skia::PaintStyle::Stroke);
         for metadata_run in shaped.metadata_runs.iter() {
             if metadata_run.font_info.font_parameters.underlined {
                 canvas.draw_line(
@@ -311,7 +312,57 @@ impl SkiaClientRenderBlock {
         let mut paint = Paint::default();
         paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
-        let canvas = target.target_surface.canvas();
+        let any_bg_blur = sd.draw_elements.iter().any(|e| match e {
+            SimpleDrawElement::Fill(f) => f.paint.background_blur_amount() > 0f32,
+            SimpleDrawElement::RoundRect(rr) => rr.paint.background_blur_amount() > 0f32,
+            _ => false,
+        });
+        let canvas = if any_bg_blur {
+            let image = target.target_surface.image_snapshot();
+            let mut image_filter = None;
+            /* Blur the target surface at the areas filled by the squares */
+            for element in &sd.draw_elements {
+                let filter_rect_info = match element {
+                    SimpleDrawElement::Fill(f) if f.paint.background_blur_amount() > 0f32 => {
+                        Some((
+                            skia::IRect::new(0, 0, sd.extent.x() as i32, sd.extent.y() as i32),
+                            f.paint.background_blur_amount(),
+                        ))
+                    }
+                    SimpleDrawElement::RoundRect(rr)
+                        if rr.paint.background_blur_amount() > 0f32 =>
+                    {
+                        Some((
+                            skia::IRect::new(
+                                rr.topleft.x() as i32,
+                                rr.topleft.y() as i32,
+                                rr.bottomright.x() as i32,
+                                rr.bottomright.y() as i32,
+                            ),
+                            rr.paint.background_blur_amount(),
+                        ))
+                    }
+                    _ => None,
+                };
+                if let Some((filter_rect, blur_amount)) = filter_rect_info {
+                    image_filter = skia::image_filters::blur(
+                        (blur_amount, blur_amount),
+                        skia::TileMode::Clamp,
+                        image_filter.take(),
+                        filter_rect,
+                    );
+                }
+            }
+            let canvas = target.target_surface.canvas();
+            //canvas.set_image_filter(image_filter);
+            let mut paint = skia::Paint::default();
+            paint.set_image_filter(image_filter);
+            canvas.draw_image(image, (0, 0), Some(&paint));
+            canvas
+        } else {
+            target.target_surface.canvas()
+        };
+
         canvas.save();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
@@ -319,11 +370,11 @@ impl SkiaClientRenderBlock {
             match element {
                 SimpleDrawElement::Polygon(sdp) => {
                     let mut points =
-                        SmallVec::<[skia_safe::Point; 16]>::with_capacity(sdp.draw_elements.len());
+                        SmallVec::<[skia::Point; 16]>::with_capacity(sdp.draw_elements.len());
                     points.extend(
                         sdp.draw_elements
                             .iter()
-                            .map(|p| skia_safe::Point::new(p.x(), p.y())),
+                            .map(|p| skia::Point::new(p.x(), p.y())),
                     );
                     let path = Path::polygon(&points, sdp.closed, PathFillType::Winding, None);
                     log::trace!("Draw polygon: {:?} {:?}", points, sdp.paint);
@@ -341,29 +392,29 @@ impl SkiaClientRenderBlock {
                     for (verb, p1, p2, p3) in sdp.draw_elements.iter() {
                         match verb {
                             PathVerb::Move => {
-                                path.move_to(skia_safe::Point::new(p1.x(), p1.y()));
+                                path.move_to(skia::Point::new(p1.x(), p1.y()));
                             }
                             PathVerb::Line => {
-                                path.line_to(skia_safe::Point::new(p1.x(), p1.y()));
+                                path.line_to(skia::Point::new(p1.x(), p1.y()));
                             }
                             PathVerb::Quad => {
                                 path.quad_to(
-                                    skia_safe::Point::new(p1.x(), p1.y()),
-                                    skia_safe::Point::new(p2.x(), p2.y()),
+                                    skia::Point::new(p1.x(), p1.y()),
+                                    skia::Point::new(p2.x(), p2.y()),
                                 );
                             }
                             PathVerb::Conic => {
                                 path.conic_to(
-                                    skia_safe::Point::new(p1.x(), p1.y()),
-                                    skia_safe::Point::new(p2.x(), p2.y()),
+                                    skia::Point::new(p1.x(), p1.y()),
+                                    skia::Point::new(p2.x(), p2.y()),
                                     p3.x(),
                                 );
                             }
                             PathVerb::Cubic => {
                                 path.cubic_to(
-                                    skia_safe::Point::new(p1.x(), p1.y()),
-                                    skia_safe::Point::new(p2.x(), p2.y()),
-                                    skia_safe::Point::new(p3.x(), p3.y()),
+                                    skia::Point::new(p1.x(), p1.y()),
+                                    skia::Point::new(p2.x(), p2.y()),
+                                    skia::Point::new(p3.x(), p3.y()),
                                 );
                             }
                             PathVerb::Close => {
@@ -385,7 +436,7 @@ impl SkiaClientRenderBlock {
                     }
                 }
                 SimpleDrawElement::RoundRect(rr) => {
-                    let rect = skia_safe::Rect::new(
+                    let rect = skia::Rect::new(
                         rr.topleft.x(),
                         rr.topleft.y(),
                         rr.bottomright.x(),
@@ -411,9 +462,9 @@ impl SkiaClientRenderBlock {
                     }
                 }
                 SimpleDrawElement::Fill(f) => {
-                    let rect = skia_safe::Rect::new(0f32, 0f32, sd.extent.x(), sd.extent.y());
+                    let rect = skia::Rect::new(0f32, 0f32, sd.extent.x(), sd.extent.y());
                     if (f.paint.fill_color >> 24 & 0xFF) != 0 {
-                        let rect_fill_paint = simple_paint_to_sk_paint(&f.paint, true);
+                        let mut rect_fill_paint = simple_paint_to_sk_paint(&f.paint, true);
                         canvas.draw_rect(rect, &rect_fill_paint);
                     }
                     if f.paint.line_width() != 0.0 {
@@ -436,8 +487,8 @@ impl SkiaClientRenderBlock {
                         let pixmap_img = Image::from_raster_data(
                             &ImageInfo::new(
                                 ISize::new(sx as i32, sy as i32),
-                                skia_safe::ColorType::RGBA8888,
-                                skia_safe::AlphaType::Premul,
+                                skia::ColorType::RGBA8888,
+                                skia::AlphaType::Premul,
                                 None,
                             ),
                             unsafe { Data::new_bytes(&data) },
@@ -648,7 +699,7 @@ fn build_sub_surface(context: &mut DirectContext, image_info: ImageInfo) -> Surf
     let budgeted = Budgeted::Yes;
     let surface_origin = SurfaceOrigin::TopLeft;
     // Subpixel layout (should be configurable/obtained from fontconfig).
-    let props = SurfaceProps::new(SurfacePropsFlags::default(), skia_safe::PixelGeometry::RGBH);
+    let props = SurfaceProps::new(SurfacePropsFlags::default(), skia::PixelGeometry::RGBH);
     Surface::new_render_target(
         context,
         budgeted,

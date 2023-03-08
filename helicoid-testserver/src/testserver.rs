@@ -158,7 +158,7 @@ impl ServerState {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1000).unwrap(),
             layer: 2,
-            location: PointF16::new(1.0, 1.0),
+            location: PointF16::new(1.0, 300.0),
         };
         let meta_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1).unwrap(),
@@ -280,6 +280,7 @@ impl ServerState {
             remove_render_blocks: Default::default(),
             move_block_locations: smallvec![shaped_string_location, fill_location],
         };
+
         log::trace!("Prepared message2, now sending it to the tcp bridge");
         self.channel_tx
             .send(TcpBridgeToClientMessage {
@@ -288,6 +289,43 @@ impl ServerState {
                 },
             })
             .await?;
+        let mut overlay_paint = SimplePaint::new(Some(0x03110022), Some(0x88009255), Some(0.5));
+        overlay_paint.set_background_blur_amount(20.0);
+        let overlay_fill_block = NewRenderBlock {
+            id: RenderBlockId::normal(1002).unwrap(),
+            contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
+                extent: PointF16::new(750f32, 750f32),
+                draw_elements: smallvec![
+                    SimpleDrawElement::fill(overlay_paint),
+                    SimpleDrawElement::RoundRect(SimpleRoundRect {
+                        paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA0099EE), Some(5.0)),
+                        topleft: PointF16::new(50.0, 60.0),
+                        bottomright: PointF16::new(500.0, 450.0),
+                        roundedness: PointF16::new(20.0, 30.0),
+                    })
+                ],
+            }),
+        };
+        let overlay_fill_block_location = RenderBlockLocation {
+            //path: RenderBlockPath::new(smallvec![1]),
+            id: RenderBlockId::normal(1002).unwrap(),
+            layer: 5,
+            location: PointF16::new(25.0, 25.0),
+        };
+
+        self.channel_tx
+            .send(TcpBridgeToClientMessage {
+                message: HelicoidToClientMessage {
+                    update: RemoteBoxUpdate {
+                        parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+                        new_render_blocks: smallvec![overlay_fill_block],
+                        remove_render_blocks: Default::default(),
+                        move_block_locations: smallvec![overlay_fill_block_location],
+                    },
+                },
+            })
+            .await?;
+        log::trace!("Prepared message3, now sending it to the tcp bridge");
 
         Ok(())
     }

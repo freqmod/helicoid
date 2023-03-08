@@ -33,6 +33,8 @@ pub struct RenderBlockPath {
 #[derive(IntoPrimitive)]
 #[repr(u8)]
 pub enum SimpleLineStyle {
+    Rounded,
+    Angled,
     None,
 }
 
@@ -42,7 +44,8 @@ pub enum SimpleLineStyle {
 pub struct SimplePaint {
     pub line_color: u32,
     pub fill_color: u32,
-    line_width: u16, // half float
+    line_width: u16,             // half float
+    background_blur_amount: u16, // half float
     pub line_style: SimpleLineStyle,
 }
 #[derive(Hash, Eq, Copy, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
@@ -183,6 +186,7 @@ impl SimplePaint {
             fill_color: fill_color.unwrap_or(0),
             line_width: half::f16::from_f32(line_width.unwrap_or(0f32)).to_bits(),
             line_style: SimpleLineStyle::None,
+            background_blur_amount: half::f16::from_f32(0f32).to_bits(),
         }
     }
     pub fn set_line_width(&mut self, line_width: f32) {
@@ -190,6 +194,12 @@ impl SimplePaint {
     }
     pub fn line_width(&self) -> f32 {
         half::f16::from_bits(self.line_width).to_f32()
+    }
+    pub fn set_background_blur_amount(&mut self, background_blur_amount: f32) {
+        self.background_blur_amount = half::f16::from_f32(background_blur_amount).to_bits();
+    }
+    pub fn background_blur_amount(&self) -> f32 {
+        half::f16::from_bits(self.background_blur_amount).to_f32()
     }
 }
 impl SimpleDrawElement {
