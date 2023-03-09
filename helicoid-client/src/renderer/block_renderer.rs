@@ -179,7 +179,7 @@ impl BlockManager {
 */
 fn simple_paint_to_sk_paint(sm_paint: &SimplePaint, fill: bool) -> Paint {
     let mut sk_paint = Paint::default();
-    sk_paint.set_blend_mode(BlendMode::Overlay);
+    sk_paint.set_blend_mode(BlendMode::SrcOver);
     sk_paint.set_anti_alias(true);
     if fill {
         sk_paint.set_color(sm_paint.fill_color);
@@ -310,7 +310,7 @@ impl SkiaClientRenderBlock {
             meta.id()
         );
         let mut paint = Paint::default();
-        paint.set_blend_mode(BlendMode::SrcOver);
+        paint.set_blend_mode(BlendMode::Overlay);
         paint.set_anti_alias(true);
         let any_bg_blur = sd.draw_elements.iter().any(|e| match e {
             SimpleDrawElement::Fill(f) => f.paint.background_blur_amount() > 0f32,
@@ -319,13 +319,14 @@ impl SkiaClientRenderBlock {
         });
         let canvas = if any_bg_blur {
             let image = target.target_surface.image_snapshot();
+            let canvas = target.target_surface.canvas();
             let mut image_filter = None;
             /* Blur the target surface at the areas filled by the squares */
             for element in &sd.draw_elements {
                 let filter_rect_info = match element {
                     SimpleDrawElement::Fill(f) if f.paint.background_blur_amount() > 0f32 => {
                         Some((
-                            skia::IRect::new(0, 0, sd.extent.x() as i32, sd.extent.y() as i32),
+                            skia::Rect::new(0.0, 0.0, sd.extent.x(), sd.extent.y()),
                             f.paint.background_blur_amount(),
                         ))
                     }
@@ -333,11 +334,11 @@ impl SkiaClientRenderBlock {
                         if rr.paint.background_blur_amount() > 0f32 =>
                     {
                         Some((
-                            skia::IRect::new(
-                                rr.topleft.x() as i32,
-                                rr.topleft.y() as i32,
-                                rr.bottomright.x() as i32,
-                                rr.bottomright.y() as i32,
+                            skia::Rect::new(
+                                rr.topleft.x(),
+                                rr.topleft.y(),
+                                rr.bottomright.x(),
+                                rr.bottomright.y(),
                             ),
                             rr.paint.background_blur_amount(),
                         ))
@@ -345,15 +346,23 @@ impl SkiaClientRenderBlock {
                     _ => None,
                 };
                 if let Some((filter_rect, blur_amount)) = filter_rect_info {
+                    log::debug!("Dev transform: {:?}", canvas.local_to_device_as_3x3());
                     image_filter = skia::image_filters::blur(
                         (blur_amount, blur_amount),
                         skia::TileMode::Clamp,
                         image_filter.take(),
-                        filter_rect,
+                        skia::matrix::Matrix::concat(
+                            &skia::matrix::Matrix::translate(Vector::new(
+                                location.location.x(),
+                                location.location.y(),
+                            )),
+                            &canvas.local_to_device_as_3x3(),
+                        )
+                        .map_rect(filter_rect)
+                        .0,
                     );
                 }
             }
-            let canvas = target.target_surface.canvas();
             //canvas.set_image_filter(image_filter);
             let mut paint = skia::Paint::default();
             paint.set_image_filter(image_filter);
@@ -541,7 +550,7 @@ impl SkiaClientRenderBlock {
         /* TODO: All referenced blocks needs to be recursively hashed here for it to work */
         let hashed = hasher.finish();
         let mut paint = Paint::default();
-        paint.set_blend_mode(BlendMode::SrcOver);
+        paint.set_blend_mode(BlendMode::Overlay);
         paint.set_anti_alias(true);
         if let Some(cached) = &self.rendered {
             /* TODO: Do we trust the hash here, or do we want to store the previous contents too so
@@ -556,42 +565,54 @@ impl SkiaClientRenderBlock {
                 return;
             }
         }
-        let mut context: DirectContext = target_surface
-            .recording_context()
-            .map(|mut c| c.as_direct_context())
-            .flatten()
-            .unwrap();
-        let target_image_info = target_surface.image_info();
-        let image_info = ImageInfo::new(
-            ISize {
-                width: mb.extent.x() as i32,
-                height: mb.extent.y() as i32,
-            },
-            target_image_info.color_type(),
-            target_image_info.alpha_type(),
-            target_image_info.color_space(),
-        );
-        let mut dest_surface = build_sub_surface(&mut context, image_info.clone());
-        log::trace!(
-            "Meta box surface: {:?} (image info: {:?})",
-            dest_surface,
-            image_info
-        );
-        let adjusted_location = RenderBlockLocation {
-            id: location.id,
-            location: PointF16::default(),
-            layer: location.layer,
-        };
-        self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
-        self.rendered = Some(RenderedRenderBlock {
-            image: dest_surface.image_snapshot(),
-            description_hash: hashed,
-        });
-        target_surface.canvas().draw_image(
-            &self.rendered.as_ref().unwrap().image,
-            as_skpoint(&location.location),
-            Some(&paint),
-        );
+        if mb.buffered {
+            let mut context: DirectContext = target_surface
+                .recording_context()
+                .map(|mut c| c.as_direct_context())
+                .flatten()
+                .unwrap();
+            let target_image_info = target_surface.image_info();
+            let image_info = ImageInfo::new(
+                ISize {
+                    width: mb.extent.x() as i32,
+                    height: mb.extent.y() as i32,
+                },
+                target_image_info.color_type(),
+                target_image_info.alpha_type(),
+                target_image_info.color_space(),
+            );
+            let mut dest_surface = build_sub_surface(&mut context, image_info.clone());
+            log::trace!(
+                "Meta box surface: {:?} (image info: {:?})",
+                dest_surface,
+                image_info
+            );
+            let adjusted_location = RenderBlockLocation {
+                id: location.id,
+                location: PointF16::default(),
+                layer: location.layer,
+            };
+            self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
+            self.rendered = Some(RenderedRenderBlock {
+                image: dest_surface.image_snapshot(),
+                description_hash: hashed,
+            });
+            target_surface.canvas().draw_image(
+                &self.rendered.as_ref().unwrap().image,
+                as_skpoint(&location.location),
+                Some(&paint),
+            );
+        } else {
+            let adjusted_location = RenderBlockLocation {
+                id: location.id,
+                location: location.location,
+                layer: location.layer,
+            };
+            self.rendered = None;
+            target_surface.canvas().save();
+            self.render_meta_box_contents(&adjusted_location, target_surface, meta);
+            target_surface.canvas().restore();
+        }
     }
     fn render_meta_box_contents<'a, 't, 'p>(
         &'a mut self,

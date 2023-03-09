@@ -153,7 +153,7 @@ impl Renderer {
     #[allow(clippy::needless_collect)]
     pub fn draw_frame(&mut self, root_surface: &mut Surface, dt: f32) -> bool {
         let root_canvas = root_surface.canvas();
-        root_canvas.draw_color(Color::YELLOW, None);
+        root_canvas.draw_color(Color::MAGENTA, None);
         //self.font_draw_test(root_canvas);
         /* Draw editor contents*/
         self.editor.draw_frame(root_surface, dt);

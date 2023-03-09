@@ -164,6 +164,7 @@ impl ServerState {
             id: RenderBlockId::normal(1).unwrap(),
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
                 extent: PointF16::new(1500.0, 1500.0),
+                buffered: false,
                 sub_blocks: smallvec![RenderBlockLocation {
                     id: RenderBlockId::normal(1000).unwrap(),
                     layer: 1,
@@ -296,11 +297,15 @@ impl ServerState {
             contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
                 extent: PointF16::new(750f32, 750f32),
                 draw_elements: smallvec![
-                    SimpleDrawElement::fill(overlay_paint),
+                    SimpleDrawElement::fill(SimplePaint::new(
+                        Some(0xFFAABBCC),
+                        Some(0xAA0099EE),
+                        Some(5.0)
+                    )),
                     SimpleDrawElement::RoundRect(SimpleRoundRect {
-                        paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA0099EE), Some(5.0)),
+                        paint: overlay_paint,
                         topleft: PointF16::new(50.0, 60.0),
-                        bottomright: PointF16::new(500.0, 450.0),
+                        bottomright: PointF16::new(800.0, 450.0),
                         roundedness: PointF16::new(20.0, 30.0),
                     })
                 ],

@@ -130,6 +130,7 @@ pub struct SimpleDrawBlock {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct MetaDrawBlock {
     pub extent: PointF16,
+    pub buffered: bool,
     pub sub_blocks: SmallVec<[RenderBlockLocation; 64]>,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
