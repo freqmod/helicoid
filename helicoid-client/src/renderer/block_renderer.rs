@@ -604,7 +604,8 @@ impl SkiaClientRenderBlock {
         if let Some(cached) = &self.rendered {
             /* TODO: Do we trust the hash here, or do we want to store the previous contents too so
             we can do a proper equality comparision?*/
-            if cached.description_hash == hashed {
+            if cached.description_hash == hashed && !meta.contains_blur() {
+                log::trace!("Reused hash: {} for {:?}", hashed, self);
                 /* Contents is already rendered, reuse the rendered image */
                 target_surface.canvas().draw_image(
                     &cached.image,
@@ -631,6 +632,7 @@ impl SkiaClientRenderBlock {
                 target_image_info.color_space(),
             );
             let mut dest_surface = build_sub_surface(&mut context, image_info.clone());
+            dest_surface.canvas().clear(Color::new(0));
             log::trace!(
                 "Meta box surface: {:?} (image info: {:?})",
                 dest_surface,
@@ -659,6 +661,7 @@ impl SkiaClientRenderBlock {
                 } else {
                     src_img
                 };
+            paint.set_blend_mode(BlendMode::SrcOver);
             target_surface.canvas().draw_image(
                 src_img,
                 as_skpoint(&location.location),

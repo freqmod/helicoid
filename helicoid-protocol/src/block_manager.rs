@@ -7,6 +7,7 @@ use crate::gfx::RenderBlockDescription;
 use crate::gfx::RenderBlockId;
 use crate::gfx::RenderBlockLocation;
 use crate::gfx::RenderBlockPath;
+use crate::gfx::SimpleDrawElement;
 use hashbrown::HashMap;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -403,6 +404,33 @@ impl<BG: BlockGfx> MetaBlock<BG> {
                 false.hash(hasher);
             }
         }
+    }
+
+    pub fn contains_blur(&self) -> bool {
+        match self.wire_description.as_ref() {
+            Some(RenderBlockDescription::MetaBox(mb)) => {
+                for block in mb.sub_blocks.iter() {
+                    let render_block = self.container.as_ref().map(|c| c.block(block.id)).flatten();
+                    if render_block.is_some() {
+                        let extracted_block = render_block.unwrap();
+                        if extracted_block.meta().contains_blur() {
+                            return true;
+                        }
+                    }
+                }
+            }
+            Some(RenderBlockDescription::SimpleDraw(sd)) => {
+                if sd.draw_elements.iter().any(|e| match e {
+                    SimpleDrawElement::Fill(f) => f.paint.background_blur_amount() > 0f32,
+                    SimpleDrawElement::RoundRect(rr) => rr.paint.background_blur_amount() > 0f32,
+                    _ => false,
+                }) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+        false
     }
 
     pub fn process_block_recursively<'a, 't, 'p>(
