@@ -491,6 +491,7 @@ impl SkiaClientRenderBlock {
                         || ('a' <= c && c <= 'z')
                         || ('0' <= c && c <= '9'))));
                     assert!(resource_name_str.len() < 64);
+                    /* This is slow when rendering, ideally it should be made async and communicate when it is done */
                     SVG_CACHE.fetch_resource(&svg.resource_name, &svg.extent, |data, sx, sy| {
                         let sk_paint = simple_paint_to_sk_paint(&svg.paint, true);
                         let pixmap_img = Image::from_raster_data(

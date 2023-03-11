@@ -77,6 +77,8 @@ pub struct InteriorBlockContainer<G: BlockGfx> {
     path: RenderBlockPath,
     blocks: HashMap<RenderBlockId, ContainerBlock<G>>,
     layers: HashMap<BlockLayer, Vec<(RenderBlockId, PointF16)>>,
+    /* Used when iterating trough sublayers. Declare it here to avoid repeated heap allications */
+    sorted_layers_tmp: SmallVec<[BlockLayer; 16]>,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq)]
@@ -112,6 +114,7 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
         Self {
             layers: Default::default(),
             blocks: Default::default(),
+            sorted_layers_tmp: Default::default(),
             path,
         }
     }
@@ -412,13 +415,22 @@ impl<BG: BlockGfx> MetaBlock<BG> {
             .container
             .as_mut()
             .expect("Expecting block to have container if wire description has children");
-        for (_layer_id, layer_blocks) in container.layers.iter() {
+        container.sorted_layers_tmp.clear();
+        container.sorted_layers_tmp.reserve(container.layers.len());
+        container
+            .sorted_layers_tmp
+            .extend(container.layers.keys().map(|k| *k));
+        container.sorted_layers_tmp.sort();
+        //        let layer_ids = container.layers.iter().;
+        //        for (_layer_id, layer_blocks) in container.layers.iter() {
+        for layer_id in container.sorted_layers_tmp.iter() {
+            let layer_blocks = container.layers.get_mut(layer_id).unwrap();
             log::trace!(
                 "Render layer: {}: {:?}",
-                _layer_id,
+                layer_id,
                 layer_blocks.iter().map(|(b, _)| b.clone())
             );
-            for (block_id, location) in layer_blocks {
+            for (block_id, location) in layer_blocks.iter() {
                 let block_id = block_id.clone();
                 let container_block = container.blocks.get_mut(&block_id);
                 if let Some(container_block) = container_block {

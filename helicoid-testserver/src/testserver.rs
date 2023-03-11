@@ -291,7 +291,7 @@ impl ServerState {
             })
             .await?;
         let mut overlay_paint = SimplePaint::new(Some(0x03110022), Some(0x88009255), Some(0.5));
-        overlay_paint.set_background_blur_amount(20.0);
+        overlay_paint.set_background_blur_amount(2.5);
         let overlay_fill_block = NewRenderBlock {
             id: RenderBlockId::normal(1002).unwrap(),
             contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
