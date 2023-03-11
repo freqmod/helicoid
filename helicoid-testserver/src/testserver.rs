@@ -10,7 +10,7 @@ use helicoid_protocol::{
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
-        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo,
+        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
     },
     tcp_bridge::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
@@ -34,6 +34,7 @@ when there are changes. When the editing model has changed they will determine i
 needs an update. */
 struct DummyEditor {
     editor_state_changed_send: BSender<()>,
+    text: String,
 }
 struct ServerStateData {
     editor: Arc<TMutex<DummyEditor>>,
@@ -91,6 +92,7 @@ impl DummyEditor {
 
         Self {
             editor_state_changed_send,
+            text: String::new(),
         }
     }
     pub fn update_receiver(&self) -> BReceiver<()> {
@@ -114,12 +116,98 @@ impl ServerState {
             HelicoidToServerMessage::CharReceived(ch) => {}
             HelicoidToServerMessage::Ime(imeevent) => {}
             HelicoidToServerMessage::ClipboardEvent(clipboard) => {}
-            HelicoidToServerMessage::KeyInputEvent(_) => {}
+            HelicoidToServerMessage::KeyInputEvent(event) => {
+                if event.pressed {
+                    let text = match event.virtual_keycode {
+                        VirtualKeycode::A => Some('A'),
+                        VirtualKeycode::B => Some('B'),
+                        VirtualKeycode::C => Some('C'),
+                        VirtualKeycode::D => Some('D'),
+                        VirtualKeycode::E => Some('E'),
+                        VirtualKeycode::F => Some('F'),
+                        VirtualKeycode::G => Some('G'),
+                        VirtualKeycode::H => Some('H'),
+                        VirtualKeycode::I => Some('I'),
+                        VirtualKeycode::J => Some('J'),
+                        VirtualKeycode::K => Some('K'),
+                        VirtualKeycode::L => Some('L'),
+                        VirtualKeycode::M => Some('M'),
+                        VirtualKeycode::N => Some('N'),
+                        VirtualKeycode::O => Some('O'),
+                        VirtualKeycode::P => Some('P'),
+                        VirtualKeycode::Q => Some('Q'),
+                        VirtualKeycode::R => Some('R'),
+                        VirtualKeycode::S => Some('S'),
+                        VirtualKeycode::T => Some('T'),
+                        VirtualKeycode::U => Some('U'),
+                        VirtualKeycode::V => Some('V'),
+                        VirtualKeycode::W => Some('W'),
+                        VirtualKeycode::X => Some('X'),
+                        VirtualKeycode::Y => Some('Y'),
+                        VirtualKeycode::Z => Some('Z'),
+                        VirtualKeycode::Space => Some(' '),
+                        _ => None,
+                    };
+                    if let Some(text) = text {
+                        let mut editor = self.state_data.editor.lock().await;
+                        editor.text += &text.to_string();
+                    }
+                    if let VirtualKeycode::Backspace = event.virtual_keycode {
+                        let mut editor = self.state_data.editor.lock().await;
+                        let textlen = editor.text.len().saturating_sub(1);
+                        editor.text.truncate(textlen);
+                    }
+                    self.sync_text().await?;
+                }
+            }
         }
         //self.send_simple_test_shaped_string().await?;
 
         Ok(())
     }
+    async fn sync_text(&mut self) -> Result<()> {
+        let mut editor = self.state_data.editor.lock().await;
+        let mut shaper = CachingShaper::new(1.0f32);
+        shaper.set_font_key(0, String::from("Anonymous Pro"));
+        //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
+        shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
+        shaper.set_font_key(2, String::from("NotoColorEmoji"));
+        shaper.set_font_key(3, String::from("MissingGlyphs"));
+        shaper.set_font_key(4, String::from("LastResort-Regular"));
+        let text = String::from("User input text");
+        let mut string_to_shape = ShapableString::from_text(&(text + &editor.text));
+        let font_paint = FontPaint {
+            color: 0xFFCCCCCC,
+            blend: helicoid_protocol::gfx::SimpleBlendMode::SrcOver,
+        };
+        string_to_shape.metadata_runs.iter_mut().for_each(|i| {
+            i.paint = font_paint.clone();
+            i.font_info.font_parameters.hinting = FontHinting::Full;
+            i.font_info.font_parameters.edging = FontEdging::SubpixelAntiAlias;
+            i.font_info.font_parameters.size = OrderedFloat(18.0f32);
+        });
+        let mut shaped = shaper.shape(&string_to_shape, &None);
+        //        let mut new_render_blocks = SmallVec::with_capacity(1);
+        let new_shaped_string_block = NewRenderBlock {
+            id: RenderBlockId::normal(1000).unwrap(),
+            contents: RenderBlockDescription::ShapedTextBlock(shaped),
+        };
+        self.channel_tx
+            .send(TcpBridgeToClientMessage {
+                message: HelicoidToClientMessage {
+                    update: RemoteBoxUpdate {
+                        parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+                        new_render_blocks: smallvec![new_shaped_string_block],
+                        remove_render_blocks: Default::default(),
+                        move_block_locations: Default::default(),
+                    },
+                },
+            })
+            .await?;
+        log::trace!("Prepared message3, now sending it to the tcp bridge");
+        Ok(())
+    }
+
     async fn sync_screen(&mut self) -> Result<()> {
         self.send_simple_test_shaped_string().await?;
         Ok(())
