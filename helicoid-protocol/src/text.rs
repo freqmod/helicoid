@@ -13,6 +13,8 @@ use num_enum::IntoPrimitive;
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
 
+use crate::gfx::FontPaint;
+
 pub const SHAPABLE_STRING_ALLOC_LEN: usize = 128;
 pub const SHAPABLE_STRING_ALLOC_RUNS: usize = 16;
 /* Shaping is done in editor on "server", shaped glyphs are transfered to client
@@ -59,7 +61,7 @@ pub struct ShapedTextGlyph {
 pub struct ShapedStringMetadata {
     pub substring_length: u16,
     pub font_info: SmallFontOptions,
-    pub font_color: u32, /* ARGB32 */
+    pub paint: FontPaint,
     pub advance_x: u16,
     pub advance_y: u16,
     pub baseline_y: u16,
@@ -128,7 +130,7 @@ impl ShapableString {
         let simple_run = ShapedStringMetadata {
             substring_length: text.len() as u16,
             font_info: Default::default(),
-            font_color: 0,
+            paint: FontPaint::default(),
             advance_x: 0,
             advance_y: 0,
             baseline_y: 0,

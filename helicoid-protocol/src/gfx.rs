@@ -27,18 +27,63 @@ pub struct RenderBlockPath {
     path: SmallVec<[RenderBlockId; 16]>,
 }
 
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(
+    Debug, Default, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes,
+)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 #[derive(IntoPrimitive)]
 #[repr(u8)]
 pub enum SimpleLineStyle {
     Rounded,
+    #[default]
     Angled,
     None,
 }
 
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(
+    Default, Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+#[derive(IntoPrimitive)]
+#[repr(u8)]
+pub enum SimpleBlendMode {
+    Clear,
+    Src,
+    Dst,
+    #[default]
+    SrcOver,
+    DstOver,
+    SrcIn,
+    DstIn,
+    SrcOut,
+    DstOut,
+    SrcATop,
+    DstATop,
+    Xor,
+    Plus,
+    Modulate,
+    Screen,
+    Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    HardLight,
+    SoftLight,
+    Difference,
+    Exclusion,
+    Multiply,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
+}
+
+#[derive(
+    Debug, Default, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes,
+)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimplePaint {
@@ -47,7 +92,19 @@ pub struct SimplePaint {
     line_width: u16,             // half float
     background_blur_amount: u16, // half float
     pub line_style: SimpleLineStyle,
+    pub blend: SimpleBlendMode,
 }
+
+#[derive(
+    Debug, Default, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct FontPaint {
+    pub color: u32,
+    pub blend: SimpleBlendMode,
+}
+
 #[derive(Hash, Eq, Copy, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
@@ -131,6 +188,7 @@ pub struct SimpleDrawBlock {
 pub struct MetaDrawBlock {
     pub extent: PointF16,
     pub buffered: bool,
+    pub alpha: Option<u8>, // If alpha is 0, the block is skipped, otherwise only applies to buffered blocks
     pub sub_blocks: SmallVec<[RenderBlockLocation; 64]>,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -188,6 +246,7 @@ impl SimplePaint {
             line_width: half::f16::from_f32(line_width.unwrap_or(0f32)).to_bits(),
             line_style: SimpleLineStyle::None,
             background_blur_amount: half::f16::from_f32(0f32).to_bits(),
+            blend: SimpleBlendMode::SrcOver,
         }
     }
     pub fn set_line_width(&mut self, line_width: f32) {

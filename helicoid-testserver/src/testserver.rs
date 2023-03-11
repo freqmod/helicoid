@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
-        HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
+        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
         RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
         RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
         SimplePaint, SimpleRoundRect, SimpleSvg,
@@ -142,8 +142,12 @@ impl ServerState {
         let mut string_to_shape = ShapableString::from_text(
             "See IF we can shape a simple string\n ≠ <= string Some(typeface) => { 😀🙀 What about newlines?",
         );
+        let font_paint = FontPaint {
+            color: 0xFFCCCCCC,
+            blend: helicoid_protocol::gfx::SimpleBlendMode::SrcOver,
+        };
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
-            i.font_color = 0xFFCCCCCC;
+            i.paint = font_paint.clone();
             i.font_info.font_parameters.hinting = FontHinting::Full;
             i.font_info.font_parameters.edging = FontEdging::SubpixelAntiAlias;
             i.font_info.font_parameters.size = OrderedFloat(18.0f32);
@@ -166,7 +170,9 @@ impl ServerState {
             id: RenderBlockId::normal(1).unwrap(),
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
                 extent: PointF16::new(1500.0, 1500.0),
+                //extent: PointF16::new(500.0, 500.0),
                 buffered: false,
+                alpha: None,
                 sub_blocks: smallvec![RenderBlockLocation {
                     id: RenderBlockId::normal(1000).unwrap(),
                     layer: 1,

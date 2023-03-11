@@ -1,4 +1,5 @@
 use crate::font_options::FontOptions;
+use crate::gfx::{FontPaint, SimplePaint};
 use crate::swash_font::SwashFont;
 use crate::text::{
     ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph, SmallFontOptions,
@@ -466,7 +467,7 @@ impl CachingShaper {
                 result_metadatas.push(ShapedStringMetadata {
                     substring_length: (cluster_index - last_result_metadata_start) as u16,
                     font_info: last_result_metadata.take().unwrap(),
-                    font_color: 0,
+                    paint: FontPaint::default(),
                     advance_x: 0,
                     advance_y: 0,
                     baseline_y: 0,
@@ -480,7 +481,7 @@ impl CachingShaper {
             result_metadatas.push(ShapedStringMetadata {
                 substring_length: (results.len() - last_result_metadata_start) as u16,
                 font_info: last_result_metadata.take().unwrap(),
-                font_color: 0,
+                paint: FontPaint::default(),
                 advance_x: 0,
                 advance_y: 0,
                 baseline_y: 0,
@@ -583,7 +584,7 @@ impl CachingShaper {
                 let mut metadata = shaped_string_run.clone();
                 metadata.substring_length =
                     (resulting_block.glyphs.len() - glyphs_start_offset) as u16;
-                metadata.font_color = run.font_color;
+                metadata.paint = run.paint.clone();
                 metadata.set_advance(
                     current_pixel_offset - start_pixel_offset,
                     y_advance,

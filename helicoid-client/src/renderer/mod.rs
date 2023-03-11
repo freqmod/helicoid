@@ -14,7 +14,11 @@ use std::{
     sync::Arc,
 };
 
-use helicoid_protocol::{caching_shaper::CachingShaper, text::ShapableString};
+use helicoid_protocol::{
+    caching_shaper::CachingShaper,
+    gfx::{FontPaint, SimplePaint},
+    text::ShapableString,
+};
 use log::error;
 use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect, Surface};
@@ -25,7 +29,7 @@ use crate::{
     //bridge::EditorMode,
     editor::{editor::HeliconeEditor, Cursor, Style},
     event_aggregator::EVENT_AGGREGATOR,
-    renderer::fonts::blob_builder::ShapedBlobBuilder,
+    renderer::{block_renderer::font_paint_to_sk_paint, fonts::blob_builder::ShapedBlobBuilder},
     //settings::*,
     window::WindowSettings,
 };
@@ -271,8 +275,12 @@ impl Renderer {
         let mut string_to_shape = ShapableString::from_text(
             "See if we can shape a simple local string ≠ <= string Some(tf) => { 😀🙀 What?",
         );
+        let font_paint = FontPaint {
+            color: 0xF000A030,
+            blend: helicoid_protocol::gfx::SimpleBlendMode::SrcOver,
+        };
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
-            i.font_color = 0xF000A030;
+            i.paint = font_paint.clone();
             i.font_info.font_parameters.size = OrderedFloat(80.0f32);
         });
         //shaper.cache_fonts(&string_to_shape, &None);
@@ -290,7 +298,7 @@ impl Renderer {
 
         log::trace!("Draw text: {:?}", blobs);
         for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
-            paint.set_color(Color::new(metadata_run.font_color));
+            let paint = font_paint_to_sk_paint(&metadata_run.paint);
             root_canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
         }
         let mut rect_paint = Paint::default();

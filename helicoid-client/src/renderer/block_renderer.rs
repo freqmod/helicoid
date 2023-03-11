@@ -6,8 +6,8 @@ use helicoid_protocol::block_manager::{
     RenderBlockFullId,
 };
 use helicoid_protocol::gfx::{
-    PathVerb, PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement, SimplePaint,
-    SVG_RESOURCE_NAME_LEN,
+    FontPaint, PathVerb, PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement,
+    SimplePaint, SVG_RESOURCE_NAME_LEN,
 };
 use helicoid_protocol::{
     gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
@@ -179,8 +179,41 @@ impl BlockManager {
 */
 fn simple_paint_to_sk_paint(sm_paint: &SimplePaint, fill: bool) -> Paint {
     let mut sk_paint = Paint::default();
-    sk_paint.set_blend_mode(BlendMode::SrcOver);
+    //sk_paint.set_blend_mode(BlendMode::SrcOver);
+    let sk_blend_mode = match sm_paint.blend {
+        helicoid_protocol::gfx::SimpleBlendMode::Clear => skia::BlendMode::Clear,
+        helicoid_protocol::gfx::SimpleBlendMode::Src => skia::BlendMode::Src,
+        helicoid_protocol::gfx::SimpleBlendMode::Dst => skia::BlendMode::Dst,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcOver => skia::BlendMode::SrcOver,
+        helicoid_protocol::gfx::SimpleBlendMode::DstOver => skia::BlendMode::DstOver,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcIn => skia::BlendMode::SrcIn,
+        helicoid_protocol::gfx::SimpleBlendMode::DstIn => skia::BlendMode::DstIn,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcOut => skia::BlendMode::SrcOut,
+        helicoid_protocol::gfx::SimpleBlendMode::DstOut => skia::BlendMode::DstOut,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcATop => skia::BlendMode::SrcATop,
+        helicoid_protocol::gfx::SimpleBlendMode::DstATop => skia::BlendMode::DstATop,
+        helicoid_protocol::gfx::SimpleBlendMode::Xor => skia::BlendMode::Xor,
+        helicoid_protocol::gfx::SimpleBlendMode::Plus => skia::BlendMode::Plus,
+        helicoid_protocol::gfx::SimpleBlendMode::Modulate => skia::BlendMode::Modulate,
+        helicoid_protocol::gfx::SimpleBlendMode::Screen => skia::BlendMode::Screen,
+        helicoid_protocol::gfx::SimpleBlendMode::Overlay => skia::BlendMode::Overlay,
+        helicoid_protocol::gfx::SimpleBlendMode::Darken => skia::BlendMode::Darken,
+        helicoid_protocol::gfx::SimpleBlendMode::Lighten => skia::BlendMode::Lighten,
+        helicoid_protocol::gfx::SimpleBlendMode::ColorDodge => skia::BlendMode::ColorDodge,
+        helicoid_protocol::gfx::SimpleBlendMode::ColorBurn => skia::BlendMode::ColorBurn,
+        helicoid_protocol::gfx::SimpleBlendMode::HardLight => skia::BlendMode::HardLight,
+        helicoid_protocol::gfx::SimpleBlendMode::SoftLight => skia::BlendMode::SoftLight,
+        helicoid_protocol::gfx::SimpleBlendMode::Difference => skia::BlendMode::Difference,
+        helicoid_protocol::gfx::SimpleBlendMode::Exclusion => skia::BlendMode::Exclusion,
+        helicoid_protocol::gfx::SimpleBlendMode::Multiply => skia::BlendMode::Multiply,
+        helicoid_protocol::gfx::SimpleBlendMode::Hue => skia::BlendMode::Hue,
+        helicoid_protocol::gfx::SimpleBlendMode::Saturation => skia::BlendMode::Saturation,
+        helicoid_protocol::gfx::SimpleBlendMode::Color => skia::BlendMode::Color,
+        helicoid_protocol::gfx::SimpleBlendMode::Luminosity => skia::BlendMode::Luminosity,
+    };
+    sk_paint.set_blend_mode(sk_blend_mode);
     sk_paint.set_anti_alias(true);
+
     if fill {
         sk_paint.set_color(sm_paint.fill_color);
         sk_paint.set_style(skia::PaintStyle::Fill);
@@ -191,6 +224,48 @@ fn simple_paint_to_sk_paint(sm_paint: &SimplePaint, fill: bool) -> Paint {
     }
     sk_paint
 }
+
+pub fn font_paint_to_sk_paint(sm_paint: &FontPaint) -> Paint {
+    let mut sk_paint = Paint::default();
+    //sk_paint.set_blend_mode(BlendMode::SrcOver);
+    let sk_blend_mode = match sm_paint.blend {
+        helicoid_protocol::gfx::SimpleBlendMode::Clear => skia::BlendMode::Clear,
+        helicoid_protocol::gfx::SimpleBlendMode::Src => skia::BlendMode::Src,
+        helicoid_protocol::gfx::SimpleBlendMode::Dst => skia::BlendMode::Dst,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcOver => skia::BlendMode::SrcOver,
+        helicoid_protocol::gfx::SimpleBlendMode::DstOver => skia::BlendMode::DstOver,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcIn => skia::BlendMode::SrcIn,
+        helicoid_protocol::gfx::SimpleBlendMode::DstIn => skia::BlendMode::DstIn,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcOut => skia::BlendMode::SrcOut,
+        helicoid_protocol::gfx::SimpleBlendMode::DstOut => skia::BlendMode::DstOut,
+        helicoid_protocol::gfx::SimpleBlendMode::SrcATop => skia::BlendMode::SrcATop,
+        helicoid_protocol::gfx::SimpleBlendMode::DstATop => skia::BlendMode::DstATop,
+        helicoid_protocol::gfx::SimpleBlendMode::Xor => skia::BlendMode::Xor,
+        helicoid_protocol::gfx::SimpleBlendMode::Plus => skia::BlendMode::Plus,
+        helicoid_protocol::gfx::SimpleBlendMode::Modulate => skia::BlendMode::Modulate,
+        helicoid_protocol::gfx::SimpleBlendMode::Screen => skia::BlendMode::Screen,
+        helicoid_protocol::gfx::SimpleBlendMode::Overlay => skia::BlendMode::Overlay,
+        helicoid_protocol::gfx::SimpleBlendMode::Darken => skia::BlendMode::Darken,
+        helicoid_protocol::gfx::SimpleBlendMode::Lighten => skia::BlendMode::Lighten,
+        helicoid_protocol::gfx::SimpleBlendMode::ColorDodge => skia::BlendMode::ColorDodge,
+        helicoid_protocol::gfx::SimpleBlendMode::ColorBurn => skia::BlendMode::ColorBurn,
+        helicoid_protocol::gfx::SimpleBlendMode::HardLight => skia::BlendMode::HardLight,
+        helicoid_protocol::gfx::SimpleBlendMode::SoftLight => skia::BlendMode::SoftLight,
+        helicoid_protocol::gfx::SimpleBlendMode::Difference => skia::BlendMode::Difference,
+        helicoid_protocol::gfx::SimpleBlendMode::Exclusion => skia::BlendMode::Exclusion,
+        helicoid_protocol::gfx::SimpleBlendMode::Multiply => skia::BlendMode::Multiply,
+        helicoid_protocol::gfx::SimpleBlendMode::Hue => skia::BlendMode::Hue,
+        helicoid_protocol::gfx::SimpleBlendMode::Saturation => skia::BlendMode::Saturation,
+        helicoid_protocol::gfx::SimpleBlendMode::Color => skia::BlendMode::Color,
+        helicoid_protocol::gfx::SimpleBlendMode::Luminosity => skia::BlendMode::Luminosity,
+    };
+    sk_paint.set_blend_mode(sk_blend_mode);
+    sk_paint.set_anti_alias(true);
+
+    sk_paint.set_color(sm_paint.color);
+    sk_paint
+}
+
 impl SkiaClientRenderBlock {
     pub fn new(_desc: &RenderBlockDescription) -> Self {
         Self {
@@ -201,32 +276,6 @@ impl SkiaClientRenderBlock {
     pub fn new_top_block() -> Self {
         Self { rendered: None }
     }
-    pub fn render(
-        &mut self,
-        location: &RenderBlockLocation,
-        target_surface: &mut Surface,
-        meta: &mut MetaBlock<SkiaClientRenderBlock>,
-    ) {
-        //        s
-        let mut target = SkiaClientRenderTarget {
-            location,
-            target_surface,
-        };
-        if let Some(wire_description) = meta.wire_description().as_ref() {
-            match wire_description {
-                RenderBlockDescription::ShapedTextBlock(_) => {
-                    self.render_text_box(location, &mut target, meta)
-                }
-                RenderBlockDescription::SimpleDraw(_) => {
-                    self.render_simple_draw(location, &mut target, meta)
-                }
-                RenderBlockDescription::MetaBox(_) => {
-                    self.render_meta_box(location, &mut target, meta)
-                }
-            }
-        }
-    }
-    //    pub fn set_desc()
     pub fn render_text_box(
         &mut self,
         location: &RenderBlockLocation,
@@ -261,7 +310,7 @@ impl SkiaClientRenderBlock {
 
         log::trace!("Draw text: {:?}", blobs);
         for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
-            paint.set_color(Color::new(metadata_run.font_color));
+            let paint = font_paint_to_sk_paint(&metadata_run.paint);
             canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
         }
         let mut rect_paint = Paint::default();
@@ -592,13 +641,26 @@ impl SkiaClientRenderBlock {
                 location: PointF16::default(),
                 layer: location.layer,
             };
+            let extent = mb.extent;
             self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
             self.rendered = Some(RenderedRenderBlock {
                 image: dest_surface.image_snapshot(),
                 description_hash: hashed,
             });
+            let src_img = &self.rendered.as_ref().unwrap().image;
+            let img_tmp; /* For lifetime reasons */
+            let clipped_src_img =
+                if (src_img.width() as f32 > extent.x() || src_img.height() as f32 > extent.y()) {
+                    /* Clip image as it is too big */
+                    img_tmp = src_img
+                        .new_subset(skia::IRect::new(0, 0, extent.x() as i32, extent.y() as i32))
+                        .unwrap();
+                    &img_tmp
+                } else {
+                    src_img
+                };
             target_surface.canvas().draw_image(
-                &self.rendered.as_ref().unwrap().image,
+                src_img,
                 as_skpoint(&location.location),
                 Some(&paint),
             );
@@ -610,6 +672,16 @@ impl SkiaClientRenderBlock {
             };
             self.rendered = None;
             target_surface.canvas().save();
+            target_surface.canvas().clip_rect(
+                skia::Rect::new(
+                    location.location.x(),
+                    location.location.y(),
+                    location.location.x() + mb.extent.x(),
+                    location.location.y() + mb.extent.y(),
+                ),
+                Some(skia::ClipOp::Intersect),
+                Some(true),
+            );
             self.render_meta_box_contents(&adjusted_location, target_surface, meta);
             target_surface.canvas().restore();
         }
