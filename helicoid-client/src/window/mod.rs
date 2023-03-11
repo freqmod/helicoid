@@ -218,7 +218,7 @@ impl GlutinWindowWrapper {
             &self.renderer,
             //&self.windowed_context,
         );
-        if let Some(control_flow) = self.renderer.handle_event(&event) {
+        if let Some(control_flow) = self.renderer.handle_event(&event, &self.window) {
             match control_flow {
                 ControlFlow::ExitWithCode(_) | ControlFlow::Exit => {
                     /* TODO: Something should probably be done before exit,
@@ -620,7 +620,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         renderer,
         keyboard_manager: KeyboardManager::new(),
         mouse_manager: MouseManager::new(),
-        title: String::from("Neovide"),
+        title: String::from("Helicoid"),
         fullscreen: false,
         font_changed_last_frame: false,
         size_at_startup: initial_size,

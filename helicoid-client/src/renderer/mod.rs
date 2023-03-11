@@ -137,9 +137,13 @@ impl Renderer {
         self.editor.poll_events();
     }
 
-    pub fn handle_event(&mut self, event: &Event<()>) -> Option<ControlFlow> {
+    pub fn handle_event(
+        &mut self,
+        event: &Event<()>,
+        window: &winit::window::Window,
+    ) -> Option<ControlFlow> {
         self.cursor_renderer.handle_event(event);
-        self.editor.handle_event(event)
+        self.editor.handle_event(event, window)
     }
     /*
         pub fn font_names(&self) -> Vec<String> {
@@ -153,7 +157,7 @@ impl Renderer {
     #[allow(clippy::needless_collect)]
     pub fn draw_frame(&mut self, root_surface: &mut Surface, dt: f32) -> bool {
         let root_canvas = root_surface.canvas();
-        root_canvas.draw_color(Color::MAGENTA, None);
+        root_canvas.draw_color(Color::BLACK, None);
         //self.font_draw_test(root_canvas);
         /* Draw editor contents*/
         self.editor.draw_frame(root_surface, dt);

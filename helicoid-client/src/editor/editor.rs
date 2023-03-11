@@ -26,6 +26,7 @@ struct HeliconeEditorInner {
     //bridge: ClientTcpBridge,
     sender: Option<Sender<TcpBridgeToServerMessage>>,
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
+    scale_factor: f64,
 }
 pub struct HeliconeEditor {
     inner: Arc<TMutex<Option<HeliconeEditorInner>>>,
@@ -67,6 +68,7 @@ impl HeliconeEditor {
                             *inner_locked = Some(HeliconeEditorInner {
                                 sender: Some(sender),
                                 receiver: Some(receiver),
+                                scale_factor: 1.0,
                             });
                         }
                         match bridge.process_rxtx().await {
@@ -165,9 +167,14 @@ impl HeliconeEditor {
                     return Some(ControlFlow::Exit);
                 }
                 WindowEvent::Resized(event) => {
+                    let scale_factor = if let Some(inner) = self.inner.try_lock().ok() {
+                        inner.as_ref().map(|i| i.scale_factor).unwrap_or(1.0)
+                    } else {
+                        1.0
+                    };
                     let size = ViewportInfo {
                         physical_size: (event.width, event.height),
-                        scale_factor: OrderedFloat(1.0),
+                        scale_factor: OrderedFloat(scale_factor as f32),
                         container_physical_size: None,
                         container_scale_factor: None,
                     };
@@ -187,23 +194,58 @@ impl HeliconeEditor {
         self.peek_and_process_events();
     }
 
-    pub fn handle_event(&mut self, event: &Event<()>) -> Option<ControlFlow> {
+    pub fn handle_event(
+        &mut self,
+        event: &Event<()>,
+        window: &winit::window::Window,
+    ) -> Option<ControlFlow> {
         if !self.ensure_connected() {
             log::warn!("Try to handle event before connection is established to server");
             return self.handle_event_disconnected(event);
         }
-        if let Some(inner) = self.inner.try_lock().ok() {
+        if let Some(mut inner) = self.inner.try_lock().ok() {
+            match event {
+                Event::MainEventsCleared
+                | Event::RedrawEventsCleared
+                | Event::NewEvents(winit::event::StartCause::ResumeTimeReached { .. })
+                | Event::NewEvents(winit::event::StartCause::WaitCancelled { .. })
+                | Event::DeviceEvent {
+                    device_id: _,
+                    event: winit::event::DeviceEvent::Motion { .. },
+                }
+                | Event::DeviceEvent {
+                    device_id: _,
+                    event: winit::event::DeviceEvent::MouseMotion { .. },
+                } => {}
+                _ => {
+                    log::trace!("Got winit event: {:?}", event);
+                }
+            }
             match event {
                 Event::NewEvents(_) => {}
                 Event::WindowEvent { window_id, event } => match event {
                     WindowEvent::Resized(event) => {
+                        //let scale_factor = inner.as_ref().map(|i| i.scale_factor).unwrap_or(1.0);
+                        let scale_factor = if let Some(monitor) = window.current_monitor() {
+                            monitor.scale_factor()
+                        } else {
+                            1.0
+                        };
+                        let logical_size = event.to_logical::<u32>(scale_factor);
                         /* Convert event to helicoid protocol and send off  to server. */
                         let size = ViewportInfo {
                             physical_size: (event.width, event.height),
-                            scale_factor: OrderedFloat(1.0),
+                            scale_factor: OrderedFloat(scale_factor as f32),
                             container_physical_size: None,
                             container_scale_factor: None,
                         };
+                        log::trace!(
+                            "Window resize: {:?} Logical size: {:?} ({}) VPI:{:?}",
+                            event,
+                            logical_size,
+                            scale_factor,
+                            size,
+                        );
                         self.current_viewport_info = Some(size.clone());
                         let size_msg = TcpBridgeToServerMessage {
                             message: HelicoidToServerMessage::ViewportSizeUpdate(size),
@@ -263,7 +305,12 @@ impl HeliconeEditor {
                     WindowEvent::ScaleFactorChanged {
                         scale_factor,
                         new_inner_size,
-                    } => {}
+                    } => {
+                        log::trace!("Scale factor change: {} {:?}", scale_factor, new_inner_size);
+                        if let Some(inner) = inner.as_mut() {
+                            inner.scale_factor = *scale_factor;
+                        }
+                    }
                     WindowEvent::ThemeChanged(_) => {}
                     WindowEvent::ReceivedCharacter(_) => {}
                     WindowEvent::Focused(_) => {}

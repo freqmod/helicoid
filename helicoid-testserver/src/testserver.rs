@@ -16,7 +16,7 @@ use helicoid_protocol::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
         TcpBridgeToServerMessage,
     },
-    text::ShapableString,
+    text::{FontEdging, FontHinting, ShapableString},
 };
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
@@ -143,8 +143,10 @@ impl ServerState {
             "See IF we can shape a simple string\n ≠ <= string Some(typeface) => { 😀🙀 What about newlines?",
         );
         string_to_shape.metadata_runs.iter_mut().for_each(|i| {
-            i.font_color = 0xF000A030;
-            i.font_info.font_parameters.size = OrderedFloat(20.0f32);
+            i.font_color = 0xFFCCCCCC;
+            i.font_info.font_parameters.hinting = FontHinting::Full;
+            i.font_info.font_parameters.edging = FontEdging::SubpixelAntiAlias;
+            i.font_info.font_parameters.size = OrderedFloat(18.0f32);
         });
         let mut shaped = shaper.shape(&string_to_shape, &None);
         //        let mut new_render_blocks = SmallVec::with_capacity(1);

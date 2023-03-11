@@ -75,6 +75,7 @@ impl SkiaRenderer {
         });*/
         gl::load_with(|s| gl_display.get_proc_address(CString::new(s).unwrap().as_c_str()));
 
+        log::trace!("Skia make surface with size: {:?}", window.inner_size());
         let (width, height): (u32, u32) = window.inner_size().into();
         let raw_window_handle = window.raw_window_handle();
         let attrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
@@ -132,8 +133,24 @@ impl SkiaRenderer {
     }
 
     pub fn resize(&mut self, window: &mut WinitWindow) {
+        let monitor_scale_factor =
         /* First resize the opengl drawable */
-        let (width, height): (u32, u32) = window.inner_size().into();
+        if let Some(monitor) = window.current_monitor() {
+//            monitor.scale_factor()
+                1.0
+        }else{
+                1.0
+            };
+
+        log::trace!(
+            "Skia make surface with new size: {:?} monitor scale:{}",
+            window.inner_size(),
+            monitor_scale_factor
+        );
+        let (width, height): (u32, u32) = window
+            .inner_size()
+            .to_logical::<u32>(monitor_scale_factor)
+            .into();
         self.gl_surface.resize(
             &self.gl_context,
             NonZeroU32::new(width).unwrap(),

@@ -483,7 +483,6 @@ impl SkiaClientRenderBlock {
                 }
                 SimpleDrawElement::SvgResource(svg) => {
                     /* TODO: We should really cache this svg as a pixmap */
-                    log::warn!("Currently svg drawing is unsupported");
                     let resource_name_str = std::str::from_utf8(&svg.resource_name).unwrap();
                     /* Make sure this is an acceptable / valid resource name */
                     log::trace!("Render svg: {:?}", resource_name_str);
