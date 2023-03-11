@@ -101,6 +101,7 @@ impl DummyEditor {
 impl ServerState {
     //    async fn process_event(&mut self, e: &mut DummyEditor) {}
     async fn handle_client_message(&mut self, message: TcpBridgeToServerMessage) -> Result<()> {
+        log::trace!("Handle client message: {:?}", message.message);
         match message.message {
             HelicoidToServerMessage::ViewportSizeUpdate(viewportinfo) => {
                 self.viewport_size = Some(viewportinfo);
@@ -113,6 +114,7 @@ impl ServerState {
             HelicoidToServerMessage::CharReceived(ch) => {}
             HelicoidToServerMessage::Ime(imeevent) => {}
             HelicoidToServerMessage::ClipboardEvent(clipboard) => {}
+            HelicoidToServerMessage::KeyInputEvent(_) => {}
         }
         //self.send_simple_test_shaped_string().await?;
 

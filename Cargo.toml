@@ -11,3 +11,4 @@ default-members = [
 
 [patch.crates-io]
 rkyv = { git = "https://github.com/rkyv/rkyv.git"}
+winit = { path = "/Users/freqmod/Downloads/winit"}

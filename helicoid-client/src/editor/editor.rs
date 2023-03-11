@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use crate::{
     redraw_scheduler::REDRAW_SCHEDULER,
@@ -8,7 +12,10 @@ use crate::{
 use helicoid_protocol::{
     block_manager::Manager,
     gfx::{PointF16, RenderBlockDescription, RenderBlockId, RenderBlockLocation},
-    input::{HelicoidToServerMessage, ViewportInfo},
+    input::{
+        ComplexKeyEvent, HelicoidToServerMessage, KeyModifierStateUpdateEvent, ViewportInfo,
+        VirtualKeycode,
+    },
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
 use ordered_float::OrderedFloat;
@@ -27,6 +34,7 @@ struct HeliconeEditorInner {
     sender: Option<Sender<TcpBridgeToServerMessage>>,
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
     scale_factor: f64,
+    time_ref_base: Instant,
 }
 pub struct HeliconeEditor {
     inner: Arc<TMutex<Option<HeliconeEditorInner>>>,
@@ -69,6 +77,7 @@ impl HeliconeEditor {
                                 sender: Some(sender),
                                 receiver: Some(receiver),
                                 scale_factor: 1.0,
+                                time_ref_base: Instant::now(),
                             });
                         }
                         match bridge.process_rxtx().await {
@@ -160,6 +169,12 @@ impl HeliconeEditor {
             log::trace!("Sent viewport info");
         }
     }
+    fn now_timestamp(inner: &HeliconeEditorInner) -> u32 {
+        (Instant::now()
+            .saturating_duration_since(inner.time_ref_base)
+            .as_millis()
+            % (u32::MAX as u128)) as u32
+    }
     pub fn handle_event_disconnected(&mut self, event: &Event<()>) -> Option<ControlFlow> {
         match event {
             Event::WindowEvent { window_id, event } => match event {
@@ -192,6 +207,60 @@ impl HeliconeEditor {
             return;
         }
         self.peek_and_process_events();
+    }
+
+    fn forward_keyboard_modifier_changed(
+        &self,
+        inner: &mut HeliconeEditorInner,
+        modifier_state: &winit::event::ModifiersState,
+    ) {
+        let key_modifier_update_event = KeyModifierStateUpdateEvent {
+            timestamp: Self::now_timestamp(inner),
+            lshift_pressed: modifier_state.shift(),
+            lctrl_pressed: modifier_state.ctrl(),
+            lalt_pressed: modifier_state.alt(),
+            llogo_pressed: modifier_state.logo(),
+            caps_pressed: modifier_state.caps(),
+            rshift_pressed: false,
+            rctrl_pressed: false,
+            ralt_pressed: false,
+            rlogo_pressed: false,
+            bits: modifier_state.bits(),
+        };
+        let size_msg = TcpBridgeToServerMessage {
+            message: HelicoidToServerMessage::KeyModifierStateUpdate(key_modifier_update_event),
+        };
+        let _ = self
+            .sender
+            .as_ref()
+            .unwrap()
+            .blocking_send(size_msg)
+            .map_err(|e| log::warn!("Error while sending key code update to server: {:?}", e));
+    }
+
+    fn forward_keyboard_input(
+        &self,
+        inner: &mut HeliconeEditorInner,
+        _device_id: &winit::event::DeviceId,
+        input: &winit::event::KeyboardInput,
+        is_synthetic: &bool,
+    ) {
+        let complex_key_event = ComplexKeyEvent {
+            key_code: input.scancode,
+            timestamp: Self::now_timestamp(inner),
+            virtual_keycode: convert_virtual_keycodes(input.virtual_keycode),
+            pressed: input.state == winit::event::ElementState::Pressed,
+            synthetic: *is_synthetic,
+        };
+        let size_msg = TcpBridgeToServerMessage {
+            message: HelicoidToServerMessage::KeyInputEvent(complex_key_event),
+        };
+        let _ = self
+            .sender
+            .as_ref()
+            .unwrap()
+            .blocking_send(size_msg)
+            .map_err(|e| log::warn!("Error while sending key code update to server: {:?}", e));
     }
 
     pub fn handle_event(
@@ -271,7 +340,12 @@ impl HeliconeEditor {
                     WindowEvent::DroppedFile(_) => {}
                     WindowEvent::HoveredFile(_) => {}
                     WindowEvent::HoveredFileCancelled => {}
-                    WindowEvent::ModifiersChanged(_) => {}
+                    WindowEvent::ModifiersChanged(modifiers_changed) => {
+                        self.forward_keyboard_modifier_changed(
+                            inner.as_mut().unwrap(),
+                            modifiers_changed,
+                        );
+                    }
                     WindowEvent::CursorMoved {
                         device_id,
                         position,
@@ -318,7 +392,14 @@ impl HeliconeEditor {
                         device_id,
                         input,
                         is_synthetic,
-                    } => {}
+                    } => {
+                        self.forward_keyboard_input(
+                            inner.as_mut().unwrap(),
+                            device_id,
+                            input,
+                            is_synthetic,
+                        );
+                    }
                     WindowEvent::Ime(_) => {}
                     WindowEvent::Occluded(_) => {}
                     WindowEvent::TouchpadMagnify {
@@ -407,5 +488,174 @@ impl HeliconeEditor {
             .process_blocks_for_client(RenderBlockId::normal(0).unwrap(), &mut target);
         // render(root_surface);
         false
+    }
+}
+
+fn convert_virtual_keycodes(winit_code: Option<winit::event::VirtualKeyCode>) -> VirtualKeycode {
+    let Some(got_winit_code) = winit_code else { return VirtualKeycode::None };
+    match got_winit_code {
+        winit::event::VirtualKeyCode::Key1 => VirtualKeycode::Key1,
+        winit::event::VirtualKeyCode::Key2 => VirtualKeycode::Key2,
+        winit::event::VirtualKeyCode::Key3 => VirtualKeycode::Key3,
+        winit::event::VirtualKeyCode::Key4 => VirtualKeycode::Key4,
+        winit::event::VirtualKeyCode::Key5 => VirtualKeycode::Key5,
+        winit::event::VirtualKeyCode::Key6 => VirtualKeycode::Key6,
+        winit::event::VirtualKeyCode::Key7 => VirtualKeycode::Key7,
+        winit::event::VirtualKeyCode::Key8 => VirtualKeycode::Key8,
+        winit::event::VirtualKeyCode::Key9 => VirtualKeycode::Key9,
+        winit::event::VirtualKeyCode::Key0 => VirtualKeycode::Key0,
+        winit::event::VirtualKeyCode::A => VirtualKeycode::A,
+        winit::event::VirtualKeyCode::B => VirtualKeycode::B,
+        winit::event::VirtualKeyCode::C => VirtualKeycode::C,
+        winit::event::VirtualKeyCode::D => VirtualKeycode::D,
+        winit::event::VirtualKeyCode::E => VirtualKeycode::E,
+        winit::event::VirtualKeyCode::F => VirtualKeycode::F,
+        winit::event::VirtualKeyCode::G => VirtualKeycode::G,
+        winit::event::VirtualKeyCode::H => VirtualKeycode::H,
+        winit::event::VirtualKeyCode::I => VirtualKeycode::I,
+        winit::event::VirtualKeyCode::J => VirtualKeycode::J,
+        winit::event::VirtualKeyCode::K => VirtualKeycode::K,
+        winit::event::VirtualKeyCode::L => VirtualKeycode::L,
+        winit::event::VirtualKeyCode::M => VirtualKeycode::M,
+        winit::event::VirtualKeyCode::N => VirtualKeycode::N,
+        winit::event::VirtualKeyCode::O => VirtualKeycode::O,
+        winit::event::VirtualKeyCode::P => VirtualKeycode::P,
+        winit::event::VirtualKeyCode::Q => VirtualKeycode::Q,
+        winit::event::VirtualKeyCode::R => VirtualKeycode::R,
+        winit::event::VirtualKeyCode::S => VirtualKeycode::S,
+        winit::event::VirtualKeyCode::T => VirtualKeycode::T,
+        winit::event::VirtualKeyCode::U => VirtualKeycode::U,
+        winit::event::VirtualKeyCode::V => VirtualKeycode::V,
+        winit::event::VirtualKeyCode::W => VirtualKeycode::W,
+        winit::event::VirtualKeyCode::X => VirtualKeycode::X,
+        winit::event::VirtualKeyCode::Y => VirtualKeycode::Y,
+        winit::event::VirtualKeyCode::Z => VirtualKeycode::Z,
+        winit::event::VirtualKeyCode::Escape => VirtualKeycode::Escape,
+        winit::event::VirtualKeyCode::F1 => VirtualKeycode::F1,
+        winit::event::VirtualKeyCode::F2 => VirtualKeycode::F2,
+        winit::event::VirtualKeyCode::F3 => VirtualKeycode::F3,
+        winit::event::VirtualKeyCode::F4 => VirtualKeycode::F4,
+        winit::event::VirtualKeyCode::F5 => VirtualKeycode::F5,
+        winit::event::VirtualKeyCode::F6 => VirtualKeycode::F6,
+        winit::event::VirtualKeyCode::F7 => VirtualKeycode::F7,
+        winit::event::VirtualKeyCode::F8 => VirtualKeycode::F8,
+        winit::event::VirtualKeyCode::F9 => VirtualKeycode::F9,
+        winit::event::VirtualKeyCode::F10 => VirtualKeycode::F10,
+        winit::event::VirtualKeyCode::F11 => VirtualKeycode::F11,
+        winit::event::VirtualKeyCode::F12 => VirtualKeycode::F12,
+        winit::event::VirtualKeyCode::F13 => VirtualKeycode::F13,
+        winit::event::VirtualKeyCode::F14 => VirtualKeycode::F14,
+        winit::event::VirtualKeyCode::F15 => VirtualKeycode::F15,
+        winit::event::VirtualKeyCode::F16 => VirtualKeycode::F16,
+        winit::event::VirtualKeyCode::F17 => VirtualKeycode::F17,
+        winit::event::VirtualKeyCode::F18 => VirtualKeycode::F18,
+        winit::event::VirtualKeyCode::F19 => VirtualKeycode::F19,
+        winit::event::VirtualKeyCode::F20 => VirtualKeycode::F20,
+        winit::event::VirtualKeyCode::F21 => VirtualKeycode::F21,
+        winit::event::VirtualKeyCode::F22 => VirtualKeycode::F22,
+        winit::event::VirtualKeyCode::F23 => VirtualKeycode::F23,
+        winit::event::VirtualKeyCode::F24 => VirtualKeycode::F24,
+        winit::event::VirtualKeyCode::Snapshot => VirtualKeycode::Snapshot,
+        winit::event::VirtualKeyCode::Scroll => VirtualKeycode::Scroll,
+        winit::event::VirtualKeyCode::Pause => VirtualKeycode::Pause,
+        winit::event::VirtualKeyCode::Insert => VirtualKeycode::Insert,
+        winit::event::VirtualKeyCode::Home => VirtualKeycode::Home,
+        winit::event::VirtualKeyCode::Delete => VirtualKeycode::Delete,
+        winit::event::VirtualKeyCode::End => VirtualKeycode::End,
+        winit::event::VirtualKeyCode::PageDown => VirtualKeycode::PageDown,
+        winit::event::VirtualKeyCode::PageUp => VirtualKeycode::PageUp,
+        winit::event::VirtualKeyCode::Left => VirtualKeycode::Left,
+        winit::event::VirtualKeyCode::Up => VirtualKeycode::Up,
+        winit::event::VirtualKeyCode::Right => VirtualKeycode::Right,
+        winit::event::VirtualKeyCode::Down => VirtualKeycode::Down,
+        winit::event::VirtualKeyCode::Back => VirtualKeycode::Backspace,
+        winit::event::VirtualKeyCode::Return => VirtualKeycode::Return,
+        winit::event::VirtualKeyCode::Space => VirtualKeycode::Space,
+        winit::event::VirtualKeyCode::Compose => VirtualKeycode::Compose,
+        winit::event::VirtualKeyCode::Caret => VirtualKeycode::Caret,
+        winit::event::VirtualKeyCode::Numlock => VirtualKeycode::Numlock,
+        winit::event::VirtualKeyCode::Numpad0 => VirtualKeycode::Numpad0,
+        winit::event::VirtualKeyCode::Numpad1 => VirtualKeycode::Numpad1,
+        winit::event::VirtualKeyCode::Numpad2 => VirtualKeycode::Numpad2,
+        winit::event::VirtualKeyCode::Numpad3 => VirtualKeycode::Numpad3,
+        winit::event::VirtualKeyCode::Numpad4 => VirtualKeycode::Numpad4,
+        winit::event::VirtualKeyCode::Numpad5 => VirtualKeycode::Numpad5,
+        winit::event::VirtualKeyCode::Numpad6 => VirtualKeycode::Numpad6,
+        winit::event::VirtualKeyCode::Numpad7 => VirtualKeycode::Numpad7,
+        winit::event::VirtualKeyCode::Numpad8 => VirtualKeycode::Numpad8,
+        winit::event::VirtualKeyCode::Numpad9 => VirtualKeycode::Numpad9,
+        winit::event::VirtualKeyCode::NumpadAdd => VirtualKeycode::NumpadAdd,
+        winit::event::VirtualKeyCode::NumpadDivide => VirtualKeycode::NumpadDivide,
+        winit::event::VirtualKeyCode::NumpadDecimal => VirtualKeycode::NumpadDecimal,
+        winit::event::VirtualKeyCode::NumpadComma => VirtualKeycode::NumpadComma,
+        winit::event::VirtualKeyCode::NumpadEnter => VirtualKeycode::NumpadEnter,
+        winit::event::VirtualKeyCode::NumpadEquals => VirtualKeycode::NumpadEquals,
+        winit::event::VirtualKeyCode::NumpadMultiply => VirtualKeycode::NumpadMultiply,
+        winit::event::VirtualKeyCode::NumpadSubtract => VirtualKeycode::NumpadSubtract,
+        winit::event::VirtualKeyCode::AbntC1 => VirtualKeycode::AbntC1,
+        winit::event::VirtualKeyCode::AbntC2 => VirtualKeycode::AbntC2,
+        winit::event::VirtualKeyCode::Apostrophe => VirtualKeycode::Apostrophe,
+        winit::event::VirtualKeyCode::Apps => VirtualKeycode::Apps,
+        winit::event::VirtualKeyCode::Asterisk => VirtualKeycode::Asterisk,
+        winit::event::VirtualKeyCode::At => VirtualKeycode::At,
+        winit::event::VirtualKeyCode::Ax => VirtualKeycode::Ax,
+        winit::event::VirtualKeyCode::Backslash => VirtualKeycode::Backslash,
+        winit::event::VirtualKeyCode::Calculator => VirtualKeycode::Calculator,
+        winit::event::VirtualKeyCode::Capital => VirtualKeycode::Capital,
+        winit::event::VirtualKeyCode::Colon => VirtualKeycode::Colon,
+        winit::event::VirtualKeyCode::Comma => VirtualKeycode::Comma,
+        winit::event::VirtualKeyCode::Convert => VirtualKeycode::Convert,
+        winit::event::VirtualKeyCode::Equals => VirtualKeycode::Equals,
+        winit::event::VirtualKeyCode::Grave => VirtualKeycode::Grave,
+        winit::event::VirtualKeyCode::Kana => VirtualKeycode::Kana,
+        winit::event::VirtualKeyCode::Kanji => VirtualKeycode::Kanji,
+        winit::event::VirtualKeyCode::LAlt => VirtualKeycode::LAlt,
+        winit::event::VirtualKeyCode::LBracket => VirtualKeycode::LBracket,
+        winit::event::VirtualKeyCode::LControl => VirtualKeycode::LControl,
+        winit::event::VirtualKeyCode::LShift => VirtualKeycode::LShift,
+        winit::event::VirtualKeyCode::LWin => VirtualKeycode::LWin,
+        winit::event::VirtualKeyCode::Mail => VirtualKeycode::Mail,
+        winit::event::VirtualKeyCode::MediaSelect => VirtualKeycode::MediaSelect,
+        winit::event::VirtualKeyCode::MediaStop => VirtualKeycode::MediaStop,
+        winit::event::VirtualKeyCode::Minus => VirtualKeycode::Minus,
+        winit::event::VirtualKeyCode::Mute => VirtualKeycode::Mute,
+        winit::event::VirtualKeyCode::MyComputer => VirtualKeycode::MyComputer,
+        winit::event::VirtualKeyCode::NavigateForward => VirtualKeycode::NavigateForward,
+        winit::event::VirtualKeyCode::NavigateBackward => VirtualKeycode::NavigateBackward,
+        winit::event::VirtualKeyCode::NextTrack => VirtualKeycode::NextTrack,
+        winit::event::VirtualKeyCode::NoConvert => VirtualKeycode::NoConvert,
+        winit::event::VirtualKeyCode::OEM102 => VirtualKeycode::OEM102,
+        winit::event::VirtualKeyCode::Period => VirtualKeycode::Period,
+        winit::event::VirtualKeyCode::PlayPause => VirtualKeycode::PlayPause,
+        winit::event::VirtualKeyCode::Plus => VirtualKeycode::Plus,
+        winit::event::VirtualKeyCode::Power => VirtualKeycode::Power,
+        winit::event::VirtualKeyCode::PrevTrack => VirtualKeycode::PrevTrack,
+        winit::event::VirtualKeyCode::RAlt => VirtualKeycode::RAlt,
+        winit::event::VirtualKeyCode::RBracket => VirtualKeycode::RBracket,
+        winit::event::VirtualKeyCode::RControl => VirtualKeycode::RControl,
+        winit::event::VirtualKeyCode::RShift => VirtualKeycode::RShift,
+        winit::event::VirtualKeyCode::RWin => VirtualKeycode::RWin,
+        winit::event::VirtualKeyCode::Semicolon => VirtualKeycode::Semicolon,
+        winit::event::VirtualKeyCode::Slash => VirtualKeycode::Slash,
+        winit::event::VirtualKeyCode::Sleep => VirtualKeycode::Sleep,
+        winit::event::VirtualKeyCode::Stop => VirtualKeycode::Stop,
+        winit::event::VirtualKeyCode::Sysrq => VirtualKeycode::Sysrq,
+        winit::event::VirtualKeyCode::Tab => VirtualKeycode::Tab,
+        winit::event::VirtualKeyCode::Underline => VirtualKeycode::Underline,
+        winit::event::VirtualKeyCode::Unlabeled => VirtualKeycode::Unlabeled,
+        winit::event::VirtualKeyCode::VolumeDown => VirtualKeycode::VolumeDown,
+        winit::event::VirtualKeyCode::VolumeUp => VirtualKeycode::VolumeUp,
+        winit::event::VirtualKeyCode::Wake => VirtualKeycode::Wake,
+        winit::event::VirtualKeyCode::WebBack => VirtualKeycode::WebBack,
+        winit::event::VirtualKeyCode::WebFavorites => VirtualKeycode::WebFavorites,
+        winit::event::VirtualKeyCode::WebForward => VirtualKeycode::WebForward,
+        winit::event::VirtualKeyCode::WebHome => VirtualKeycode::WebHome,
+        winit::event::VirtualKeyCode::WebRefresh => VirtualKeycode::WebRefresh,
+        winit::event::VirtualKeyCode::WebSearch => VirtualKeycode::WebSearch,
+        winit::event::VirtualKeyCode::WebStop => VirtualKeycode::WebStop,
+        winit::event::VirtualKeyCode::Yen => VirtualKeycode::Yen,
+        winit::event::VirtualKeyCode::Copy => VirtualKeycode::Copy,
+        winit::event::VirtualKeyCode::Paste => VirtualKeycode::Paste,
+        winit::event::VirtualKeyCode::Cut => VirtualKeycode::Cut,
     }
 }
