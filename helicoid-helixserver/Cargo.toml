@@ -1,0 +1,21 @@
+[package]
+name = "helicoid-helixserver"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+helicoid-protocol={path="../helicoid-protocol", features=["tokio"]}
+helix-view={path="../helix/helix-view"}
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4.0.32", features = ["cargo", "derive", "env"] }
+env_logger = {version = "0.10" }
+log = "0.4.16"
+anyhow = {version="1.0.68"}
+termion-input-tokio = "0.3.0"
+termion = "^1"
+futures = { version = "0.3.25" }
+async-trait = { version = "0.1.60" }
+ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
+smallvec = {version = "1.10", features = ["serde", "const_generics"]}
