@@ -1,5 +1,6 @@
 pub mod block_manager;
 pub mod caching_shaper;
+pub mod dataflow;
 pub mod font_options;
 pub mod gfx;
 pub mod input;

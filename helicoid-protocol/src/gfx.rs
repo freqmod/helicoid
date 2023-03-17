@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use crate::{
     block_manager::{Block, BlockContainer, BlockGfx},
@@ -6,9 +6,11 @@ use crate::{
 };
 use bytecheck::CheckBytes;
 use num_enum::IntoPrimitive;
+use ordered_float::OrderedFloat;
 use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt;
+use std::hash::Hasher;
 
 pub const SVG_RESOURCE_NAME_LEN: usize = 32;
 
@@ -112,6 +114,35 @@ pub struct PointF16 {
     x: u16, // half float
     y: u16, // half float
 }
+
+#[derive(
+    Hash, Copy, Clone, PartialEq, Default, Debug, Archive, Serialize, Deserialize, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct PointF32 {
+    x: OrderedFloat<f32>,
+    y: OrderedFloat<f32>,
+}
+
+#[derive(
+    Copy, Clone, Hash, PartialEq, Debug, Default, Archive, Serialize, Deserialize, CheckBytes,
+)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct PointU32 {
+    x: u32,
+    y: u32,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive(compare(PartialEq))]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct PointU16 {
+    x: u16,
+    y: u16,
+}
+
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, IntoPrimitive)]
 #[archive_attr(derive(Debug))]
 #[repr(u8)]
@@ -189,7 +220,7 @@ pub struct MetaDrawBlock {
     pub extent: PointF16,
     pub buffered: bool,
     pub alpha: Option<u8>, // If alpha is 0, the block is skipped, otherwise only applies to buffered blocks
-    pub sub_blocks: SmallVec<[RenderBlockLocation; 64]>,
+    pub sub_blocks: SmallVec<[RenderBlockLocation; 32]>,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(Debug))]
@@ -292,6 +323,63 @@ impl fmt::Debug for PointF16 {
             .field("x", &self.x())
             .field("y", &self.y())
             .finish()
+    }
+}
+impl PointF32 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self {
+            x: OrderedFloat(x),
+            y: OrderedFloat(y),
+        }
+    }
+    pub fn x(&self) -> f32 {
+        f32::from(self.x)
+    }
+    pub fn y(&self) -> f32 {
+        f32::from(self.y)
+    }
+}
+impl From<PointF32> for PointF16 {
+    fn from(value: PointF32) -> Self {
+        PointF16::new(value.x(), value.y())
+    }
+}
+
+impl From<PointF16> for PointF32 {
+    fn from(value: PointF16) -> Self {
+        PointF32::new(value.x(), value.y())
+    }
+}
+
+impl PointU32 {
+    pub fn floor<P: Into<PointF32>>(p: P) -> Self {
+        let p32: PointF32 = p.into();
+        Self {
+            x: p32.x.floor() as u32,
+            y: p32.y.floor() as u32,
+        }
+    }
+    pub fn ceil<P: Into<PointF32>>(p: P) -> Self {
+        let p32: PointF32 = p.into();
+        Self {
+            x: p32.x.ceil() as u32,
+            y: p32.y.ceil() as u32,
+        }
+    }
+    pub fn new(x: u32, y: u32) -> Self {
+        Self { x, y }
+    }
+    pub fn x(&self) -> u32 {
+        self.x
+    }
+    pub fn y(&self) -> u32 {
+        self.y
+    }
+}
+
+impl From<PointU32> for PointF16 {
+    fn from(value: PointU32) -> Self {
+        PointF16::new(value.x() as f32, value.y() as f32)
     }
 }
 
