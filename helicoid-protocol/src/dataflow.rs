@@ -263,10 +263,10 @@ impl ShadowMetaContainerBlock {
             return;
         }
         let child_path = RenderBlockPath::child(parent, self.id);
+        /* TODO: NB: Push any contents that the current box refers to before sending the message about them */
         for element in self.child_blocks.iter_mut() {
             element.client_transfer_messages(&child_path, messages_vec);
         }
-        /* TODO: NB: Push any contents that the current box refers to before sending the message about them */
         if Some(self.meta_hash) != self.client_meta_hash {
             /* Transfer location metadata for this metablock to the client */
             messages_vec.push(RemoteBoxUpdate {

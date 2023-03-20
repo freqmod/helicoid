@@ -20,6 +20,7 @@ futures = { version = "0.3.25" }
 async-trait = { version = "0.1.60" }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}
+swash = "0.1.6"
 
 arc-swap = { version = "1.5.0" }
 toml = "0.5"
