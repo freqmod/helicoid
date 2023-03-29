@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Result};
 use arc_swap::{access::Map, ArcSwap};
 use async_trait::async_trait;
+use hashbrown::HashMap;
+
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
@@ -30,6 +32,8 @@ use tokio::sync::{
     Mutex as TMutex,
 };
 
+use crate::editor_view::EditorContainer;
+
 /* Architecture:
 The (Dummy)Editor object is stored in a shared Arc<TMutex<>> object, and is cloned
 to all the client handles. All clients register with the editor to be notified (using a channel)
@@ -39,7 +43,9 @@ struct HelicoidEditor {
     editor_state_changed_send: BSender<()>,
     editor: Editor,
 }
-struct Compositor {}
+struct Compositor {
+    containers: HashMap<RenderBlockId, EditorContainer>,
+}
 /* This struct stores a pointer to the common editor, as well as all client specific
 information */
 struct ServerStateData {
@@ -79,14 +85,21 @@ impl HelicoidServer {
         log::trace!("Helicoid test server event loop start");
         let mut state_data = ServerStateData {
             editor: self.editor.clone(),
-            compositor: Compositor {},
+            compositor: Compositor {
+                containers: HashMap::default(),
+            },
         };
         loop {
             log::trace!("Helicoid test server event loop iterate");
             tokio::select! {
                 result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
                     /* Currently all event handling is done inside the state */
-                    state_data =  ServerStateData {editor:self.editor.clone(), compositor: Compositor {  } };
+                    state_data =  ServerStateData {
+                        editor: self.editor.clone(),
+                        compositor: Compositor {
+                            containers: HashMap::default(),
+                        }
+                    };
                 },
                 /* Maybe add select on program close-channel here to close cleanly */
             }

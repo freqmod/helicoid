@@ -320,3 +320,13 @@ impl ShadowMetaBlock {
         }
     }
 }
+
+impl ShadowMetaTextBlock {
+    pub fn new() -> Self {
+        Self {
+            wire: ShapedTextBlock::default(),
+            hash: None,
+            client_hash: None,
+        }
+    }
+}

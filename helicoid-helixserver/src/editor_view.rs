@@ -1,8 +1,10 @@
+use hashbrown::HashMap;
 use helicoid_protocol::{
-    dataflow::ShadowMetaContainerBlock,
-    gfx::{PointF16, PointF32, PointU32, RenderBlockId},
+    dataflow::{ShadowMetaBlock, ShadowMetaContainerBlock, ShadowMetaTextBlock},
+    gfx::{PointF16, PointF32, PointU32, RenderBlockId, RenderBlockLocation},
 };
-use helix_view::{document::Mode, Editor};
+use helix_lsp::lsp::DiagnosticSeverity;
+use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor};
 use ordered_float::OrderedFloat;
 use std::hash::Hash;
 use swash::Metrics;
@@ -16,8 +18,6 @@ trait GfxComposibleBlock: Hash + PartialEq {
 struct SizeScale {
     line_height: OrderedFloat<f32>,
 }
-#[derive(Hash, PartialEq, Clone)]
-struct ShadowMetaBlock {}
 /* Top at the moment is not in use */
 #[derive(Hash, PartialEq)]
 struct EditorTop {
@@ -28,17 +28,26 @@ struct EditorTop {
 /* How should we organise the status line, helix view has a very string based approach
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
-#[derive(Hash, PartialEq)]
+
+/* Currently make a text based status line, to be refactored with more fancy graphics at a later
+time (possibly together with helix-view). A special symbol font is used to be able to render
+relatively fancy graphics using text shaping engine. */
+#[derive(Hash, PartialEq, Default)]
 struct StatusLineModel {
-    //    status_mode: Mode,
-    //    doucment_name: String,
+    left: String,
+    center: String,
+    right: String,
+    cfg_hash: Option<u64>,
+    src_hash: Option<u64>,
+    last_frame_time: Option<u32>,
+    next_frame_time: Option<u32>,
 }
 #[derive(Hash, PartialEq)]
 struct Statusline {
     block: ShadowMetaContainerBlock,
     scale: SizeScale,
 
-    model: StatuslineModel,
+    model: StatusLineModel,
 }
 #[derive(Hash, PartialEq)]
 struct LeftGutter {
@@ -84,10 +93,10 @@ struct EditorTextArea {
 struct EditorModel {
     scale: SizeScale, // Size of a line, in native pixels
     extent: PointU32, // In native pixels, whatever that is
-    view_id: usize,
+    document_id: Option<DocumentId>,
     main_font_metrics: Metrics,
 }
-struct EditorContainer {
+pub struct EditorContainer {
     top: EditorTop,
     bottom: Statusline,
     left: LeftGutter,
@@ -131,7 +140,7 @@ impl EditorContainer {
             model: EditorModel {
                 scale: line_scale.clone(),
                 extent: PointU32::default(),
-                view_id: 0,
+                document_id: None,
                 main_font_metrics: font_info,
             },
             top: EditorTop {
@@ -143,15 +152,7 @@ impl EditorContainer {
                     None,
                 ),
             },
-            bottom: Statusline {
-                scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::new(
-                    RenderBlockId::normal(11).unwrap(),
-                    PointF16::default(),
-                    false,
-                    None,
-                ),
-            },
+            bottom: Statusline::new(line_scale.clone()),
             left: LeftGutter {
                 scale: line_scale.clone(),
                 block: ShadowMetaContainerBlock::new(
@@ -225,6 +226,23 @@ impl EditorContainer {
             PointU32::new(horizontal_left, vertical_left),
         );
     }
+    /* The helix editor logic works by calling update in a loop. This is
+    a bit different than the lazy update logic of helicone. Update any
+    intermediate structures every time this function is called, recalculate the
+    appropriate hashes, and recompute (and transmit) the lazy loaded data if the
+    hashes are different */
+    pub fn update_state(&mut self, editor: &mut Editor) {
+        if let Some(doc_id) = self.model.document_id {
+            let doc = editor.document(doc_id);
+            if let Some(doc) = doc {
+                self.bottom.update_state(editor, doc);
+            } else {
+                /* If there are no document that matches the editor something
+                should probably be done */
+                panic!("This is not expected to happen");
+            }
+        }
+    }
 }
 
 impl GfxComposibleBlock for EditorTop {
@@ -242,6 +260,165 @@ impl GfxComposibleBlock for EditorTop {
 
     fn render(&mut self) {}
 }
+
+const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
+const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
+const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
+const UNNAMED_NAME: &str = "<Not saved>";
+impl Statusline {
+    fn new(line_scale: SizeScale) -> Self {
+        let mut sl = Self {
+            scale: line_scale,
+            block: ShadowMetaContainerBlock::new(
+                RenderBlockId::normal(11).unwrap(),
+                PointF16::default(),
+                false,
+                None,
+            ),
+            model: StatusLineModel::default(),
+        };
+        sl.init_layout();
+        sl
+    }
+    fn init_layout(&mut self) {
+        self.block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+        self.block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+        self.block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+    }
+    fn render_mode(editor: &Editor, out_string: &mut String) {
+        match editor.mode {
+            Mode::Normal => out_string.push_str(" 󰄮 "),
+            Mode::Select => out_string.push_str(" 󰒅 "),
+            Mode::Insert => out_string.push_str(" 󰫙 "),
+        };
+    }
+
+    fn render_diagnostics(doc: &Document, out_string: &mut String) {
+        let (warnings, errors) = doc.diagnostics().iter().fold((0, 0), |mut counts, diag| {
+            use helix_core::diagnostic::Severity;
+            match diag.severity {
+                Some(Severity::Warning) => counts.0 += 1,
+                Some(Severity::Error) | None => counts.1 += 1,
+                _ => {}
+            }
+            counts
+        });
+        if warnings > 0 {
+            out_string.push_str(format!("{}  ", warnings).as_str());
+        }
+
+        if errors > 0 {
+            out_string.push_str(format!("{}  ", errors).as_str());
+        }
+    }
+    fn render_workspace_diagnostics(editor: &Editor, out_string: &mut String) {
+        let (warnings, errors) =
+            editor
+                .diagnostics
+                .values()
+                .flatten()
+                .fold((0, 0), |mut counts, diag| {
+                    match diag.severity {
+                        Some(DiagnosticSeverity::WARNING) => counts.0 += 1,
+                        Some(DiagnosticSeverity::ERROR) | None => counts.1 += 1,
+                        _ => {}
+                    }
+                    counts
+                });
+        if warnings > 0 || errors > 0 {
+            out_string.push_str(format!("󰪏: ").as_str());
+        }
+        if warnings > 0 {
+            out_string.push_str(format!("{}  ", warnings).as_str());
+        }
+
+        if errors > 0 {
+            out_string.push_str(format!("{}  ", errors).as_str());
+        }
+    }
+    fn render_elements(
+        elements: &Vec<StatusLineElement>,
+        editor: &Editor,
+        doc: &Document,
+        out_string: &mut String,
+    ) {
+        out_string.clear();
+        for element in elements.iter() {
+            match element {
+                StatusLineElement::Mode => {
+                    Self::render_mode(editor, out_string);
+                }
+                /* Currently no animations are implemented for the spinner */
+                StatusLineElement::Spinner => out_string.push_str("  "),
+                /* TODO: Currently FileName and File BaseName is not distinguished, we prbably want to do that */
+                StatusLineElement::FileName | StatusLineElement::FileBaseName => {
+                    if let Some(path_buf) = doc.relative_path() {
+                        if let Ok(path_str) = path_buf.into_os_string().into_string() {
+                            out_string.push_str(&path_str);
+                        }
+                    } else {
+                        out_string.push_str(UNNAMED_NAME);
+                    }
+                }
+                StatusLineElement::FileModificationIndicator => {
+                    if doc.is_modified() {
+                        out_string.push_str("  ");
+                    } else {
+                    }
+                }
+                StatusLineElement::Diagnostics => {
+                    Self::render_diagnostics(doc, out_string);
+                }
+                StatusLineElement::WorkspaceDiagnostics => {
+                    Self::render_workspace_diagnostics(editor, out_string);
+                }
+                StatusLineElement::FileEncoding => {}
+                StatusLineElement::FileLineEnding => {}
+                StatusLineElement::FileType => {}
+                StatusLineElement::Selections => {}
+                StatusLineElement::PrimarySelectionLength => {}
+                StatusLineElement::Position => {}
+                StatusLineElement::Separator => {}
+                StatusLineElement::PositionPercentage => {}
+                StatusLineElement::TotalLineNumbers => {}
+                StatusLineElement::Spacer => {}
+                StatusLineElement::VersionControl => {}
+                StatusLineElement::WindowIdentifiers => {}
+            }
+        }
+    }
+    fn update_state(&mut self, editor: &Editor, document: &Document) {
+        let status_config = &editor.config().statusline;
+        Self::render_elements(&status_config.left, editor, document, &mut self.model.left);
+        //        for element in
+
+        /* Check the state of the statusline of the document, updating this
+        element if anything has changed */
+
+        //        let new_hash = document.sta
+    }
+}
 impl GfxComposibleBlock for Statusline {
     fn extent(&self) -> PointU32 {
         PointU32::default()
@@ -257,6 +434,8 @@ impl GfxComposibleBlock for Statusline {
 
     fn render(&mut self) {
         /* Update meta shadow block based on any changes to local data / model */
+        // Currently the status line block consists of 3 shapable strings for
+        // left (0x10), center(0x11) and right (0x12), at layer 0x10.
     }
 }
 
