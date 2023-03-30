@@ -2,6 +2,7 @@ use hashbrown::HashMap;
 use helicoid_protocol::{
     dataflow::{ShadowMetaBlock, ShadowMetaContainerBlock, ShadowMetaTextBlock},
     gfx::{PointF16, PointF32, PointU32, RenderBlockId, RenderBlockLocation},
+    text::ShapableString,
 };
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor};
@@ -34,9 +35,9 @@ time (possibly together with helix-view). A special symbol font is used to be ab
 relatively fancy graphics using text shaping engine. */
 #[derive(Hash, PartialEq, Default)]
 struct StatusLineModel {
-    left: String,
-    center: String,
-    right: String,
+    left: ShapableString,
+    center: ShapableString,
+    right: ShapableString,
     cfg_hash: Option<u64>,
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
@@ -306,15 +307,15 @@ impl Statusline {
             ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
         );
     }
-    fn render_mode(editor: &Editor, out_string: &mut String) {
+    fn render_mode(editor: &Editor, out_string: &mut ShapableString) {
         match editor.mode {
-            Mode::Normal => out_string.push_str(" 󰄮 "),
-            Mode::Select => out_string.push_str(" 󰒅 "),
-            Mode::Insert => out_string.push_str(" 󰫙 "),
+            Mode::Normal => out_string.push_plain_str(" 󰄮 "),
+            Mode::Select => out_string.push_plain_str(" 󰒅 "),
+            Mode::Insert => out_string.push_plain_str(" 󰫙 "),
         };
     }
 
-    fn render_diagnostics(doc: &Document, out_string: &mut String) {
+    fn render_diagnostics(doc: &Document, out_string: &mut ShapableString) {
         let (warnings, errors) = doc.diagnostics().iter().fold((0, 0), |mut counts, diag| {
             use helix_core::diagnostic::Severity;
             match diag.severity {
@@ -325,14 +326,14 @@ impl Statusline {
             counts
         });
         if warnings > 0 {
-            out_string.push_str(format!("{}  ", warnings).as_str());
+            out_string.push_plain_str(format!("{}  ", warnings).as_str());
         }
 
         if errors > 0 {
-            out_string.push_str(format!("{}  ", errors).as_str());
+            out_string.push_plain_str(format!("{}  ", errors).as_str());
         }
     }
-    fn render_workspace_diagnostics(editor: &Editor, out_string: &mut String) {
+    fn render_workspace_diagnostics(editor: &Editor, out_string: &mut ShapableString) {
         let (warnings, errors) =
             editor
                 .diagnostics
@@ -347,21 +348,21 @@ impl Statusline {
                     counts
                 });
         if warnings > 0 || errors > 0 {
-            out_string.push_str(format!("󰪏: ").as_str());
+            out_string.push_plain_str(format!("󰪏: ").as_str());
         }
         if warnings > 0 {
-            out_string.push_str(format!("{}  ", warnings).as_str());
+            out_string.push_plain_str(format!("{}  ", warnings).as_str());
         }
 
         if errors > 0 {
-            out_string.push_str(format!("{}  ", errors).as_str());
+            out_string.push_plain_str(format!("{}  ", errors).as_str());
         }
     }
     fn render_elements(
         elements: &Vec<StatusLineElement>,
         editor: &Editor,
         doc: &Document,
-        out_string: &mut String,
+        out_string: &mut ShapableString,
     ) {
         out_string.clear();
         for element in elements.iter() {
@@ -370,20 +371,20 @@ impl Statusline {
                     Self::render_mode(editor, out_string);
                 }
                 /* Currently no animations are implemented for the spinner */
-                StatusLineElement::Spinner => out_string.push_str("  "),
+                StatusLineElement::Spinner => out_string.push_plain_str("  "),
                 /* TODO: Currently FileName and File BaseName is not distinguished, we prbably want to do that */
                 StatusLineElement::FileName | StatusLineElement::FileBaseName => {
                     if let Some(path_buf) = doc.relative_path() {
                         if let Ok(path_str) = path_buf.into_os_string().into_string() {
-                            out_string.push_str(&path_str);
+                            out_string.push_plain_str(&path_str);
                         }
                     } else {
-                        out_string.push_str(UNNAMED_NAME);
+                        out_string.push_plain_str(UNNAMED_NAME);
                     }
                 }
                 StatusLineElement::FileModificationIndicator => {
                     if doc.is_modified() {
-                        out_string.push_str("  ");
+                        out_string.push_plain_str("  ");
                     } else {
                     }
                 }
@@ -411,12 +412,18 @@ impl Statusline {
     fn update_state(&mut self, editor: &Editor, document: &Document) {
         let status_config = &editor.config().statusline;
         Self::render_elements(&status_config.left, editor, document, &mut self.model.left);
-        //        for element in
-
-        /* Check the state of the statusline of the document, updating this
-        element if anything has changed */
-
-        //        let new_hash = document.sta
+        Self::render_elements(
+            &status_config.center,
+            editor,
+            document,
+            &mut self.model.center,
+        );
+        Self::render_elements(
+            &status_config.right,
+            editor,
+            document,
+            &mut self.model.right,
+        );
     }
 }
 impl GfxComposibleBlock for Statusline {

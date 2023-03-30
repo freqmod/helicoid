@@ -59,7 +59,7 @@ pub struct ShapedTextGlyph {
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct ShapedStringMetadata {
-    pub substring_length: u16,
+    pub substring_length: u16, // In (UTF-8) bytes
     pub font_info: SmallFontOptions,
     pub paint: FontPaint,
     pub advance_x: u16,
@@ -139,6 +139,26 @@ impl ShapableString {
             text,
             metadata_runs: smallvec![simple_run],
         }
+    }
+    pub fn push_str(&mut self, text: &str, metadata: ShapedStringMetadata) {
+        debug_assert_eq!(metadata.substring_length as usize, text.as_bytes().len());
+        self.text.extend_from_slice(text.as_bytes());
+        self.metadata_runs.push(metadata);
+    }
+    pub fn push_plain_str(&mut self, text: &str) {
+        let simple_run = ShapedStringMetadata {
+            substring_length: text.as_bytes().len() as u16,
+            font_info: Default::default(),
+            paint: FontPaint::default(),
+            advance_x: 0,
+            advance_y: 0,
+            baseline_y: 0,
+        };
+        self.push_str(text, simple_run);
+    }
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.metadata_runs.clear();
     }
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Archive, Serialize, Deserialize, CheckBytes)]
