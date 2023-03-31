@@ -28,6 +28,11 @@ use crate::renderer::fonts::blob_builder::ShapedBlobBuilder;
 lazy_static! {
     static ref SVG_CACHE: SvgResourcePixmapCache = SvgResourcePixmapCache::new();
 }
+/* Seeds for hashes: The hashes should stay consistent so we can compare them */
+const S1: u64 = 0x1199AACCDD117766;
+const S2: u64 = 0x99AACCDD11776611;
+const S3: u64 = 0xAACCDD1177661199;
+const S4: u64 = 0xCCDD117766AACE7D;
 
 struct SvgResourcePixmapCache {
     resources: Mutex<HashMap<SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>, HashMap<(u16, u16), Vec<u8>>>>,
@@ -592,7 +597,8 @@ impl SkiaClientRenderBlock {
             panic!("Render simple draw should not be called with a description that is not a simple draw")
         };
         let target_surface = &mut target.target_surface;
-        let mut hasher = ahash::random_state::RandomState::new().build_hasher();
+        let mut hasher =
+            ahash::random_state::RandomState::with_seeds(S1, S2, S3, S4).build_hasher();
         location.hash(&mut hasher);
         //mb.hash(&mut hasher);
         meta.hash_block_recursively(&mut hasher);

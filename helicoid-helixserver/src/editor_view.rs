@@ -1,19 +1,43 @@
 use hashbrown::HashMap;
 use helicoid_protocol::{
+    caching_shaper::CachingShaper,
     dataflow::{ShadowMetaBlock, ShadowMetaContainerBlock, ShadowMetaTextBlock},
-    gfx::{PointF16, PointF32, PointU32, RenderBlockId, RenderBlockLocation},
-    text::ShapableString,
+    gfx::{
+        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
+        PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
+        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
+        SimplePaint, SimpleRoundRect, SimpleSvg,
+    },
+    input::{
+        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
+        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+    },
+    tcp_bridge::{
+        TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
+        TcpBridgeToServerMessage,
+    },
+    text::{FontEdging, FontHinting, ShapableString},
 };
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor};
 use ordered_float::OrderedFloat;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash, Hasher};
 use swash::Metrics;
+
+/* Seeds for hashes: The hashes should stay consistent so we can compare them */
+const S1: u64 = 0x1199AACCDD114773;
+const S2: u64 = 0x99AACCDD11779611;
+const S3: u64 = 0xAACCDD1177667199;
+const S4: u64 = 0xCCDD117766A0CE7D;
+
+trait RenderContext {
+    fn shaper(&mut self) -> &mut CachingShaper;
+}
 
 trait GfxComposibleBlock: Hash + PartialEq {
     fn extent(&self) -> PointU32;
     fn set_layout(&mut self, scale: SizeScale, extent: PointU32);
-    fn render(&mut self);
+    fn render(&mut self, context: &mut dyn RenderContext);
 }
 #[derive(Hash, PartialEq, Clone)]
 struct SizeScale {
@@ -259,7 +283,7 @@ impl GfxComposibleBlock for EditorTop {
         ));
     }
 
-    fn render(&mut self) {}
+    fn render(&mut self, context: &mut dyn RenderContext) {}
 }
 
 const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
@@ -425,6 +449,14 @@ impl Statusline {
             &mut self.model.right,
         );
     }
+    fn hash_state(&self) -> u64 {
+        let mut hasher =
+            ahash::random_state::RandomState::with_seeds(S1, S2, S3, S4).build_hasher();
+        self.model.left.hash(&mut hasher);
+        self.model.center.hash(&mut hasher);
+        self.model.right.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 impl GfxComposibleBlock for Statusline {
     fn extent(&self) -> PointU32 {
@@ -439,10 +471,31 @@ impl GfxComposibleBlock for Statusline {
         ));
     }
 
-    fn render(&mut self) {
+    fn render(&mut self, context: &mut dyn RenderContext) {
         /* Update meta shadow block based on any changes to local data / model */
         // Currently the status line block consists of 3 shapable strings for
         // left (0x10), center(0x11) and right (0x12), at layer 0x10.
+        let current_state = self.hash_state();
+        let skip_render = if let Some(rendered_state) = self.model.src_hash {
+            if rendered_state == current_state {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if !skip_render {
+            let string_to_shape = &self.model.left;
+            let shaper = context.shaper();
+            // TODO: The shaper should be shared, maybe some kind of render context?
+            let mut shaped = shaper.shape(&string_to_shape, &None);
+            //        let mut new_render_blocks = SmallVec::with_capacity(1);
+            let new_shaped_string_block = NewRenderBlock {
+                id: RenderBlockId::normal(1000).unwrap(),
+                contents: RenderBlockDescription::ShapedTextBlock(shaped),
+            };
+        }
     }
 }
 
@@ -457,7 +510,7 @@ impl GfxComposibleBlock for LeftGutter {
         ));
     }
 
-    fn render(&mut self) {}
+    fn render(&mut self, context: &mut dyn RenderContext) {}
 }
 impl GfxComposibleBlock for RightGutter {
     fn extent(&self) -> PointU32 {
@@ -470,7 +523,7 @@ impl GfxComposibleBlock for RightGutter {
         ));
     }
 
-    fn render(&mut self) {}
+    fn render(&mut self, context: &mut dyn RenderContext) {}
 }
 /*
 impl GfxComposibleBlock for TopOverlay {
@@ -511,5 +564,5 @@ impl GfxComposibleBlock for EditorTextArea {
         self.extent = extent;
     }
 
-    fn render(&mut self) {}
+    fn render(&mut self, context: &mut dyn RenderContext) {}
 }
