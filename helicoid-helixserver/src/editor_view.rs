@@ -495,6 +495,12 @@ impl GfxComposibleBlock for Statusline {
                 id: RenderBlockId::normal(1000).unwrap(),
                 contents: RenderBlockDescription::ShapedTextBlock(shaped),
             };
+            let mut cblock_guard = self
+                .block
+                .child_mut(RenderBlockId(STATUSLINE_CHILD_ID_LEFT))
+                .unwrap();
+            let (cblock, cloc) = cblock_guard.destruct();
+            let ctxt_block = cblock.text_mut().unwrap();
         }
     }
 }

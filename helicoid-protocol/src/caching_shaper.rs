@@ -1,5 +1,5 @@
 use crate::font_options::FontOptions;
-use crate::gfx::{FontPaint, SimplePaint};
+use crate::gfx::{FontPaint, PointF16, SimplePaint};
 use crate::swash_font::SwashFont;
 use crate::text::{
     ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph, SmallFontOptions,
@@ -524,7 +524,7 @@ impl CachingShaper {
         let mut current_text_offset = 0;
         let inner = self.inner.read();
         let mut current_pixel_offset = 0f32;
-        //let ncoords = [1<<14];
+        let mut max_y_advance = 0f32;
 
         for (run_index, run) in text.metadata_runs.iter().enumerate() {
             //            current_text_offset += run.substring_length as usize;
@@ -556,6 +556,8 @@ impl CachingShaper {
                 let charmap = font.swash_font.as_ref().charmap();
                 let cluster_list_slice = &mut cluster_list[current_cluster_offset
                     ..(current_cluster_offset + shaped_string_run.substring_length as usize)];
+                max_y_advance = max_y_advance.max(y_advance);
+
                 for char_cluster in cluster_list_slice.iter_mut() {
                     char_cluster.map(|ch| charmap.map(ch));
                     shaper.add_cluster(&char_cluster);
@@ -594,6 +596,7 @@ impl CachingShaper {
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }
         }
+        resulting_block.extent = PointF16::new(current_pixel_offset, max_y_advance);
 
         resulting_block
     }

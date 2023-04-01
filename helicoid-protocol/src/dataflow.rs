@@ -319,6 +319,20 @@ impl ShadowMetaBlock {
             ShadowMetaBlock::Text(_) => todo!(),
         }
     }
+    pub fn text(&self) -> Option<&ShadowMetaTextBlock> {
+        if let ShadowMetaBlock::Text(t) = self {
+            Some(t)
+        } else {
+            None
+        }
+    }
+    pub fn text_mut(&mut self) -> Option<&mut ShadowMetaTextBlock> {
+        if let ShadowMetaBlock::Text(t) = self {
+            Some(t)
+        } else {
+            None
+        }
+    }
 }
 
 impl ShadowMetaTextBlock {
