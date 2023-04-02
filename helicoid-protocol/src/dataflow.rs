@@ -134,21 +134,27 @@ impl PartialEq for ShadowMetaBlock{
     }
 }
 
-impl<L> AnyShadowMetaContainerBlock for ShadowMetaContainerBlock<L> where L : Send{
+impl<L> AnyShadowMetaContainerBlock for ShadowMetaContainerBlock<L> where L : Send + Hash + PartialEq + 'static{
     fn as_any(&self) -> &dyn Any {
-        todo!()
+        self as &dyn Any
     }
 
     fn as_any_mut (&mut self) -> &mut dyn Any {
-        todo!()
+        self as &mut dyn Any
     }
 
     fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock) -> bool {
-        todo!()
+        if let Some(rhs) = rhs.as_any().downcast_ref::<Self>(){
+            PartialEq::eq(self, rhs)
+        } else{
+            false
+        }
     }
 
     fn hash_value(&self) -> u64 {
-        todo!()
+        let mut hasher = AHasher::default();
+        self.hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -173,7 +179,7 @@ impl Hash for ShadowMetaBlock{
 }
 
 #[derive(Hash, PartialEq)]
-pub struct ShadowMetaContainerBlock<L : Send> {
+pub struct ShadowMetaContainerBlock<L> where L : Send + Hash + PartialEq{
     id: RenderBlockId,
     wire: MetaDrawBlock,
     child_blocks: Vec<ShadowMetaBlock>, // Corresponding index wise to the sub_blocks in wire
@@ -203,7 +209,7 @@ pub struct ShadowMetaTextBlock {
     client_hash: Option<u64>,
 }
 
-impl<L> ShadowMetaContainerBlock<L> where L: Send{
+impl<L> ShadowMetaContainerBlock<L> where L: Send + Hash + PartialEq{
     pub fn new(id: RenderBlockId, extent: PointF16, buffered: bool, alpha: Option<u8>, logic: L) -> Self {
         let mut s = Self {
             id,
@@ -372,11 +378,11 @@ impl<L> ShadowMetaContainerBlock<L> where L: Send{
     }
 }
 
-pub struct ShadowMetaContainerBlockGuard<'a, L> where L: Send {
+pub struct ShadowMetaContainerBlockGuard<'a, L> where L: Send + Hash + PartialEq{
     container: &'a mut ShadowMetaContainerBlock<L>,
     idx: usize,
 }
-impl<'a, L> ShadowMetaContainerBlockGuard<'a, L> where L: Send {
+impl<'a, L> ShadowMetaContainerBlockGuard<'a, L> where L: Send + Hash + PartialEq{
     pub fn block(&mut self) -> &mut ShadowMetaBlock {
         self.container.child_blocks.get_mut(self.idx).unwrap()
     }
@@ -391,7 +397,7 @@ impl<'a, L> ShadowMetaContainerBlockGuard<'a, L> where L: Send {
     }
 }
 
-impl<'a, L> Drop for ShadowMetaContainerBlockGuard<'a, L>  where L: Send {
+impl<'a, L> Drop for ShadowMetaContainerBlockGuard<'a, L>  where L: Send + Hash + PartialEq{
     fn drop(&mut self) {
         self.container.check_changed(self.idx);
     }
