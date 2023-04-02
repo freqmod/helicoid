@@ -3,7 +3,7 @@ use hashbrown::HashSet;
 use smallvec::smallvec;
 use std::{
     hash::{Hash, Hasher},
-    ops::Deref,
+    ops::Deref, any::Any,
 };
 
 use crate::{
@@ -82,16 +82,98 @@ where
         self.state.check_changed();
     }
 }
+/* Type erased Container (inspired by Xilem) */
+pub trait AnyShadowMetaContainerBlock : Send{
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut (&mut self) -> &mut dyn Any;
+    fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock) -> bool;
+    fn hash_value(&self) -> u64;
+}
 
-#[derive(Hash, PartialEq)]
 pub enum ShadowMetaBlock {
-    Container(ShadowMetaContainerBlock),
+    WrappedContainer(Box<dyn AnyShadowMetaContainerBlock>),
+    Container(ShadowMetaContainerBlock<()>),
     Draw(ShadowMetaDrawBlock),
     Text(ShadowMetaTextBlock),
 }
 
+impl PartialEq for ShadowMetaBlock{
+    fn eq(&self, other: &Self) -> bool {
+        match self{
+            ShadowMetaBlock::WrappedContainer(wc) => {
+                if let ShadowMetaBlock::WrappedContainer(other) = other{
+                    wc.eq(other.as_ref())
+                } else{
+                    false
+                }
+            },
+            ShadowMetaBlock::Container(c) => {
+                if let ShadowMetaBlock::Container(other) = other{
+                    PartialEq::eq(c, other)
+                } else{
+                    false
+                }
+            },
+            ShadowMetaBlock::Draw(d) => {
+                if let ShadowMetaBlock::Draw(other) = other{
+                    d.eq(other)
+                } else{
+                    false
+                }
+                
+            },
+            ShadowMetaBlock::Text(t) => 
+            {
+                if let ShadowMetaBlock::Text(other) = other{
+                    t.eq(other)
+                } else{
+                    false
+                }
+            },
+        }
+    }
+}
+
+impl<L> AnyShadowMetaContainerBlock for ShadowMetaContainerBlock<L> where L : Send{
+    fn as_any(&self) -> &dyn Any {
+        todo!()
+    }
+
+    fn as_any_mut (&mut self) -> &mut dyn Any {
+        todo!()
+    }
+
+    fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock) -> bool {
+        todo!()
+    }
+
+    fn hash_value(&self) -> u64 {
+        todo!()
+    }
+}
+
+impl Hash for ShadowMetaBlock{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self{
+            ShadowMetaBlock::WrappedContainer(wc) => {
+                state.write_u64(wc.hash_value());
+            },
+            ShadowMetaBlock::Container(c) => {
+                c.hash(state);
+            },
+            ShadowMetaBlock::Draw(d) => {
+                d.hash(state);
+            },
+            ShadowMetaBlock::Text(t) => 
+            {
+                t.hash(state);
+            },
+        }
+    }
+}
+
 #[derive(Hash, PartialEq)]
-pub struct ShadowMetaContainerBlock {
+pub struct ShadowMetaContainerBlock<L : Send> {
     id: RenderBlockId,
     wire: MetaDrawBlock,
     child_blocks: Vec<ShadowMetaBlock>, // Corresponding index wise to the sub_blocks in wire
@@ -99,6 +181,12 @@ pub struct ShadowMetaContainerBlock {
     client_hash: Option<u64>,
     meta_hash: u64,
     client_meta_hash: Option<u64>,
+    logic: L
+}
+
+#[derive(Hash, PartialEq)]
+pub struct WrappedShadowMetaContainerBlock{
+    
 }
 
 #[derive(Hash, PartialEq)]
@@ -115,8 +203,8 @@ pub struct ShadowMetaTextBlock {
     client_hash: Option<u64>,
 }
 
-impl ShadowMetaContainerBlock {
-    pub fn new(id: RenderBlockId, extent: PointF16, buffered: bool, alpha: Option<u8>) -> Self {
+impl<L> ShadowMetaContainerBlock<L> where L: Send{
+    pub fn new(id: RenderBlockId, extent: PointF16, buffered: bool, alpha: Option<u8>, logic: L) -> Self {
         let mut s = Self {
             id,
             wire: MetaDrawBlock {
@@ -130,11 +218,12 @@ impl ShadowMetaContainerBlock {
             client_hash: None,
             meta_hash: 0,
             client_meta_hash: None,
+            logic
         };
         s.rehash();
         s
     }
-    pub fn extent(&mut self) -> PointF16 {
+    pub fn extent(&self) -> PointF16 {
         self.wire.extent
     }
     pub fn set_extent(&mut self, extent: PointF16) {
@@ -202,7 +291,7 @@ impl ShadowMetaContainerBlock {
         }
     }
     /* NB/Safety: If the id in the location is changed make sure it is not duplicating other id's */
-    pub fn child_mut(&mut self, id: RenderBlockId) -> Option<ShadowMetaContainerBlockGuard> {
+    pub fn child_mut(&mut self, id: RenderBlockId) -> Option<ShadowMetaContainerBlockGuard<L>> {
         if let Some(block_idx) = self
             .wire
             .sub_blocks
@@ -238,6 +327,7 @@ impl ShadowMetaContainerBlock {
 
         for child in self.child_blocks.iter() {
             if let Some(hash) = match child {
+                ShadowMetaBlock::WrappedContainer(wc) => Some(wc.hash_value()),
                 ShadowMetaBlock::Container(c) => c.hash,
                 ShadowMetaBlock::Draw(d) => d.hash,
                 ShadowMetaBlock::Text(t) => t.hash,
@@ -282,11 +372,11 @@ impl ShadowMetaContainerBlock {
     }
 }
 
-pub struct ShadowMetaContainerBlockGuard<'a> {
-    container: &'a mut ShadowMetaContainerBlock,
+pub struct ShadowMetaContainerBlockGuard<'a, L> where L: Send {
+    container: &'a mut ShadowMetaContainerBlock<L>,
     idx: usize,
 }
-impl<'a> ShadowMetaContainerBlockGuard<'a> {
+impl<'a, L> ShadowMetaContainerBlockGuard<'a, L> where L: Send {
     pub fn block(&mut self) -> &mut ShadowMetaBlock {
         self.container.child_blocks.get_mut(self.idx).unwrap()
     }
@@ -301,7 +391,7 @@ impl<'a> ShadowMetaContainerBlockGuard<'a> {
     }
 }
 
-impl<'a> Drop for ShadowMetaContainerBlockGuard<'a> {
+impl<'a, L> Drop for ShadowMetaContainerBlockGuard<'a, L>  where L: Send {
     fn drop(&mut self) {
         self.container.check_changed(self.idx);
     }
@@ -314,6 +404,7 @@ impl ShadowMetaBlock {
         messages_vec: &mut Vec<RemoteBoxUpdate>,
     ) {
         match self {
+            ShadowMetaBlock::WrappedContainer(_) => todo!(),
             ShadowMetaBlock::Container(_) => todo!(),
             ShadowMetaBlock::Draw(_) => todo!(),
             ShadowMetaBlock::Text(_) => todo!(),
@@ -342,5 +433,8 @@ impl ShadowMetaTextBlock {
             hash: None,
             client_hash: None,
         }
+    }
+    pub fn set_wire(&mut self, wire: ShapedTextBlock) {
+        self.wire = wire;
     }
 }

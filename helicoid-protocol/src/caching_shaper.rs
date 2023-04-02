@@ -231,7 +231,7 @@ impl CachingShaper {
         false
     }
 
-    fn info(&mut self, font_options: &SmallFontOptions) -> Option<(Metrics, f32)> {
+    pub fn info(&mut self, font_options: &SmallFontOptions) -> Option<(Metrics, f32)> {
         //let font_pair = self.current_font_pair();
         /* Ensure font is loaded (if possible) */
         let _ = self.cache_font_for_index(font_options);

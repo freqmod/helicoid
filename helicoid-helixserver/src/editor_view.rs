@@ -24,7 +24,8 @@ use ordered_float::OrderedFloat;
 use std::hash::{BuildHasher, Hash, Hasher};
 use swash::Metrics;
 
-/* Seeds for hashes: The hashes should stay consistent so we can compare them */
+/* Seeds for hashes: The hashes should stay consistent during program execution,
+so we can compare them */
 const S1: u64 = 0x1199AACCDD114773;
 const S2: u64 = 0x99AACCDD11779611;
 const S3: u64 = 0xAACCDD1177667199;
@@ -46,7 +47,7 @@ struct SizeScale {
 /* Top at the moment is not in use */
 #[derive(Hash, PartialEq)]
 struct EditorTop {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 
@@ -69,44 +70,44 @@ struct StatusLineModel {
 }
 #[derive(Hash, PartialEq)]
 struct Statusline {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 
     model: StatusLineModel,
 }
 #[derive(Hash, PartialEq)]
 struct LeftGutter {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct RightGutter {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct TopOverlay {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct BottomOverlay {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct LeftOverlay {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct RightOverlay {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct TopRightOverlay {
-    block: ShadowMetaContainerBlock,
+    block: ShadowMetaContainerBlock<()>,
     scale: SizeScale,
 }
 
@@ -170,30 +171,33 @@ impl EditorContainer {
             },
             top: EditorTop {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::new(
+                block: ShadowMetaContainerBlock::<()>::new(
                     RenderBlockId::normal(10).unwrap(),
                     PointF16::default(),
                     false,
                     None,
+                    (),
                 ),
             },
             bottom: Statusline::new(line_scale.clone()),
             left: LeftGutter {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::new(
+                block: ShadowMetaContainerBlock::<()>::new(
                     RenderBlockId::normal(12).unwrap(),
                     PointF16::default(),
                     false,
                     None,
+                    (),
                 ),
             },
             right: RightGutter {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::new(
+                block: ShadowMetaContainerBlock::<()>::new(
                     RenderBlockId::normal(13).unwrap(),
                     PointF16::default(),
                     false,
                     None,
+                    (),
                 ),
             },
             /*            top_overlay: TopOverlay {},
@@ -294,11 +298,12 @@ impl Statusline {
     fn new(line_scale: SizeScale) -> Self {
         let mut sl = Self {
             scale: line_scale,
-            block: ShadowMetaContainerBlock::new(
+            block: ShadowMetaContainerBlock::<()>::new(
                 RenderBlockId::normal(11).unwrap(),
                 PointF16::default(),
                 false,
                 None,
+                (),
             ),
             model: StatusLineModel::default(),
         };
@@ -457,10 +462,49 @@ impl Statusline {
         self.model.right.hash(&mut hasher);
         hasher.finish()
     }
+    fn render_string(
+        string_to_shape: &ShapableString,
+        target_block_id: RenderBlockId,
+        block: &mut ShadowMetaContainerBlock<()>,
+        context: &mut dyn RenderContext,
+    ) {
+        let shaper = context.shaper();
+        let char_width = string_to_shape
+            .metadata_runs
+            .first()
+            .map(|meta| shaper.info(&meta.font_info).map(|i| i.1))
+            .flatten()
+            .unwrap_or(block.extent().y());
+        let line_y = block.extent().y() / 6f32; /* Vert layout: 1/6 4/6 1/6 */
+        let container_width = block.extent().x();
+
+        let shaped = shaper.shape(string_to_shape, &None);
+        let mut cblock_guard = block.child_mut(target_block_id).unwrap();
+        let (cblock, cloc) = cblock_guard.destruct();
+        let ctxt_block = cblock.text_mut().unwrap();
+        let string_width = shaped.extent.x();
+        ctxt_block.set_wire(shaped);
+
+        match target_block_id.0 {
+            STATUSLINE_CHILD_ID_LEFT => {
+                cloc.location = PointF16::new(2f32 * char_width, line_y);
+            }
+            STATUSLINE_CHILD_ID_CENTER => {
+                let block_center = container_width / 2.0;
+                let string_center = string_width / 2.0;
+                cloc.location = PointF16::new(block_center - string_center, line_y);
+            }
+            STATUSLINE_CHILD_ID_RIGHT => {
+                cloc.location =
+                    PointF16::new(container_width - (2f32 * char_width) - string_width, line_y);
+            }
+            _ => {}
+        }
+    }
 }
 impl GfxComposibleBlock for Statusline {
     fn extent(&self) -> PointU32 {
-        PointU32::default()
+        PointU32::floor(self.block.extent())
     }
     fn set_layout(&mut self, scale: SizeScale, extent: PointU32) {
         /* Only the external width is used, for height we use line height * 1.5
@@ -486,22 +530,26 @@ impl GfxComposibleBlock for Statusline {
             false
         };
         if !skip_render {
-            let string_to_shape = &self.model.left;
-            let shaper = context.shaper();
-            // TODO: The shaper should be shared, maybe some kind of render context?
-            let mut shaped = shaper.shape(&string_to_shape, &None);
-            //        let mut new_render_blocks = SmallVec::with_capacity(1);
-            let new_shaped_string_block = NewRenderBlock {
-                id: RenderBlockId::normal(1000).unwrap(),
-                contents: RenderBlockDescription::ShapedTextBlock(shaped),
-            };
-            let mut cblock_guard = self
-                .block
-                .child_mut(RenderBlockId(STATUSLINE_CHILD_ID_LEFT))
-                .unwrap();
-            let (cblock, cloc) = cblock_guard.destruct();
-            let ctxt_block = cblock.text_mut().unwrap();
+            Self::render_string(
+                &self.model.left,
+                RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
+                &mut self.block,
+                context,
+            );
+            Self::render_string(
+                &self.model.center,
+                RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
+                &mut self.block,
+                context,
+            );
+            Self::render_string(
+                &self.model.left,
+                RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
+                &mut self.block,
+                context,
+            );
         }
+        /* Who has the responsibility of syncing the shadow blocks with the server ??*/
     }
 }
 
