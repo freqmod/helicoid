@@ -1,7 +1,10 @@
 use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    dataflow::{ShadowMetaBlock, ShadowMetaContainerBlock, ShadowMetaTextBlock},
+    dataflow::{
+        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
+        ShadowMetaTextBlock,
+    },
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
         PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
@@ -47,7 +50,7 @@ struct SizeScale {
 /* Top at the moment is not in use */
 #[derive(Hash, PartialEq)]
 struct EditorTop {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 
@@ -70,44 +73,44 @@ struct StatusLineModel {
 }
 #[derive(Hash, PartialEq)]
 struct Statusline {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 
     model: StatusLineModel,
 }
 #[derive(Hash, PartialEq)]
 struct LeftGutter {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct RightGutter {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct TopOverlay {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct BottomOverlay {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct LeftOverlay {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct RightOverlay {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct TopRightOverlay {
-    block: ShadowMetaContainerBlock<()>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
     scale: SizeScale,
 }
 
@@ -116,12 +119,16 @@ struct EditorTextArea {
     extent: PointU32,
 }
 
+#[derive(Hash, PartialEq)]
 struct EditorModel {
     scale: SizeScale, // Size of a line, in native pixels
     extent: PointU32, // In native pixels, whatever that is
     document_id: Option<DocumentId>,
-    main_font_metrics: Metrics,
+    //    main_font_metrics: Metrics,
+    font_average_width: OrderedFloat<f32>,
+    font_average_height: OrderedFloat<f32>,
 }
+
 pub struct EditorContainer {
     top: EditorTop,
     bottom: Statusline,
@@ -134,6 +141,24 @@ pub struct EditorContainer {
     topright_overlay: TopRightOverlay,*/
     center_text: EditorTextArea,
     model: EditorModel,
+}
+
+pub struct EditorTree {
+    root: ShadowMetaContainerBlock<EditorModel>,
+}
+
+impl ContainerBlockLogic for EditorModel {
+    fn pre_update(block: &mut ShadowMetaContainerBlock<Self>)
+    where
+        Self: Sized,
+    {
+    }
+
+    fn post_update(block: &mut ShadowMetaContainerBlock<Self>)
+    where
+        Self: Sized,
+    {
+    }
 }
 
 impl From<SizeScale> for f32 {
@@ -167,37 +192,38 @@ impl EditorContainer {
                 scale: line_scale.clone(),
                 extent: PointU32::default(),
                 document_id: None,
-                main_font_metrics: font_info,
+                font_average_width: OrderedFloat(font_info.average_width),
+                font_average_height: OrderedFloat(font_info.ascent + font_info.descent),
             },
             top: EditorTop {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<()>::new(
+                block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
                     RenderBlockId::normal(10).unwrap(),
                     PointF16::default(),
                     false,
                     None,
-                    (),
+                    Default::default(),
                 ),
             },
             bottom: Statusline::new(line_scale.clone()),
             left: LeftGutter {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<()>::new(
+                block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
                     RenderBlockId::normal(12).unwrap(),
                     PointF16::default(),
                     false,
                     None,
-                    (),
+                    Default::default(),
                 ),
             },
             right: RightGutter {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<()>::new(
+                block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
                     RenderBlockId::normal(13).unwrap(),
                     PointF16::default(),
                     false,
                     None,
-                    (),
+                    Default::default(),
                 ),
             },
             /*            top_overlay: TopOverlay {},
@@ -215,7 +241,7 @@ impl EditorContainer {
     }
 
     pub fn lay_out(&mut self) {
-        let metrics = self.model.main_font_metrics;
+        //        let metrics = self.model.main_font_metrics;
         /* Updates layout sizes of the different elements */
         self.top.set_layout(
             self.model.scale.clone(),
@@ -228,9 +254,9 @@ impl EditorContainer {
         self.left.set_layout(
             self.model.scale.clone(),
             PointU32::new(
-                (metrics.average_width
+                (f32::from(self.model.font_average_width)
                     * (f32::from(self.model.scale.line_height)
-                        / (metrics.ascent + metrics.descent))) as u32,
+                        / f32::from(self.model.font_average_height))) as u32,
                 self.model.extent.y(),
             ),
         );
@@ -298,12 +324,12 @@ impl Statusline {
     fn new(line_scale: SizeScale) -> Self {
         let mut sl = Self {
             scale: line_scale,
-            block: ShadowMetaContainerBlock::<()>::new(
+            block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
                 RenderBlockId::normal(11).unwrap(),
                 PointF16::default(),
                 false,
                 None,
-                (),
+                Default::default(),
             ),
             model: StatusLineModel::default(),
         };
@@ -465,7 +491,7 @@ impl Statusline {
     fn render_string(
         string_to_shape: &ShapableString,
         target_block_id: RenderBlockId,
-        block: &mut ShadowMetaContainerBlock<()>,
+        block: &mut ShadowMetaContainerBlock<NoContainerBlockLogic>,
         context: &mut dyn RenderContext,
     ) {
         let shaper = context.shaper();

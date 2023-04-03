@@ -2,8 +2,9 @@ use ahash::AHasher;
 use hashbrown::HashSet;
 use smallvec::smallvec;
 use std::{
+    any::Any,
     hash::{Hash, Hasher},
-    ops::Deref, any::Any,
+    ops::Deref,
 };
 
 use crate::{
@@ -83,70 +84,96 @@ where
     }
 }
 /* Type erased Container (inspired by Xilem) */
-pub trait AnyShadowMetaContainerBlock : Send{
+pub trait AnyShadowMetaContainerBlock: Send {
     fn as_any(&self) -> &dyn Any;
-    fn as_any_mut (&mut self) -> &mut dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
     fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock) -> bool;
     fn hash_value(&self) -> u64;
 }
 
+pub trait ContainerBlockLogic: Send + Hash + PartialEq {
+    fn pre_update(block: &mut ShadowMetaContainerBlock<Self>)
+    where
+        Self: Sized;
+    fn post_update(block: &mut ShadowMetaContainerBlock<Self>)
+    where
+        Self: Sized;
+}
+/* Container block logic, without any logic, used as a filler when setting up a
+container that has no real logic associated */
+#[derive(Default, Hash, PartialEq)]
+pub struct NoContainerBlockLogic {}
+impl ContainerBlockLogic for NoContainerBlockLogic {
+    fn pre_update(block: &mut ShadowMetaContainerBlock<Self>)
+    where
+        Self: Sized,
+    {
+    }
+
+    fn post_update(block: &mut ShadowMetaContainerBlock<Self>)
+    where
+        Self: Sized,
+    {
+    }
+}
 pub enum ShadowMetaBlock {
     WrappedContainer(Box<dyn AnyShadowMetaContainerBlock>),
-    Container(ShadowMetaContainerBlock<()>),
+    Container(ShadowMetaContainerBlock<NoContainerBlockLogic>),
     Draw(ShadowMetaDrawBlock),
     Text(ShadowMetaTextBlock),
 }
 
-impl PartialEq for ShadowMetaBlock{
+impl PartialEq for ShadowMetaBlock {
     fn eq(&self, other: &Self) -> bool {
-        match self{
+        match self {
             ShadowMetaBlock::WrappedContainer(wc) => {
-                if let ShadowMetaBlock::WrappedContainer(other) = other{
+                if let ShadowMetaBlock::WrappedContainer(other) = other {
                     wc.eq(other.as_ref())
-                } else{
+                } else {
                     false
                 }
-            },
+            }
             ShadowMetaBlock::Container(c) => {
-                if let ShadowMetaBlock::Container(other) = other{
+                if let ShadowMetaBlock::Container(other) = other {
                     PartialEq::eq(c, other)
-                } else{
+                } else {
                     false
                 }
-            },
+            }
             ShadowMetaBlock::Draw(d) => {
-                if let ShadowMetaBlock::Draw(other) = other{
+                if let ShadowMetaBlock::Draw(other) = other {
                     d.eq(other)
-                } else{
+                } else {
                     false
                 }
-                
-            },
-            ShadowMetaBlock::Text(t) => 
-            {
-                if let ShadowMetaBlock::Text(other) = other{
+            }
+            ShadowMetaBlock::Text(t) => {
+                if let ShadowMetaBlock::Text(other) = other {
                     t.eq(other)
-                } else{
+                } else {
                     false
                 }
-            },
+            }
         }
     }
 }
 
-impl<L> AnyShadowMetaContainerBlock for ShadowMetaContainerBlock<L> where L : Send + Hash + PartialEq + 'static{
+impl<L> AnyShadowMetaContainerBlock for ShadowMetaContainerBlock<L>
+where
+    L: ContainerBlockLogic + 'static,
+{
     fn as_any(&self) -> &dyn Any {
         self as &dyn Any
     }
 
-    fn as_any_mut (&mut self) -> &mut dyn Any {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self as &mut dyn Any
     }
 
     fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock) -> bool {
-        if let Some(rhs) = rhs.as_any().downcast_ref::<Self>(){
+        if let Some(rhs) = rhs.as_any().downcast_ref::<Self>() {
             PartialEq::eq(self, rhs)
-        } else{
+        } else {
             false
         }
     }
@@ -158,28 +185,27 @@ impl<L> AnyShadowMetaContainerBlock for ShadowMetaContainerBlock<L> where L : Se
     }
 }
 
-impl Hash for ShadowMetaBlock{
+impl Hash for ShadowMetaBlock {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self{
+        match self {
             ShadowMetaBlock::WrappedContainer(wc) => {
                 state.write_u64(wc.hash_value());
-            },
+            }
             ShadowMetaBlock::Container(c) => {
                 c.hash(state);
-            },
+            }
             ShadowMetaBlock::Draw(d) => {
                 d.hash(state);
-            },
-            ShadowMetaBlock::Text(t) => 
-            {
+            }
+            ShadowMetaBlock::Text(t) => {
                 t.hash(state);
-            },
+            }
         }
     }
 }
 
 #[derive(Hash, PartialEq)]
-pub struct ShadowMetaContainerBlock<L> where L : Send + Hash + PartialEq{
+pub struct ShadowMetaContainerBlockInner {
     id: RenderBlockId,
     wire: MetaDrawBlock,
     child_blocks: Vec<ShadowMetaBlock>, // Corresponding index wise to the sub_blocks in wire
@@ -187,13 +213,19 @@ pub struct ShadowMetaContainerBlock<L> where L : Send + Hash + PartialEq{
     client_hash: Option<u64>,
     meta_hash: u64,
     client_meta_hash: Option<u64>,
-    logic: L
 }
 
 #[derive(Hash, PartialEq)]
-pub struct WrappedShadowMetaContainerBlock{
-    
+pub struct ShadowMetaContainerBlock<L>
+where
+    L: ContainerBlockLogic,
+{
+    inner: ShadowMetaContainerBlockInner,
+    logic: L,
 }
+
+#[derive(Hash, PartialEq)]
+pub struct WrappedShadowMetaContainerBlock {}
 
 #[derive(Hash, PartialEq)]
 pub struct ShadowMetaDrawBlock {
@@ -209,26 +241,79 @@ pub struct ShadowMetaTextBlock {
     client_hash: Option<u64>,
 }
 
-impl<L> ShadowMetaContainerBlock<L> where L: Send + Hash + PartialEq{
-    pub fn new(id: RenderBlockId, extent: PointF16, buffered: bool, alpha: Option<u8>, logic: L) -> Self {
+impl<L> ShadowMetaContainerBlock<L>
+where
+    L: ContainerBlockLogic,
+{
+    pub fn new(
+        id: RenderBlockId,
+        extent: PointF16,
+        buffered: bool,
+        alpha: Option<u8>,
+        logic: L,
+    ) -> Self {
         let mut s = Self {
-            id,
-            wire: MetaDrawBlock {
-                extent,
-                buffered,
-                alpha,
-                sub_blocks: Default::default(),
+            inner: ShadowMetaContainerBlockInner {
+                id,
+                wire: MetaDrawBlock {
+                    extent,
+                    buffered,
+                    alpha,
+                    sub_blocks: Default::default(),
+                },
+                child_blocks: Default::default(),
+                hash: None,
+                client_hash: None,
+                meta_hash: 0,
+                client_meta_hash: None,
             },
-            child_blocks: Default::default(),
-            hash: None,
-            client_hash: None,
-            meta_hash: 0,
-            client_meta_hash: None,
-            logic
+            logic,
         };
-        s.rehash();
+        s.inner.rehash();
         s
     }
+    pub fn inner_ref(&self) -> &ShadowMetaContainerBlockInner {
+        &self.inner
+    }
+    pub fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner {
+        &mut self.inner
+    }
+    pub fn logic_ref(&self) -> &L {
+        &self.logic
+    }
+    pub fn destruct_mut(&mut self) -> (&mut ShadowMetaContainerBlockInner, &mut L) {
+        let Self { inner, logic } = self;
+        (inner, logic)
+    }
+    pub fn extent(&self) -> PointF16 {
+        self.inner.wire.extent
+    }
+    pub fn set_extent(&mut self, extent: PointF16) {
+        self.inner.wire.extent = extent;
+    }
+    pub fn alpha(&mut self) -> Option<u8> {
+        self.inner.wire.alpha
+    }
+    pub fn set_alpha(&mut self, alpha: Option<u8>) {
+        self.inner.wire.alpha = alpha;
+    }
+    pub fn set_child(&mut self, location: RenderBlockLocation, block: ShadowMetaBlock) {
+        self.inner.set_child(location, block)
+    }
+    pub fn remove_child(
+        &mut self,
+        id: RenderBlockId,
+    ) -> Option<(ShadowMetaBlock, RenderBlockLocation)> {
+        self.inner.remove_child(id)
+    }
+    pub fn child(&self, id: RenderBlockId) -> Option<(&ShadowMetaBlock, &RenderBlockLocation)> {
+        self.inner.child(id)
+    }
+    pub fn child_mut(&mut self, id: RenderBlockId) -> Option<ShadowMetaContainerBlockGuard> {
+        self.inner.child_mut(id)
+    }
+}
+impl ShadowMetaContainerBlockInner {
     pub fn extent(&self) -> PointF16 {
         self.wire.extent
     }
@@ -297,7 +382,7 @@ impl<L> ShadowMetaContainerBlock<L> where L: Send + Hash + PartialEq{
         }
     }
     /* NB/Safety: If the id in the location is changed make sure it is not duplicating other id's */
-    pub fn child_mut(&mut self, id: RenderBlockId) -> Option<ShadowMetaContainerBlockGuard<L>> {
+    pub fn child_mut(&mut self, id: RenderBlockId) -> Option<ShadowMetaContainerBlockGuard> {
         if let Some(block_idx) = self
             .wire
             .sub_blocks
@@ -306,7 +391,7 @@ impl<L> ShadowMetaContainerBlock<L> where L: Send + Hash + PartialEq{
             .find_map(|(idx, b)| if b.id == id { Some(idx) } else { None })
         {
             Some(ShadowMetaContainerBlockGuard {
-                container: self,
+                container_inner: self,
                 idx: block_idx,
             })
         /*            self.child_blocks
@@ -334,7 +419,7 @@ impl<L> ShadowMetaContainerBlock<L> where L: Send + Hash + PartialEq{
         for child in self.child_blocks.iter() {
             if let Some(hash) = match child {
                 ShadowMetaBlock::WrappedContainer(wc) => Some(wc.hash_value()),
-                ShadowMetaBlock::Container(c) => c.hash,
+                ShadowMetaBlock::Container(c) => c.inner.hash, // TODO: We should probably hash the logic value too
                 ShadowMetaBlock::Draw(d) => d.hash,
                 ShadowMetaBlock::Text(t) => t.hash,
             } {
@@ -378,28 +463,36 @@ impl<L> ShadowMetaContainerBlock<L> where L: Send + Hash + PartialEq{
     }
 }
 
-pub struct ShadowMetaContainerBlockGuard<'a, L> where L: Send + Hash + PartialEq{
-    container: &'a mut ShadowMetaContainerBlock<L>,
+pub struct ShadowMetaContainerBlockGuard<'a> {
+    container_inner: &'a mut ShadowMetaContainerBlockInner,
     idx: usize,
 }
-impl<'a, L> ShadowMetaContainerBlockGuard<'a, L> where L: Send + Hash + PartialEq{
+impl<'a> ShadowMetaContainerBlockGuard<'a> {
     pub fn block(&mut self) -> &mut ShadowMetaBlock {
-        self.container.child_blocks.get_mut(self.idx).unwrap()
+        self.container_inner.child_blocks.get_mut(self.idx).unwrap()
     }
     pub fn location(&mut self) -> &mut RenderBlockLocation {
-        self.container.wire.sub_blocks.get_mut(self.idx).unwrap()
+        self.container_inner
+            .wire
+            .sub_blocks
+            .get_mut(self.idx)
+            .unwrap()
     }
     pub fn destruct(&mut self) -> (&mut ShadowMetaBlock, &mut RenderBlockLocation) {
         (
-            self.container.child_blocks.get_mut(self.idx).unwrap(),
-            self.container.wire.sub_blocks.get_mut(self.idx).unwrap(),
+            self.container_inner.child_blocks.get_mut(self.idx).unwrap(),
+            self.container_inner
+                .wire
+                .sub_blocks
+                .get_mut(self.idx)
+                .unwrap(),
         )
     }
 }
 
-impl<'a, L> Drop for ShadowMetaContainerBlockGuard<'a, L>  where L: Send + Hash + PartialEq{
+impl<'a> Drop for ShadowMetaContainerBlockGuard<'a> {
     fn drop(&mut self) {
-        self.container.check_changed(self.idx);
+        self.container_inner.check_changed(self.idx);
     }
 }
 
