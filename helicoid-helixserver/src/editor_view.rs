@@ -199,6 +199,36 @@ impl SizeScale {
     }
 }
 
+impl EditorTree {
+    pub fn new(tree_id: RenderBlockId, line_height: f32, font_info: Metrics) -> Self {
+        let editor_tree_logic = EditorModel::new(line_height, font_info);
+        let root = ShadowMetaContainerBlock::new(
+            tree_id,
+            PointF16::default(),
+            true,
+            None,
+            editor_tree_logic,
+        );
+        Self { root }
+    }
+}
+impl EditorModel {
+    fn new(line_height: f32, font_info: Metrics) -> Self {
+        let line_scale = SizeScale {
+            line_height: OrderedFloat(line_height),
+        };
+
+        Self {
+            scale: line_scale.clone(),
+            extent: PointU32::default(),
+            document_id: None,
+            font_average_width: OrderedFloat(font_info.average_width),
+            font_average_height: OrderedFloat(font_info.ascent + font_info.descent),
+        }
+    }
+}
+
+/* This is obsolete, and will be migrated into the editor tree */
 impl EditorContainer {
     pub fn new(line_height: f32, font_info: Metrics) -> Self {
         let line_scale = SizeScale {

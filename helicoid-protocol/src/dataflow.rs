@@ -4,7 +4,8 @@ use smallvec::smallvec;
 use std::{
     any::Any,
     hash::{Hash, Hasher},
-    ops::Deref, marker::PhantomData,
+    marker::PhantomData,
+    ops::Deref,
 };
 
 use crate::{
@@ -84,7 +85,7 @@ where
     }
 }
 /* Type erased Container (inspired by Xilem) */
-pub trait AnyShadowMetaContainerBlock<C>: Send 
+pub trait AnyShadowMetaContainerBlock<C>: Send
 where
     C: VisitingContext,
 {
@@ -99,7 +100,8 @@ pub trait VisitingContext: Send + Hash + PartialEq {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 pub trait ContainerBlockLogic: Send + Hash + PartialEq {
-    type UpdateContext : VisitingContext;
+    type UpdateContext: VisitingContext;
+    /* TODO: Should we have an init function, and possible a finalize funtion too? */
     fn pre_update(
         block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
         context: &mut Self::UpdateContext,
@@ -119,8 +121,8 @@ pub struct NoContainerBlockLogic<C> {
     context_type: PhantomData<C>,
 }
 
-impl<C> ContainerBlockLogic for NoContainerBlockLogic<C> 
-where 
+impl<C> ContainerBlockLogic for NoContainerBlockLogic<C>
+where
     C: VisitingContext,
 {
     type UpdateContext = C;
