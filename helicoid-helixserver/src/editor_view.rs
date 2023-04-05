@@ -3,7 +3,7 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     dataflow::{
         ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaTextBlock,
+        ShadowMetaTextBlock, VisitingContext,
     },
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
@@ -47,10 +47,23 @@ trait GfxComposibleBlock: Hash + PartialEq {
 struct SizeScale {
     line_height: OrderedFloat<f32>,
 }
+
+#[derive(Default, Hash, PartialEq)]
+struct ContentVisitor {}
+
+impl VisitingContext for ContentVisitor {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
 /* Top at the moment is not in use */
 #[derive(Hash, PartialEq)]
 struct EditorTop {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 
@@ -73,44 +86,44 @@ struct StatusLineModel {
 }
 #[derive(Hash, PartialEq)]
 struct Statusline {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 
     model: StatusLineModel,
 }
 #[derive(Hash, PartialEq)]
 struct LeftGutter {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct RightGutter {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct TopOverlay {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct BottomOverlay {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct LeftOverlay {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct RightOverlay {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 #[derive(Hash, PartialEq)]
 struct TopRightOverlay {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic>,
+    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
     scale: SizeScale,
 }
 
@@ -144,18 +157,23 @@ pub struct EditorContainer {
 }
 
 pub struct EditorTree {
-    root: ShadowMetaContainerBlock<EditorModel>,
+    root: ShadowMetaContainerBlock<EditorModel, ContentVisitor>,
 }
 
 impl ContainerBlockLogic for EditorModel {
-    fn pre_update(block: &mut ShadowMetaContainerBlock<Self>)
-    where
+    type UpdateContext = ContentVisitor;
+    fn pre_update(
+        block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        context: &mut Self::UpdateContext,
+    ) where
         Self: Sized,
     {
     }
 
-    fn post_update(block: &mut ShadowMetaContainerBlock<Self>)
-    where
+    fn post_update(
+        block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        context: &mut Self::UpdateContext,
+    ) where
         Self: Sized,
     {
     }
@@ -197,7 +215,10 @@ impl EditorContainer {
             },
             top: EditorTop {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
+                block: ShadowMetaContainerBlock::<
+                    NoContainerBlockLogic<ContentVisitor>,
+                    ContentVisitor,
+                >::new(
                     RenderBlockId::normal(10).unwrap(),
                     PointF16::default(),
                     false,
@@ -208,7 +229,10 @@ impl EditorContainer {
             bottom: Statusline::new(line_scale.clone()),
             left: LeftGutter {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
+                block: ShadowMetaContainerBlock::<
+                    NoContainerBlockLogic<ContentVisitor>,
+                    ContentVisitor,
+                >::new(
                     RenderBlockId::normal(12).unwrap(),
                     PointF16::default(),
                     false,
@@ -218,7 +242,10 @@ impl EditorContainer {
             },
             right: RightGutter {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
+                block: ShadowMetaContainerBlock::<
+                    NoContainerBlockLogic<ContentVisitor>,
+                    ContentVisitor,
+                >::new(
                     RenderBlockId::normal(13).unwrap(),
                     PointF16::default(),
                     false,
@@ -322,17 +349,21 @@ const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
 const UNNAMED_NAME: &str = "<Not saved>";
 impl Statusline {
     fn new(line_scale: SizeScale) -> Self {
-        let mut sl = Self {
-            scale: line_scale,
-            block: ShadowMetaContainerBlock::<NoContainerBlockLogic>::new(
-                RenderBlockId::normal(11).unwrap(),
-                PointF16::default(),
-                false,
-                None,
-                Default::default(),
-            ),
-            model: StatusLineModel::default(),
-        };
+        let mut sl =
+            Self {
+                scale: line_scale,
+                block: ShadowMetaContainerBlock::<
+                    NoContainerBlockLogic<ContentVisitor>,
+                    ContentVisitor,
+                >::new(
+                    RenderBlockId::normal(11).unwrap(),
+                    PointF16::default(),
+                    false,
+                    None,
+                    Default::default(),
+                ),
+                model: StatusLineModel::default(),
+            };
         sl.init_layout();
         sl
     }
@@ -491,7 +522,7 @@ impl Statusline {
     fn render_string(
         string_to_shape: &ShapableString,
         target_block_id: RenderBlockId,
-        block: &mut ShadowMetaContainerBlock<NoContainerBlockLogic>,
+        block: &mut ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
         context: &mut dyn RenderContext,
     ) {
         let shaper = context.shaper();
