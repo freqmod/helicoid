@@ -148,8 +148,10 @@ struct EditorTextArea {
 layout of its subparts */
 #[derive(Hash, PartialEq)]
 struct EditorModel {
-    scale: SizeScale, // Size of a line, in native pixels
-    extent: PointU32, // In native pixels, whatever that is
+    /* The following will be mot up to date in the process visitor,
+    but keep the last values here to detect lazy evaluations */
+    scale: SizeScale, // Used for tracking changes
+    extent: PointF16, // Used for tracking changes
     document_id: Option<DocumentId>,
     //    main_font_metrics: Metrics,
     font_average_width: OrderedFloat<f32>,
@@ -245,11 +247,17 @@ impl EditorModel {
 impl ContainerBlockLogic for EditorModel {
     type UpdateContext = ContentVisitor;
     fn pre_update(
-        block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        outer_block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
         context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {
+        let (block, model) = outer_block.destruct_mut();
+        if block.extent() != model.extent || model.scale != context.scale {
+            model.extent = model.extent;
+            model.scale = context.scale.clone();
+            Self::layout(outer_block, context);
+        }
     }
 
     fn post_update(
@@ -340,7 +348,7 @@ impl EditorModel {
 
         Self {
             scale: line_scale.clone(),
-            extent: PointU32::default(),
+            extent: PointF16::default(),
             document_id: None,
             font_average_width: OrderedFloat(font_info.average_width),
             font_average_height: OrderedFloat(font_info.ascent + font_info.descent),

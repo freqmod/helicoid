@@ -95,6 +95,8 @@ where
     fn hash_value(&self) -> u64;
     fn inner(&self) -> &ShadowMetaContainerBlockInner<C>;
     fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<C>;
+    fn initialize(&mut self, context: &mut C);
+    fn update(&mut self, context: &mut C);
 }
 
 pub trait VisitingContext: Send {
@@ -135,9 +137,11 @@ impl<C> PartialEq for NoContainerBlockLogic<C> {
         true
     }
 }
-impl<C> Default for NoContainerBlockLogic<C>{
+impl<C> Default for NoContainerBlockLogic<C> {
     fn default() -> Self {
-        Self{ context_type: PhantomData }
+        Self {
+            context_type: PhantomData,
+        }
     }
 }
 impl<C> ContainerBlockLogic for NoContainerBlockLogic<C>
@@ -251,6 +255,14 @@ where
     fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<C> {
         &mut self.inner
     }
+
+    fn initialize(&mut self, context: &mut C) {
+        self.initialize(context)
+    }
+
+    fn update(&mut self, context: &mut C) {
+        self.update(context)
+    }
 }
 
 impl<C> Hash for ShadowMetaBlock<C>
@@ -314,8 +326,7 @@ where
     C: VisitingContext,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.inner.eq(&other.inner) &&
-        self.logic.eq(&other.logic)
+        self.inner.eq(&other.inner) && self.logic.eq(&other.logic)
     }
 }
 impl<C> Hash for ShadowMetaContainerBlockInner<C>
@@ -337,16 +348,16 @@ where
     C: VisitingContext,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id) &&
-        self.wire.eq(&other.wire) &&
-        self.child_blocks.eq(&other.child_blocks) &&
-        self.hash.eq(&other.hash) &&
-        self.client_hash.eq(&other.client_hash) &&
-        self.meta_hash.eq(&other.meta_hash) &&
-        self.client_meta_hash.eq(&other.client_meta_hash) 
+        self.id.eq(&other.id)
+            && self.wire.eq(&other.wire)
+            && self.child_blocks.eq(&other.child_blocks)
+            && self.hash.eq(&other.hash)
+            && self.client_hash.eq(&other.client_hash)
+            && self.meta_hash.eq(&other.meta_hash)
+            && self.client_meta_hash.eq(&other.client_meta_hash)
     }
 }
-    #[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq)]
 pub struct WrappedShadowMetaContainerBlock {}
 
 #[derive(Hash, PartialEq)]
@@ -363,10 +374,9 @@ pub struct ShadowMetaTextBlock {
     client_hash: Option<u64>,
 }
 
-impl<L, C> ShadowMetaContainerBlock<L, C>
+impl<L> ShadowMetaContainerBlock<L, L::UpdateContext>
 where
     L: ContainerBlockLogic,
-    C: VisitingContext,
 {
     pub fn new(
         id: RenderBlockId,
@@ -395,10 +405,10 @@ where
         s.inner.rehash();
         s
     }
-    pub fn inner_ref(&self) -> &ShadowMetaContainerBlockInner<C> {
+    pub fn inner_ref(&self) -> &ShadowMetaContainerBlockInner<L::UpdateContext> {
         &self.inner
     }
-    pub fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<C> {
+    pub fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<L::UpdateContext> {
         &mut self.inner
     }
     pub fn logic_ref(&self) -> &L {
@@ -407,7 +417,9 @@ where
     pub fn logic_mut(&mut self) -> &mut L {
         &mut self.logic
     }
-    pub fn destruct_mut(&mut self) -> (&mut ShadowMetaContainerBlockInner<C>, &mut L) {
+    pub fn destruct_mut(
+        &mut self,
+    ) -> (&mut ShadowMetaContainerBlockInner<L::UpdateContext>, &mut L) {
         let Self { inner, logic } = self;
         (inner, logic)
     }
@@ -423,38 +435,67 @@ where
     pub fn set_alpha(&mut self, alpha: Option<u8>) {
         self.inner.wire.alpha = alpha;
     }
-    pub fn set_child(&mut self, location: RenderBlockLocation, block: ShadowMetaBlock<C>) {
+    pub fn set_child(
+        &mut self,
+        location: RenderBlockLocation,
+        block: ShadowMetaBlock<L::UpdateContext>,
+    ) {
         self.inner.set_child(location, block)
     }
     pub fn remove_child(
         &mut self,
         id: RenderBlockId,
-    ) -> Option<(ShadowMetaBlock<C>, RenderBlockLocation)> {
+    ) -> Option<(ShadowMetaBlock<L::UpdateContext>, RenderBlockLocation)> {
         self.inner.remove_child(id)
     }
-    pub fn child(&self, id: RenderBlockId) -> Option<(&ShadowMetaBlock<C>, &RenderBlockLocation)> {
+    pub fn child(
+        &self,
+        id: RenderBlockId,
+    ) -> Option<(&ShadowMetaBlock<L::UpdateContext>, &RenderBlockLocation)> {
         self.inner.child(id)
     }
-    pub fn child_mut(&mut self, id: RenderBlockId) -> Option<ShadowMetaContainerBlockGuard<C>> {
+    pub fn child_mut(
+        &mut self,
+        id: RenderBlockId,
+    ) -> Option<ShadowMetaContainerBlockGuard<L::UpdateContext>> {
         self.inner.child_mut(id)
     }
+    pub fn initialize(&mut self, context: &mut L::UpdateContext) {
+        <L as ContainerBlockLogic>::initialize(self, context);
+        self.inner.initialize_children(context);
+    }
     pub fn update(&mut self, context: &mut L::UpdateContext) {
-        //self.logic.pre_update(self, context);
+        <L as ContainerBlockLogic>::pre_update(self, context);
         self.inner.update_children(context);
-        //self.logic.post_update(self, context);
+        <L as ContainerBlockLogic>::post_update(self, context);
     }
 }
 impl<C> ShadowMetaContainerBlockInner<C>
 where
     C: VisitingContext,
 {
-    pub fn update_children<L>(&mut self, context: &mut L) {
+    pub fn update_children(&mut self, context: &mut C) {
         for element in self.child_blocks.iter_mut() {
             match element {
                 ShadowMetaBlock::WrappedContainer(wc) => {
-                    //wc.update(context);
+                    wc.update(context);
                 }
-                ShadowMetaBlock::Container(c) => {}
+                ShadowMetaBlock::Container(c) => {
+                    c.update(context);
+                }
+                ShadowMetaBlock::Draw(_) | ShadowMetaBlock::Text(_) => {}
+            }
+        }
+    }
+    pub fn initialize_children(&mut self, context: &mut C) {
+        for element in self.child_blocks.iter_mut() {
+            match element {
+                ShadowMetaBlock::WrappedContainer(wc) => {
+                    wc.initialize(context);
+                }
+                ShadowMetaBlock::Container(c) => {
+                    c.initialize(context);
+                }
                 ShadowMetaBlock::Draw(_) | ShadowMetaBlock::Text(_) => {}
             }
         }
