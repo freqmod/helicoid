@@ -95,13 +95,18 @@ where
     fn hash_value(&self) -> u64;
 }
 
-pub trait VisitingContext: Send + Hash + PartialEq {
+pub trait VisitingContext: Send {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 pub trait ContainerBlockLogic: Send + Hash + PartialEq {
     type UpdateContext: VisitingContext;
     /* TODO: Should we have an init function, and possible a finalize funtion too? */
+    fn initialize(
+        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        context: &mut Self::UpdateContext,
+    ) where
+        Self: Sized;
     fn pre_update(
         block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
         context: &mut Self::UpdateContext,
@@ -116,11 +121,23 @@ pub trait ContainerBlockLogic: Send + Hash + PartialEq {
 
 /* Container block logic, without any logic, used as a filler when setting up a
 container that has no real logic associated */
-#[derive(Default, Hash, PartialEq)]
 pub struct NoContainerBlockLogic<C> {
     context_type: PhantomData<C>,
 }
 
+impl<C> Hash for NoContainerBlockLogic<C> {
+    fn hash<H: Hasher>(&self, state: &mut H) {}
+}
+impl<C> PartialEq for NoContainerBlockLogic<C> {
+    fn eq(&self, other: &Self) -> bool {
+        true
+    }
+}
+impl<C> Default for NoContainerBlockLogic<C>{
+    fn default() -> Self {
+        Self{ context_type: PhantomData }
+    }
+}
 impl<C> ContainerBlockLogic for NoContainerBlockLogic<C>
 where
     C: VisitingContext,
@@ -134,6 +151,14 @@ where
     {
     }
     fn post_update(
+        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        context: &mut Self::UpdateContext,
+    ) where
+        Self: Sized,
+    {
+    }
+
+    fn initialize(
         block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
         context: &mut Self::UpdateContext,
     ) where
@@ -240,7 +265,6 @@ where
     }
 }
 
-#[derive(Hash, PartialEq)]
 pub struct ShadowMetaContainerBlockInner<C>
 where
     C: VisitingContext,
@@ -254,7 +278,6 @@ where
     client_meta_hash: Option<u64>,
 }
 
-#[derive(Hash, PartialEq)]
 pub struct ShadowMetaContainerBlock<L, C>
 where
     L: ContainerBlockLogic,
@@ -264,7 +287,56 @@ where
     logic: L,
 }
 
-#[derive(Hash, PartialEq)]
+impl<L, C> Hash for ShadowMetaContainerBlock<L, C>
+where
+    L: ContainerBlockLogic,
+    C: VisitingContext,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+        self.logic.hash(state);
+    }
+}
+
+impl<L, C> PartialEq for ShadowMetaContainerBlock<L, C>
+where
+    L: ContainerBlockLogic,
+    C: VisitingContext,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.eq(&other.inner) &&
+        self.logic.eq(&other.logic)
+    }
+}
+impl<C> Hash for ShadowMetaContainerBlockInner<C>
+where
+    C: VisitingContext,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.wire.hash(state);
+        self.child_blocks.hash(state);
+        self.hash.hash(state);
+        self.client_hash.hash(state);
+        self.meta_hash.hash(state);
+        self.client_meta_hash.hash(state);
+    }
+}
+impl<C> PartialEq for ShadowMetaContainerBlockInner<C>
+where
+    C: VisitingContext,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&other.id) &&
+        self.wire.eq(&other.wire) &&
+        self.child_blocks.eq(&other.child_blocks) &&
+        self.hash.eq(&other.hash) &&
+        self.client_hash.eq(&other.client_hash) &&
+        self.meta_hash.eq(&other.meta_hash) &&
+        self.client_meta_hash.eq(&other.client_meta_hash) 
+    }
+}
+    #[derive(Hash, PartialEq)]
 pub struct WrappedShadowMetaContainerBlock {}
 
 #[derive(Hash, PartialEq)]
@@ -321,6 +393,9 @@ where
     }
     pub fn logic_ref(&self) -> &L {
         &self.logic
+    }
+    pub fn logic_mut(&mut self) -> &mut L {
+        &mut self.logic
     }
     pub fn destruct_mut(&mut self) -> (&mut ShadowMetaContainerBlockInner<C>, &mut L) {
         let Self { inner, logic } = self;

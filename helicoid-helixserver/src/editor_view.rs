@@ -3,7 +3,7 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     dataflow::{
         ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaTextBlock, VisitingContext,
+        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
     },
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
@@ -34,6 +34,12 @@ const S2: u64 = 0x99AACCDD11779611;
 const S3: u64 = 0xAACCDD1177667199;
 const S4: u64 = 0xCCDD117766A0CE7D;
 
+const EDITOR_CHILD_STATUSLINE: u16 = 0x11;
+
+const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
+const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
+const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
+
 trait RenderContext {
     fn shaper(&mut self) -> &mut CachingShaper;
 }
@@ -48,9 +54,15 @@ struct SizeScale {
     line_height: OrderedFloat<f32>,
 }
 
-#[derive(Default, Hash, PartialEq)]
-struct ContentVisitor {}
+struct ContentVisitor {
+    shaper: CachingShaper,
+}
 
+impl ContentVisitor {
+    fn shaper(&mut self) -> &mut CachingShaper {
+        &mut self.shaper
+    }
+}
 impl VisitingContext for ContentVisitor {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -177,6 +189,44 @@ impl ContainerBlockLogic for EditorModel {
         Self: Sized,
     {
     }
+    fn initialize(
+        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        context: &mut Self::UpdateContext,
+    ) where
+        Self: Sized,
+    {
+        let (block_inner, logic) = block.destruct_mut();
+        /*        let top_model =
+        EditorTop {
+            scale: logic.scale.clone(),
+            block: ShadowMetaContainerBlock::<
+                NoContainerBlockLogic<ContentVisitor>,
+                ContentVisitor,
+            >::new(
+                RenderBlockId::normal(10).unwrap(),
+                PointF16::default(),
+                false,
+                None,
+                Default::default(),
+            ),
+        };*/
+        let statusline_model = StatusLineModel::default();
+        let statusline_block = ShadowMetaContainerBlock::new(
+            RenderBlockId(EDITOR_CHILD_STATUSLINE),
+            PointF16::default(),
+            false,
+            None,
+            statusline_model,
+        );
+        block_inner.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(EDITOR_CHILD_STATUSLINE),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::WrappedContainer(Box::new(statusline_block)),
+        );
+    }
 }
 
 impl From<SizeScale> for f32 {
@@ -229,6 +279,7 @@ impl EditorModel {
 }
 
 /* This is obsolete, and will be migrated into the editor tree */
+/*
 impl EditorContainer {
     pub fn new(line_height: f32, font_info: Metrics) -> Self {
         let line_scale = SizeScale {
@@ -245,7 +296,7 @@ impl EditorContainer {
             },
             top: EditorTop {
                 scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<
+            RenderBlockId()    block: ShadowMetaContainerBlock::)<
                     NoContainerBlockLogic<ContentVisitor>,
                     ContentVisitor,
                 >::new(
@@ -257,8 +308,8 @@ impl EditorContainer {
                 ),
             },
             bottom: Statusline::new(line_scale.clone()),
-            left: LeftGutter {
-                scale: line_scale.clone(),
+            left: LeftGuttBox::new(er ){
+            RenderBlockId()    scale: line_scale.clone()),
                 block: ShadowMetaContainerBlock::<
                     NoContainerBlockLogic<ContentVisitor>,
                     ContentVisitor,
@@ -270,7 +321,7 @@ impl EditorContainer {
                     Default::default(),
                 ),
             },
-            right: RightGutter {
+            right: RightGuttBox::new(er ){
                 scale: line_scale.clone(),
                 block: ShadowMetaContainerBlock::<
                     NoContainerBlockLogic<ContentVisitor>,
@@ -356,7 +407,7 @@ impl EditorContainer {
         }
     }
 }
-
+*/
 impl GfxComposibleBlock for EditorTop {
     fn extent(&self) -> PointU32 {
         PointU32::default()
@@ -372,57 +423,7 @@ impl GfxComposibleBlock for EditorTop {
 
     fn render(&mut self, context: &mut dyn RenderContext) {}
 }
-
-const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
-const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
-const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
-const UNNAMED_NAME: &str = "<Not saved>";
-impl Statusline {
-    fn new(line_scale: SizeScale) -> Self {
-        let mut sl =
-            Self {
-                scale: line_scale,
-                block: ShadowMetaContainerBlock::<
-                    NoContainerBlockLogic<ContentVisitor>,
-                    ContentVisitor,
-                >::new(
-                    RenderBlockId::normal(11).unwrap(),
-                    PointF16::default(),
-                    false,
-                    None,
-                    Default::default(),
-                ),
-                model: StatusLineModel::default(),
-            };
-        sl.init_layout();
-        sl
-    }
-    fn init_layout(&mut self) {
-        self.block.set_child(
-            RenderBlockLocation {
-                id: RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
-                location: PointF16::default(),
-                layer: 0,
-            },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
-        );
-        self.block.set_child(
-            RenderBlockLocation {
-                id: RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
-                location: PointF16::default(),
-                layer: 0,
-            },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
-        );
-        self.block.set_child(
-            RenderBlockLocation {
-                id: RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
-                location: PointF16::default(),
-                layer: 0,
-            },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
-        );
-    }
+impl StatusLineModel {
     fn render_mode(editor: &Editor, out_string: &mut ShapableString) {
         match editor.mode {
             Mode::Normal => out_string.push_plain_str(" 󰄮 "),
@@ -527,33 +528,23 @@ impl Statusline {
     }
     fn update_state(&mut self, editor: &Editor, document: &Document) {
         let status_config = &editor.config().statusline;
-        Self::render_elements(&status_config.left, editor, document, &mut self.model.left);
-        Self::render_elements(
-            &status_config.center,
-            editor,
-            document,
-            &mut self.model.center,
-        );
-        Self::render_elements(
-            &status_config.right,
-            editor,
-            document,
-            &mut self.model.right,
-        );
+        Self::render_elements(&status_config.left, editor, document, &mut self.left);
+        Self::render_elements(&status_config.center, editor, document, &mut self.center);
+        Self::render_elements(&status_config.right, editor, document, &mut self.right);
     }
     fn hash_state(&self) -> u64 {
         let mut hasher =
             ahash::random_state::RandomState::with_seeds(S1, S2, S3, S4).build_hasher();
-        self.model.left.hash(&mut hasher);
-        self.model.center.hash(&mut hasher);
-        self.model.right.hash(&mut hasher);
+        self.left.hash(&mut hasher);
+        self.center.hash(&mut hasher);
+        self.right.hash(&mut hasher);
         hasher.finish()
     }
     fn render_string(
         string_to_shape: &ShapableString,
         target_block_id: RenderBlockId,
-        block: &mut ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
-        context: &mut dyn RenderContext,
+        block: &mut ShadowMetaContainerBlockInner<ContentVisitor>,
+        context: &mut ContentVisitor,
     ) {
         let shaper = context.shaper();
         let char_width = string_to_shape
@@ -589,6 +580,139 @@ impl Statusline {
         }
     }
 }
+impl ContainerBlockLogic for StatusLineModel {
+    type UpdateContext = ContentVisitor;
+    fn pre_update(
+        outer_block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        context: &mut Self::UpdateContext,
+    ) where
+        Self: Sized,
+    {
+        let (block, model) = outer_block.destruct_mut();
+        /* Update meta shadow block based on any changes to local data / model */
+        // Currently the status line block consists of 3 shapable strings for
+        // left (0x10), center(0x11) and right (0x12), at layer 0x10.
+        let current_state = model.hash_state();
+        let skip_render = if let Some(rendered_state) = model.src_hash {
+            if rendered_state == current_state {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if !skip_render {
+            Self::render_string(
+                &model.left,
+                RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
+                block,
+                context,
+            );
+            Self::render_string(
+                &model.center,
+                RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
+                block,
+                context,
+            );
+            Self::render_string(
+                &model.left,
+                RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
+                block,
+                context,
+            );
+        }
+        /* Who has the responsibility of syncing the shadow blocks with the server ??*/
+    }
+
+    fn post_update(
+        block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        context: &mut Self::UpdateContext,
+    ) where
+        Self: Sized,
+    {
+    }
+    fn initialize(
+        outer_block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        _context: &mut Self::UpdateContext,
+    ) where
+        Self: Sized,
+    {
+        let block = outer_block.inner_mut();
+        block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+        block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+        block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+    }
+}
+const UNNAMED_NAME: &str = "<Not saved>";
+impl Statusline {
+    fn new(line_scale: SizeScale) -> Self {
+        let mut sl =
+            Self {
+                scale: line_scale,
+                block: ShadowMetaContainerBlock::<
+                    NoContainerBlockLogic<ContentVisitor>,
+                    ContentVisitor,
+                >::new(
+                    RenderBlockId::normal(11).unwrap(),
+                    PointF16::default(),
+                    false,
+                    None,
+                    Default::default(),
+                ),
+                model: StatusLineModel::default(),
+            };
+        sl.init_layout();
+        sl
+    }
+    fn init_layout(&mut self) {
+        self.block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+        self.block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+        self.block.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+        );
+    }
+}
 impl GfxComposibleBlock for Statusline {
     fn extent(&self) -> PointU32 {
         PointU32::floor(self.block.extent())
@@ -601,42 +725,8 @@ impl GfxComposibleBlock for Statusline {
             scale.line_height.0 * 1.5f32,
         ));
     }
-
     fn render(&mut self, context: &mut dyn RenderContext) {
-        /* Update meta shadow block based on any changes to local data / model */
-        // Currently the status line block consists of 3 shapable strings for
-        // left (0x10), center(0x11) and right (0x12), at layer 0x10.
-        let current_state = self.hash_state();
-        let skip_render = if let Some(rendered_state) = self.model.src_hash {
-            if rendered_state == current_state {
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        if !skip_render {
-            Self::render_string(
-                &self.model.left,
-                RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
-                &mut self.block,
-                context,
-            );
-            Self::render_string(
-                &self.model.center,
-                RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
-                &mut self.block,
-                context,
-            );
-            Self::render_string(
-                &self.model.left,
-                RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
-                &mut self.block,
-                context,
-            );
-        }
-        /* Who has the responsibility of syncing the shadow blocks with the server ??*/
+        unimplemented!()
     }
 }
 
