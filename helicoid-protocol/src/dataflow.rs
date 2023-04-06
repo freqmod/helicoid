@@ -93,6 +93,8 @@ where
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock<C>) -> bool;
     fn hash_value(&self) -> u64;
+    fn inner(&self) -> &ShadowMetaContainerBlockInner<C>;
+    fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<C>;
 }
 
 pub trait VisitingContext: Send {
@@ -240,6 +242,14 @@ where
         let mut hasher = AHasher::default();
         self.hash(&mut hasher);
         hasher.finish()
+    }
+
+    fn inner(&self) -> &ShadowMetaContainerBlockInner<C> {
+        &self.inner
+    }
+
+    fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<C> {
+        &mut self.inner
     }
 }
 
@@ -654,6 +664,22 @@ where
             ShadowMetaBlock::Container(_) => todo!(),
             ShadowMetaBlock::Draw(_) => todo!(),
             ShadowMetaBlock::Text(_) => todo!(),
+        }
+    }
+    pub fn extent_mut(&mut self) -> &mut PointF16 {
+        match self {
+            ShadowMetaBlock::WrappedContainer(wc) => &mut wc.inner_mut().wire.extent,
+            ShadowMetaBlock::Container(c) => &mut c.inner.wire.extent,
+            ShadowMetaBlock::Draw(d) => &mut d.wire.extent,
+            ShadowMetaBlock::Text(t) => &mut t.wire.extent,
+        }
+    }
+    pub fn extent(&self) -> &PointF16 {
+        match self {
+            ShadowMetaBlock::WrappedContainer(wc) => &wc.inner().wire.extent,
+            ShadowMetaBlock::Container(c) => &c.inner.wire.extent,
+            ShadowMetaBlock::Draw(d) => &d.wire.extent,
+            ShadowMetaBlock::Text(t) => &t.wire.extent,
         }
     }
     pub fn text(&self) -> Option<&ShadowMetaTextBlock> {

@@ -27,6 +27,8 @@ use ordered_float::OrderedFloat;
 use std::hash::{BuildHasher, Hash, Hasher};
 use swash::Metrics;
 
+const UNNAMED_NAME: &str = "<Not saved>";
+
 /* Seeds for hashes: The hashes should stay consistent during program execution,
 so we can compare them */
 const S1: u64 = 0x1199AACCDD114773;
@@ -34,7 +36,11 @@ const S2: u64 = 0x99AACCDD11779611;
 const S3: u64 = 0xAACCDD1177667199;
 const S4: u64 = 0xCCDD117766A0CE7D;
 
-const EDITOR_CHILD_STATUSLINE: u16 = 0x11;
+const EDITOR_CHILD_CENTER: u16 = 0x10;
+const EDITOR_CHILD_HEADER: u16 = 0x11;
+const EDITOR_CHILD_STATUSLINE: u16 = 0x12;
+const EDITOR_CHILD_LEFT: u16 = 0x13;
+const EDITOR_CHILD_RIGHT: u16 = 0x14;
 
 const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
 const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
@@ -56,6 +62,7 @@ struct SizeScale {
 
 struct ContentVisitor {
     shaper: CachingShaper,
+    scale: SizeScale,
 }
 
 impl ContentVisitor {
@@ -95,13 +102,6 @@ struct StatusLineModel {
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
-}
-#[derive(Hash, PartialEq)]
-struct Statusline {
-    block: ShadowMetaContainerBlock<NoContainerBlockLogic<ContentVisitor>, ContentVisitor>,
-    scale: SizeScale,
-
-    model: StatusLineModel,
 }
 #[derive(Hash, PartialEq)]
 struct LeftGutter {
@@ -144,6 +144,8 @@ struct EditorTextArea {
     extent: PointU32,
 }
 
+/* TODO: Is this the right name for this class, it is mostly concerned with
+layout of its subparts */
 #[derive(Hash, PartialEq)]
 struct EditorModel {
     scale: SizeScale, // Size of a line, in native pixels
@@ -156,7 +158,6 @@ struct EditorModel {
 
 pub struct EditorContainer {
     top: EditorTop,
-    bottom: Statusline,
     left: LeftGutter,
     right: RightGutter, // Scrollbar, minimap etc.
     /*    top_overlay: TopOverlay,
@@ -172,6 +173,75 @@ pub struct EditorTree {
     root: ShadowMetaContainerBlock<EditorModel, ContentVisitor>,
 }
 
+impl EditorModel {
+    /* Updates layout sizes of the different elements, should only be
+    called if the scale or external extent of the editor has changed */
+    fn layout(
+        outer_block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        context: &mut ContentVisitor,
+    ) {
+        let (block, model) = outer_block.destruct_mut();
+        {
+            let mut header_block = block.child_mut(RenderBlockId(EDITOR_CHILD_HEADER)).unwrap();
+            let header_extent = header_block.block().extent_mut();
+            *header_extent = PointF16::new(model.extent.x() as f32, header_extent.y());
+        }
+        {
+            let mut statusline_block = block
+                .child_mut(RenderBlockId(EDITOR_CHILD_STATUSLINE))
+                .unwrap();
+            let statusline_extent = statusline_block.block().extent_mut();
+            *statusline_extent = PointF16::new(model.extent.x() as f32, statusline_extent.y());
+        }
+        {
+            let mut left_block = block.child_mut(RenderBlockId(EDITOR_CHILD_LEFT)).unwrap();
+            let left_extent = left_block.block().extent_mut();
+            *left_extent = PointF16::new(
+                (f32::from(model.font_average_width)
+                    * (f32::from(model.scale.line_height) / f32::from(model.font_average_height)))
+                    as f32,
+                model.extent.y() as f32,
+            );
+        }
+        {
+            let mut right_block = block.child_mut(RenderBlockId(EDITOR_CHILD_RIGHT)).unwrap();
+            let right_extent = right_block.block().extent_mut();
+            *right_extent = PointF16::new(right_extent.x(), model.extent.y() as f32);
+        }
+        {
+            let horizontal_remaining = (model.extent.y() as f32)
+                - (block
+                    .child(RenderBlockId(EDITOR_CHILD_HEADER))
+                    .unwrap()
+                    .0
+                    .extent()
+                    .y())
+                - (block
+                    .child(RenderBlockId(EDITOR_CHILD_STATUSLINE))
+                    .unwrap()
+                    .0
+                    .extent()
+                    .y());
+            let vertical_remaining = (model.extent.x() as f32)
+                - (block
+                    .child(RenderBlockId(EDITOR_CHILD_RIGHT))
+                    .unwrap()
+                    .0
+                    .extent()
+                    .x())
+                - (block
+                    .child(RenderBlockId(EDITOR_CHILD_LEFT))
+                    .unwrap()
+                    .0
+                    .extent()
+                    .x());
+            let mut center_block = block.child_mut(RenderBlockId(EDITOR_CHILD_CENTER)).unwrap();
+            let center_extent = center_block.block().extent_mut();
+            *center_extent =
+                PointF16::new(horizontal_remaining.max(0f32), vertical_remaining.max(0f32));
+        }
+    }
+}
 impl ContainerBlockLogic for EditorModel {
     type UpdateContext = ContentVisitor;
     fn pre_update(
@@ -208,7 +278,7 @@ impl ContainerBlockLogic for EditorModel {
                 false,
                 None,
                 Default::default(),
-            ),
+           ),
         };*/
         let statusline_model = StatusLineModel::default();
         let statusline_block = ShadowMetaContainerBlock::new(
@@ -281,67 +351,6 @@ impl EditorModel {
 /* This is obsolete, and will be migrated into the editor tree */
 /*
 impl EditorContainer {
-    pub fn new(line_height: f32, font_info: Metrics) -> Self {
-        let line_scale = SizeScale {
-            line_height: OrderedFloat(line_height),
-        };
-
-        Self {
-            model: EditorModel {
-                scale: line_scale.clone(),
-                extent: PointU32::default(),
-                document_id: None,
-                font_average_width: OrderedFloat(font_info.average_width),
-                font_average_height: OrderedFloat(font_info.ascent + font_info.descent),
-            },
-            top: EditorTop {
-                scale: line_scale.clone(),
-            RenderBlockId()    block: ShadowMetaContainerBlock::)<
-                    NoContainerBlockLogic<ContentVisitor>,
-                    ContentVisitor,
-                >::new(
-                    RenderBlockId::normal(10).unwrap(),
-                    PointF16::default(),
-                    false,
-                    None,
-                    Default::default(),
-                ),
-            },
-            bottom: Statusline::new(line_scale.clone()),
-            left: LeftGuttBox::new(er ){
-            RenderBlockId()    scale: line_scale.clone()),
-                block: ShadowMetaContainerBlock::<
-                    NoContainerBlockLogic<ContentVisitor>,
-                    ContentVisitor,
-                >::new(
-                    RenderBlockId::normal(12).unwrap(),
-                    PointF16::default(),
-                    false,
-                    None,
-                    Default::default(),
-                ),
-            },
-            right: RightGuttBox::new(er ){
-                scale: line_scale.clone(),
-                block: ShadowMetaContainerBlock::<
-                    NoContainerBlockLogic<ContentVisitor>,
-                    ContentVisitor,
-                >::new(
-                    RenderBlockId::normal(13).unwrap(),
-                    PointF16::default(),
-                    false,
-                    None,
-                    Default::default(),
-                ),
-            },
-            /*            top_overlay: TopOverlay {},
-            bottom_overlay: BottomOverlay {},
-            left_overlay: LeftOverlay {},
-            right_overlay: RightOverlay {},-
-            topright_overlay: TopRightOverlay {},*/
-            center_text: EditorTextArea::default(),
-        }
-    }
 
     pub fn set_size(&mut self, extent: PointU32) {
         self.model.extent = extent;
@@ -663,70 +672,6 @@ impl ContainerBlockLogic for StatusLineModel {
             },
             ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
         );
-    }
-}
-const UNNAMED_NAME: &str = "<Not saved>";
-impl Statusline {
-    fn new(line_scale: SizeScale) -> Self {
-        let mut sl =
-            Self {
-                scale: line_scale,
-                block: ShadowMetaContainerBlock::<
-                    NoContainerBlockLogic<ContentVisitor>,
-                    ContentVisitor,
-                >::new(
-                    RenderBlockId::normal(11).unwrap(),
-                    PointF16::default(),
-                    false,
-                    None,
-                    Default::default(),
-                ),
-                model: StatusLineModel::default(),
-            };
-        sl.init_layout();
-        sl
-    }
-    fn init_layout(&mut self) {
-        self.block.set_child(
-            RenderBlockLocation {
-                id: RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
-                location: PointF16::default(),
-                layer: 0,
-            },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
-        );
-        self.block.set_child(
-            RenderBlockLocation {
-                id: RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
-                location: PointF16::default(),
-                layer: 0,
-            },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
-        );
-        self.block.set_child(
-            RenderBlockLocation {
-                id: RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
-                location: PointF16::default(),
-                layer: 0,
-            },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
-        );
-    }
-}
-impl GfxComposibleBlock for Statusline {
-    fn extent(&self) -> PointU32 {
-        PointU32::floor(self.block.extent())
-    }
-    fn set_layout(&mut self, scale: SizeScale, extent: PointU32) {
-        /* Only the external width is used, for height we use line height * 1.5
-        to have space for aline and some decoration. */
-        self.block.set_extent(PointF16::new(
-            extent.x() as f32,
-            scale.line_height.0 * 1.5f32,
-        ));
-    }
-    fn render(&mut self, context: &mut dyn RenderContext) {
-        unimplemented!()
     }
 }
 
