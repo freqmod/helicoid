@@ -60,13 +60,21 @@ struct SizeScale {
     line_height: OrderedFloat<f32>,
 }
 
-struct ContentVisitor {
+pub struct ContentVisitor {
     shaper: CachingShaper,
     scale: SizeScale,
 }
 
 impl ContentVisitor {
-    fn shaper(&mut self) -> &mut CachingShaper {
+    pub fn new(line_height: f32, shaper: CachingShaper) -> Self {
+        Self {
+            shaper,
+            scale: SizeScale {
+                line_height: OrderedFloat(line_height),
+            },
+        }
+    }
+    pub fn shaper(&mut self) -> &mut CachingShaper {
         &mut self.shaper
     }
 }

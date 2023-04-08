@@ -167,7 +167,7 @@ impl ServerState {
     }
     async fn sync_text(&mut self) -> Result<()> {
         let mut editor = self.state_data.editor.lock().await;
-        let mut shaper = CachingShaper::new(1.0f32);
+        let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
         shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
         shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));

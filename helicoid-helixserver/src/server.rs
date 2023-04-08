@@ -19,7 +19,7 @@ use helicoid_protocol::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
         TcpBridgeToServerMessage,
     },
-    text::{FontEdging, FontHinting, ShapableString},
+    text::{FontEdging, FontHinting, ShapableString, SmallFontOptions},
 };
 use helix_core::{config::user_syntax_loader, syntax};
 use helix_view::{editor::Config, graphics::Rect, theme, Editor};
@@ -32,7 +32,9 @@ use tokio::sync::{
     Mutex as TMutex,
 };
 
-use crate::editor_view::EditorContainer;
+use crate::editor_view::{ContentVisitor, EditorContainer, EditorTree};
+
+const CONTAINER_IDS_BASE: u16 = 0x100;
 
 /* Architecture:
 The (Dummy)Editor object is stored in a shared Arc<TMutex<>> object, and is cloned
@@ -44,7 +46,8 @@ struct HelicoidEditor {
     editor: Editor,
 }
 struct Compositor {
-    containers: HashMap<RenderBlockId, EditorContainer>,
+    containers: HashMap<RenderBlockId, EditorTree>,
+    content_visitor: ContentVisitor,
 }
 /* This struct stores a pointer to the common editor, as well as all client specific
 information */
@@ -81,30 +84,66 @@ impl HelicoidServer {
         })
     }
 
+    pub fn make_content_visitor(scale_factor: f32) -> ContentVisitor {
+        let unscaled_font_size = 12.0f32;
+        let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
+        shaper.set_font_key(0, String::from("Anonymous Pro"));
+        //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
+        shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
+        shaper.set_font_key(2, String::from("NotoColorEmoji"));
+        shaper.set_font_key(3, String::from("MissingGlyphs"));
+        shaper.set_font_key(4, String::from("LastResort-Regular"));
+        let mut string_to_shape = ShapableString::from_text(
+            "See IF we can shape a simple string\n ≠ <= string Some(typeface) => { 😀🙀 What about newlines?",
+        );
+        let mut line_height = 0f32;
+        for id in 0..5 {
+            let options = SmallFontOptions {
+                family_id: id,
+                font_parameters: shaper.default_parameters(),
+            };
+            if let Some((metrics, _advance)) = shaper.info(&options) {
+                line_height = line_height.max(metrics.ascent + metrics.descent);
+            }
+        }
+        ContentVisitor::new(line_height, shaper)
+    }
     pub async fn event_loop(&mut self) -> Result<Self> {
         log::trace!("Helicoid test server event loop start");
-        let mut state_data = ServerStateData {
-            editor: self.editor.clone(),
-            compositor: Compositor {
-                containers: HashMap::default(),
-            },
-        };
         loop {
+            let mut visitor = Self::make_content_visitor(10.0f32);
+
+            let shaper = visitor.shaper();
+            let font_options = SmallFontOptions {
+                family_id: 0,
+                font_parameters: shaper.default_parameters(),
+            };
+            let font_metrics = shaper.info(&font_options).unwrap().0;
+
+            let mut state_data = ServerStateData {
+                editor: self.editor.clone(),
+                compositor: Compositor {
+                    containers: HashMap::default(),
+                    content_visitor: visitor,
+                },
+            };
+
+            let intial_container =
+                EditorTree::new(RenderBlockId(CONTAINER_IDS_BASE), 12.0f32, font_metrics);
+            state_data
+                .compositor
+                .containers
+                .insert(RenderBlockId(CONTAINER_IDS_BASE), intial_container);
             log::trace!("Helicoid test server event loop iterate");
             tokio::select! {
-                result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
+            result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
                     /* Currently all event handling is done inside the state */
-                    state_data =  ServerStateData {
-                        editor: self.editor.clone(),
-                        compositor: Compositor {
-                            containers: HashMap::default(),
-                        }
-                    };
+
                 },
                 /* Maybe add select on program close-channel here to close cleanly */
             }
         }
-        log::trace!("Helicoid test server event loop completed");
+        //log::trace!("Helicoid test server event loop completed");
     }
 }
 impl HelicoidEditor {
@@ -217,7 +256,7 @@ impl ServerState {
     }
     async fn sync_text(&mut self) -> Result<()> {
         let mut editor = self.state_data.editor.lock().await;
-        let mut shaper = CachingShaper::new(1.0f32);
+        let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
         shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
         shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
@@ -272,7 +311,7 @@ impl ServerState {
     }
     async fn send_simple_test_shaped_string(&mut self) -> Result<()> {
         //        let editor = self.state_data.editor.lock();
-        let mut shaper = CachingShaper::new(1.0f32);
+        let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
         shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
         shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));

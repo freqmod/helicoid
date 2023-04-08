@@ -258,7 +258,7 @@ impl Renderer {
         false
     }
     pub fn font_draw_test(&mut self, root_canvas: &mut Canvas) {
-        let mut shaper = CachingShaper::new(1.0f32);
+        let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
         let mut blob_builder = ShapedBlobBuilder::new();
         //shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));

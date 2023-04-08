@@ -2,8 +2,8 @@ use crate::font_options::FontOptions;
 use crate::gfx::{FontPaint, PointF16, SimplePaint};
 use crate::swash_font::SwashFont;
 use crate::text::{
-    ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph, SmallFontOptions,
-    SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+    FontParameters, ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph,
+    SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
 };
 use smallvec::SmallVec;
 use std::env;
@@ -85,12 +85,13 @@ pub struct CachingShaper {
 }
 
 impl CachingShaper {
-    pub fn new(scale_factor: f32) -> CachingShaper {
+    pub fn new(scale_factor: f32, unscaled_font_size: f32) -> CachingShaper {
         let options = FontOptions::default();
-        let font_size = options.font_parameters.size() * scale_factor;
+        let scaled_font_size = unscaled_font_size * scale_factor;
         let default_font =
-            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), font_size).unwrap();
-        let mut shaper = CachingShaper {
+            KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), scaled_font_size)
+                .unwrap();
+        let shaper = CachingShaper {
             inner: Arc::new(RwLock::new(CachingShaperInner {
                 options,
                 shape_cache: LruCache::new(NonZeroUsize::new(10000).unwrap()),
@@ -262,6 +263,10 @@ impl CachingShaper {
 
     fn metrics(&mut self, font_options: &SmallFontOptions) -> Option<Metrics> {
         self.info(font_options).map(|i| i.0)
+    }
+    pub fn default_parameters(&mut self) -> FontParameters {
+        let inner = self.inner.read();
+        inner.options.font_parameters.clone()
     }
     /*
         pub fn font_base_dimensions(&mut self) -> (u64, u64) {

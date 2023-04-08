@@ -580,9 +580,6 @@ where
                 container_inner: self,
                 idx: block_idx,
             })
-        /*            self.child_blocks
-        .get_mut(block_idx)
-        .map(|block| (block, block_location))*/
         } else {
             None
         }
