@@ -221,10 +221,10 @@ where
     }
 }
 
-impl<L, C> AnyShadowMetaContainerBlock<C> for ShadowMetaContainerBlock<L, C>
+impl<L> AnyShadowMetaContainerBlock<L::UpdateContext>
+    for ShadowMetaContainerBlock<L, L::UpdateContext>
 where
     L: ContainerBlockLogic + 'static,
-    C: VisitingContext + 'static,
 {
     fn as_any(&self) -> &dyn Any {
         self as &dyn Any
@@ -234,7 +234,7 @@ where
         self as &mut dyn Any
     }
 
-    fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock<C>) -> bool {
+    fn eq(&self, rhs: &dyn AnyShadowMetaContainerBlock<L::UpdateContext>) -> bool {
         if let Some(rhs) = rhs.as_any().downcast_ref::<Self>() {
             PartialEq::eq(self, rhs)
         } else {
@@ -248,20 +248,23 @@ where
         hasher.finish()
     }
 
-    fn inner(&self) -> &ShadowMetaContainerBlockInner<C> {
+    fn inner(&self) -> &ShadowMetaContainerBlockInner<L::UpdateContext> {
         &self.inner
     }
 
-    fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<C> {
+    fn inner_mut(&mut self) -> &mut ShadowMetaContainerBlockInner<L::UpdateContext> {
         &mut self.inner
     }
 
-    fn initialize(&mut self, context: &mut C) {
-        self.initialize(context)
+    fn initialize(&mut self, context: &mut L::UpdateContext) {
+        <ShadowMetaContainerBlock<L, L::UpdateContext>>::initialize(
+            self,
+            context as &mut L::UpdateContext,
+        )
     }
 
-    fn update(&mut self, context: &mut C) {
-        self.update(context)
+    fn update(&mut self, context: &mut L::UpdateContext) {
+        <ShadowMetaContainerBlock<L, L::UpdateContext>>::update(self, context)
     }
 }
 
@@ -376,7 +379,7 @@ pub struct ShadowMetaTextBlock {
 
 impl<L> ShadowMetaContainerBlock<L, L::UpdateContext>
 where
-    L: ContainerBlockLogic,
+    L: ContainerBlockLogic + 'static,
 {
     pub fn new(
         id: RenderBlockId,
@@ -472,7 +475,7 @@ where
 }
 impl<C> ShadowMetaContainerBlockInner<C>
 where
-    C: VisitingContext,
+    C: VisitingContext + 'static,
 {
     pub fn update_children(&mut self, context: &mut C) {
         for element in self.child_blocks.iter_mut() {
@@ -648,7 +651,7 @@ where
 
 pub struct ShadowMetaContainerBlockGuard<'a, C>
 where
-    C: VisitingContext,
+    C: VisitingContext + 'static,
 {
     container_inner: &'a mut ShadowMetaContainerBlockInner<C>,
     idx: usize,
@@ -681,7 +684,7 @@ where
 
 impl<'a, C> Drop for ShadowMetaContainerBlockGuard<'a, C>
 where
-    C: VisitingContext,
+    C: VisitingContext + 'static,
 {
     fn drop(&mut self) {
         self.container_inner.check_changed(self.idx);

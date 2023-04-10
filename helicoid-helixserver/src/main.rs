@@ -12,6 +12,7 @@ use tokio::time as ttime;
 //use futures_util::stream::stream::StreamExt;
 
 mod compositor;
+mod editor;
 mod editor_view;
 mod server;
 

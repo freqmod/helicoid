@@ -146,11 +146,15 @@ impl ShapableString {
         self.text.extend_from_slice(text.as_bytes());
         self.metadata_runs.push(metadata);
     }
-    pub fn push_plain_str(&mut self, text: &str) {
+    pub fn push_plain_str(&mut self, text: &str, color: u32) {
+        log::trace!("PPS: {}", text);
         let simple_run = ShapedStringMetadata {
             substring_length: text.as_bytes().len() as u16,
             font_info: Default::default(),
-            paint: FontPaint::default(),
+            paint: FontPaint {
+                color,
+                ..Default::default()
+            },
             advance_x: 0,
             advance_y: 0,
             baseline_y: 0,

@@ -1,3 +1,4 @@
+use crate::editor::Editor as HcEditor;
 use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
@@ -22,9 +23,12 @@ use helicoid_protocol::{
     text::{FontEdging, FontHinting, ShapableString},
 };
 use helix_lsp::lsp::DiagnosticSeverity;
-use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor};
+use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor, ViewId};
 use ordered_float::OrderedFloat;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::{
+    hash::{BuildHasher, Hash, Hasher},
+    sync::Arc,
+};
 use swash::Metrics;
 
 const UNNAMED_NAME: &str = "<Not saved>";
@@ -46,6 +50,7 @@ const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
 const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
 const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
 
+const DEFAULT_TEXT_COLOR: u32 = 0xFFFFFF;
 trait RenderContext {
     fn shaper(&mut self) -> &mut CachingShaper;
 }
@@ -59,23 +64,37 @@ trait GfxComposibleBlock: Hash + PartialEq {
 struct SizeScale {
     line_height: OrderedFloat<f32>,
 }
-
+/*#[derive(Clone, Copy, Default)]
+pub struct ActiveIds{
+    pub document: DocumentId,
+    pub view: ViewId,
+}*/
 pub struct ContentVisitor {
     shaper: CachingShaper,
     scale: SizeScale,
+    editor: Arc<tokio::sync::Mutex<HcEditor>>,
+    active_view_id: Option<ViewId>,
 }
-
 impl ContentVisitor {
-    pub fn new(line_height: f32, shaper: CachingShaper) -> Self {
+    pub fn new(
+        line_height: f32,
+        shaper: CachingShaper,
+        editor: Arc<tokio::sync::Mutex<HcEditor>>,
+    ) -> Self {
         Self {
+            editor,
             shaper,
             scale: SizeScale {
                 line_height: OrderedFloat(line_height),
             },
+            active_view_id: None,
         }
     }
     pub fn shaper(&mut self) -> &mut CachingShaper {
         &mut self.shaper
+    }
+    pub fn editor(&self) -> &Arc<tokio::sync::Mutex<HcEditor>> {
+        &self.editor
     }
 }
 impl VisitingContext for ContentVisitor {
@@ -160,7 +179,7 @@ struct EditorModel {
     but keep the last values here to detect lazy evaluations */
     scale: SizeScale, // Used for tracking changes
     extent: PointF16, // Used for tracking changes
-    document_id: Option<DocumentId>,
+    view_id: Option<ViewId>,
     //    main_font_metrics: Metrics,
     font_average_width: OrderedFloat<f32>,
     font_average_height: OrderedFloat<f32>,
@@ -191,20 +210,20 @@ impl EditorModel {
         context: &mut ContentVisitor,
     ) {
         let (block, model) = outer_block.destruct_mut();
-        {
-            let mut header_block = block.child_mut(RenderBlockId(EDITOR_CHILD_HEADER)).unwrap();
+        if let Some(mut header_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_HEADER)) {
             let header_extent = header_block.block().extent_mut();
             *header_extent = PointF16::new(model.extent.x() as f32, header_extent.y());
+        } else {
+            log::info!("No header when laying out editor");
         }
+        if let Some(mut statusline_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_STATUSLINE))
         {
-            let mut statusline_block = block
-                .child_mut(RenderBlockId(EDITOR_CHILD_STATUSLINE))
-                .unwrap();
             let statusline_extent = statusline_block.block().extent_mut();
             *statusline_extent = PointF16::new(model.extent.x() as f32, statusline_extent.y());
+        } else {
+            log::info!("No right block when laying out editor");
         }
-        {
-            let mut left_block = block.child_mut(RenderBlockId(EDITOR_CHILD_LEFT)).unwrap();
+        if let Some(mut left_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_LEFT)) {
             let left_extent = left_block.block().extent_mut();
             *left_extent = PointF16::new(
                 (f32::from(model.font_average_width)
@@ -212,43 +231,41 @@ impl EditorModel {
                     as f32,
                 model.extent.y() as f32,
             );
+        } else {
+            log::info!("No left block when laying out editor");
         }
-        {
-            let mut right_block = block.child_mut(RenderBlockId(EDITOR_CHILD_RIGHT)).unwrap();
+        if let Some(mut right_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_RIGHT)) {
             let right_extent = right_block.block().extent_mut();
             *right_extent = PointF16::new(right_extent.x(), model.extent.y() as f32);
+        } else {
+            log::info!("No right block when laying out editor");
         }
         {
             let horizontal_remaining = (model.extent.y() as f32)
                 - (block
                     .child(RenderBlockId(EDITOR_CHILD_HEADER))
-                    .unwrap()
-                    .0
-                    .extent()
-                    .y())
+                    .map(|b| b.0.extent().y())
+                    .unwrap_or(0f32))
                 - (block
                     .child(RenderBlockId(EDITOR_CHILD_STATUSLINE))
-                    .unwrap()
-                    .0
-                    .extent()
-                    .y());
+                    .map(|b| b.0.extent().y())
+                    .unwrap_or(0f32));
             let vertical_remaining = (model.extent.x() as f32)
                 - (block
                     .child(RenderBlockId(EDITOR_CHILD_RIGHT))
-                    .unwrap()
-                    .0
-                    .extent()
-                    .x())
+                    .map(|b| b.0.extent().x())
+                    .unwrap_or(0f32))
                 - (block
                     .child(RenderBlockId(EDITOR_CHILD_LEFT))
-                    .unwrap()
-                    .0
-                    .extent()
-                    .x());
-            let mut center_block = block.child_mut(RenderBlockId(EDITOR_CHILD_CENTER)).unwrap();
-            let center_extent = center_block.block().extent_mut();
-            *center_extent =
-                PointF16::new(horizontal_remaining.max(0f32), vertical_remaining.max(0f32));
+                    .map(|b| b.0.extent().x())
+                    .unwrap_or(0f32));
+            if let Some(mut center_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_CENTER)) {
+                let center_extent = center_block.block().extent_mut();
+                *center_extent =
+                    PointF16::new(horizontal_remaining.max(0f32), vertical_remaining.max(0f32));
+            } else {
+                log::info!("No center block when laying out editor");
+            }
         }
     }
 }
@@ -261,6 +278,8 @@ impl ContainerBlockLogic for EditorModel {
         Self: Sized,
     {
         let (block, model) = outer_block.destruct_mut();
+        debug_assert!(context.active_view_id.is_none());
+        context.active_view_id = Some(model.view_id.unwrap());
         if block.extent() != model.extent || model.scale != context.scale {
             model.extent = model.extent;
             model.scale = context.scale.clone();
@@ -274,6 +293,7 @@ impl ContainerBlockLogic for EditorModel {
     ) where
         Self: Sized,
     {
+        context.active_view_id = None;
     }
     fn initialize(
         block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
@@ -312,6 +332,48 @@ impl ContainerBlockLogic for EditorModel {
             },
             ShadowMetaBlock::WrappedContainer(Box::new(statusline_block)),
         );
+        block_inner.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(EDITOR_CHILD_HEADER),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::WrappedContainer(Box::new(ShadowMetaContainerBlock::new(
+                RenderBlockId(EDITOR_CHILD_HEADER),
+                PointF16::default(),
+                false,
+                None,
+                NoContainerBlockLogic::default(),
+            ))),
+        );
+        block_inner.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(EDITOR_CHILD_LEFT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::WrappedContainer(Box::new(ShadowMetaContainerBlock::new(
+                RenderBlockId(EDITOR_CHILD_LEFT),
+                PointF16::default(),
+                false,
+                None,
+                NoContainerBlockLogic::default(),
+            ))),
+        );
+        block_inner.set_child(
+            RenderBlockLocation {
+                id: RenderBlockId(EDITOR_CHILD_RIGHT),
+                location: PointF16::default(),
+                layer: 0,
+            },
+            ShadowMetaBlock::WrappedContainer(Box::new(ShadowMetaContainerBlock::new(
+                RenderBlockId(EDITOR_CHILD_RIGHT),
+                PointF16::default(),
+                false,
+                None,
+                NoContainerBlockLogic::default(),
+            ))),
+        );
     }
 }
 
@@ -336,8 +398,14 @@ impl SizeScale {
 }
 
 impl EditorTree {
-    pub fn new(tree_id: RenderBlockId, line_height: f32, font_info: Metrics) -> Self {
-        let editor_tree_logic = EditorModel::new(line_height, font_info);
+    pub fn new(
+        tree_id: RenderBlockId,
+        line_height: f32,
+        font_info: Metrics,
+        view_id: Option<ViewId>,
+    ) -> Self {
+        let mut editor_tree_logic = EditorModel::new(line_height, font_info);
+        editor_tree_logic.view_id = view_id;
         let root = ShadowMetaContainerBlock::new(
             tree_id,
             PointF16::default(),
@@ -346,6 +414,12 @@ impl EditorTree {
             editor_tree_logic,
         );
         Self { root }
+    }
+    pub fn initialize(&mut self, visitor: &mut ContentVisitor) {
+        self.root.initialize(visitor);
+    }
+    pub fn update(&mut self, visitor: &mut ContentVisitor) {
+        self.root.update(visitor);
     }
 }
 impl EditorModel {
@@ -357,7 +431,7 @@ impl EditorModel {
         Self {
             scale: line_scale.clone(),
             extent: PointF16::default(),
-            document_id: None,
+            view_id: None,
             font_average_width: OrderedFloat(font_info.average_width),
             font_average_height: OrderedFloat(font_info.ascent + font_info.descent),
         }
@@ -451,9 +525,9 @@ impl GfxComposibleBlock for EditorTop {
 impl StatusLineModel {
     fn render_mode(editor: &Editor, out_string: &mut ShapableString) {
         match editor.mode {
-            Mode::Normal => out_string.push_plain_str(" 󰄮 "),
-            Mode::Select => out_string.push_plain_str(" 󰒅 "),
-            Mode::Insert => out_string.push_plain_str(" 󰫙 "),
+            Mode::Normal => out_string.push_plain_str(" 󰄮 ", DEFAULT_TEXT_COLOR),
+            Mode::Select => out_string.push_plain_str(" 󰒅 ", DEFAULT_TEXT_COLOR),
+            Mode::Insert => out_string.push_plain_str(" 󰫙 ", DEFAULT_TEXT_COLOR),
         };
     }
 
@@ -468,11 +542,11 @@ impl StatusLineModel {
             counts
         });
         if warnings > 0 {
-            out_string.push_plain_str(format!("{}  ", warnings).as_str());
+            out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR);
         }
 
         if errors > 0 {
-            out_string.push_plain_str(format!("{}  ", errors).as_str());
+            out_string.push_plain_str(format!("{}  ", errors).as_str(), DEFAULT_TEXT_COLOR);
         }
     }
     fn render_workspace_diagnostics(editor: &Editor, out_string: &mut ShapableString) {
@@ -490,14 +564,14 @@ impl StatusLineModel {
                     counts
                 });
         if warnings > 0 || errors > 0 {
-            out_string.push_plain_str(format!("󰪏: ").as_str());
+            out_string.push_plain_str(format!("󰪏: ").as_str(), DEFAULT_TEXT_COLOR);
         }
         if warnings > 0 {
-            out_string.push_plain_str(format!("{}  ", warnings).as_str());
+            out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR);
         }
 
         if errors > 0 {
-            out_string.push_plain_str(format!("{}  ", errors).as_str());
+            out_string.push_plain_str(format!("{}  ", errors).as_str(), DEFAULT_TEXT_COLOR);
         }
     }
     fn render_elements(
@@ -513,20 +587,20 @@ impl StatusLineModel {
                     Self::render_mode(editor, out_string);
                 }
                 /* Currently no animations are implemented for the spinner */
-                StatusLineElement::Spinner => out_string.push_plain_str("  "),
+                StatusLineElement::Spinner => out_string.push_plain_str("  ", DEFAULT_TEXT_COLOR),
                 /* TODO: Currently FileName and File BaseName is not distinguished, we prbably want to do that */
                 StatusLineElement::FileName | StatusLineElement::FileBaseName => {
                     if let Some(path_buf) = doc.relative_path() {
                         if let Ok(path_str) = path_buf.into_os_string().into_string() {
-                            out_string.push_plain_str(&path_str);
+                            out_string.push_plain_str(&path_str, DEFAULT_TEXT_COLOR);
                         }
                     } else {
-                        out_string.push_plain_str(UNNAMED_NAME);
+                        out_string.push_plain_str(UNNAMED_NAME, DEFAULT_TEXT_COLOR);
                     }
                 }
                 StatusLineElement::FileModificationIndicator => {
                     if doc.is_modified() {
-                        out_string.push_plain_str("  ");
+                        out_string.push_plain_str("  ", DEFAULT_TEXT_COLOR);
                     } else {
                     }
                 }
@@ -628,6 +702,13 @@ impl ContainerBlockLogic for StatusLineModel {
             false
         };
         if !skip_render {
+            {
+                let current_view_id = context.active_view_id.unwrap();
+                let editor = context.editor().blocking_lock();
+                let view = editor.editor().tree.get(current_view_id);
+                let document = editor.editor().document(view.doc).unwrap();
+                Self::update_state(model, editor.editor(), document);
+            }
             Self::render_string(
                 &model.left,
                 RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
@@ -641,7 +722,7 @@ impl ContainerBlockLogic for StatusLineModel {
                 context,
             );
             Self::render_string(
-                &model.left,
+                &model.right,
                 RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
                 block,
                 context,
