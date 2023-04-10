@@ -200,6 +200,7 @@ pub struct EditorContainer {
 
 pub struct EditorTree {
     root: ShadowMetaContainerBlock<EditorModel, ContentVisitor>,
+    path: RenderBlockPath,
 }
 
 impl EditorModel {
@@ -403,23 +404,36 @@ impl EditorTree {
         line_height: f32,
         font_info: Metrics,
         view_id: Option<ViewId>,
+        extent: PointF16,
     ) -> Self {
         let mut editor_tree_logic = EditorModel::new(line_height, font_info);
         editor_tree_logic.view_id = view_id;
+        let path = RenderBlockPath::new(smallvec::smallvec![tree_id]);
         let root = ShadowMetaContainerBlock::new(
             tree_id,
-            PointF16::default(),
+            extent,
             true,
             None,
             editor_tree_logic,
         );
-        Self { root }
+        Self { root, path }
     }
     pub fn initialize(&mut self, visitor: &mut ContentVisitor) {
         self.root.initialize(visitor);
     }
     pub fn update(&mut self, visitor: &mut ContentVisitor) {
         self.root.update(visitor);
+    }
+    pub fn transfer_changes(&mut self, messages_vec: &mut Vec<RemoteBoxUpdate>) {
+        self.root
+            .inner_mut()
+            .client_transfer_messages(&self.path, messages_vec);
+    }
+    pub fn top_container_id(&self) -> RenderBlockId{
+        self.root.inner_ref().id()
+    }
+    pub fn resize(&mut self, extent: PointF16){
+        self.root.set_extent(extent)
     }
 }
 impl EditorModel {
@@ -751,7 +765,7 @@ impl ContainerBlockLogic for StatusLineModel {
                 location: PointF16::default(),
                 layer: 0,
             },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(STATUSLINE_CHILD_ID_LEFT))),
         );
         block.set_child(
             RenderBlockLocation {
@@ -759,7 +773,7 @@ impl ContainerBlockLogic for StatusLineModel {
                 location: PointF16::default(),
                 layer: 0,
             },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(STATUSLINE_CHILD_ID_CENTER))),
         );
         block.set_child(
             RenderBlockLocation {
@@ -767,7 +781,7 @@ impl ContainerBlockLogic for StatusLineModel {
                 location: PointF16::default(),
                 layer: 0,
             },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new()),
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(STATUSLINE_CHILD_ID_RIGHT))),
         );
     }
 }

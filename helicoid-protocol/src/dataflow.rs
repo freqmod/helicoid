@@ -373,6 +373,7 @@ pub struct ShadowMetaDrawBlock {
 #[derive(Hash, PartialEq)]
 pub struct ShadowMetaTextBlock {
     pub wire: ShapedTextBlock,
+    id: RenderBlockId,
     hash: Option<u64>,
     client_hash: Option<u64>,
 }
@@ -647,6 +648,9 @@ where
             })
         }
     }
+    pub fn id(&self) -> RenderBlockId {
+        self.id
+    }
 }
 
 pub struct ShadowMetaContainerBlockGuard<'a, C>
@@ -693,18 +697,28 @@ where
 
 impl<C> ShadowMetaBlock<C>
 where
-    C: VisitingContext,
+    C: VisitingContext + 'static,
 {
+    fn client_transfer_container<'a>(
+        container: &'a mut dyn AnyShadowMetaContainerBlock<C>,
+        parent: &RenderBlockPath,
+        messages_vec: &mut Vec<RemoteBoxUpdate>,
+    ) {
+    }
     pub fn client_transfer_messages(
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         messages_vec: &mut Vec<RemoteBoxUpdate>,
     ) {
         match self {
-            ShadowMetaBlock::WrappedContainer(_) => todo!(),
-            ShadowMetaBlock::Container(_) => todo!(),
+            ShadowMetaBlock::WrappedContainer(wc) => wc
+                .inner_mut()
+                .client_transfer_messages(parent, messages_vec),
+            ShadowMetaBlock::Container(c) => {
+                c.inner_mut().client_transfer_messages(parent, messages_vec)
+            }
             ShadowMetaBlock::Draw(_) => todo!(),
-            ShadowMetaBlock::Text(_) => todo!(),
+            ShadowMetaBlock::Text(t) => t.client_transfer_messages(parent, messages_vec),
         }
     }
     pub fn extent_mut(&mut self) -> &mut PointF16 {
@@ -740,14 +754,46 @@ where
 }
 
 impl ShadowMetaTextBlock {
-    pub fn new() -> Self {
+    pub fn new(id: RenderBlockId) -> Self {
         Self {
             wire: ShapedTextBlock::default(),
+            id,
             hash: None,
             client_hash: None,
         }
     }
     pub fn set_wire(&mut self, wire: ShapedTextBlock) {
         self.wire = wire;
+    }
+    fn rehash(&mut self) {
+        let mut hasher = AHasher::default();
+        self.hash(&mut hasher);
+        self.hash = Some(hasher.finish());
+    }
+    pub fn id(&self) -> RenderBlockId {
+        self.id
+    }
+    pub fn client_transfer_messages(
+        &mut self,
+        parent: &RenderBlockPath, // nb remember to append the id of this box for children
+        messages_vec: &mut Vec<RemoteBoxUpdate>,
+    ) {
+        /* Make messages that transfers all outstanding state to client */
+        if self.hash.is_none() {
+            self.rehash();
+        }
+        if self.client_hash.is_some() || self.hash == self.client_hash {
+            return;
+        }
+        /* Transfer location metadata for this metablock to the client */
+        messages_vec.push(RemoteBoxUpdate {
+            parent: parent.clone(),
+            new_render_blocks: smallvec![NewRenderBlock {
+                id: self.id,
+                contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone())
+            }],
+            remove_render_blocks: Default::default(),
+            move_block_locations: Default::default(),
+        })
     }
 }

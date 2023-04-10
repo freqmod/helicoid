@@ -7,9 +7,9 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
-        SimplePaint, SimpleRoundRect, SimpleSvg,
+        PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
+        RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath,
+        SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -44,11 +44,17 @@ const CONTAINER_IDS_BASE: u16 = 0x100;
 struct Compositor {
     containers: HashMap<RenderBlockId, EditorTree>,
     content_visitor: ContentVisitor,
+    client_messages_scratch: Vec<RemoteBoxUpdate>,
+}
+struct EditorEnclosure {
+    enclosure_location: RenderBlockLocation,
+    enclosure_meta: MetaDrawBlock,
 }
 /* This struct stores a pointer to the common editor, as well as all client specific
 information */
 struct ServerStateData {
     compositor: Option<Box<Compositor>>,
+    enclosure: Option<EditorEnclosure>,
 }
 
 struct ServerState {
@@ -85,7 +91,7 @@ impl HelicoidServer {
     ) -> ContentVisitor {
         let unscaled_font_size = 12.0f32;
         let mut shaper = CachingShaper::new(scale_factor, unscaled_font_size);
-        shaper.set_font_key(0, String::from("Anonymous Pro"));
+        shaper.set_font_key(0, String::from("AnonymiceNerd"));
         shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
         shaper.set_font_key(2, String::from("NotoColorEmoji"));
         shaper.set_font_key(3, String::from("MissingGlyphs"));
@@ -116,9 +122,11 @@ impl HelicoidServer {
             let font_metrics = shaper.info(&font_options).unwrap().0;
 
             let mut state_data = ServerStateData {
+                enclosure: None,
                 compositor: Some(Box::new(Compositor {
                     containers: HashMap::default(),
                     content_visitor: visitor,
+                    client_messages_scratch: Default::default(),
                 })),
             };
             let view_id = {
@@ -134,6 +142,7 @@ impl HelicoidServer {
                 12.0f32,
                 font_metrics,
                 view_id,
+                PointF16::default(),
             );
             let initial_container = {
                 let mut compositor = state_data.compositor.take();
@@ -291,17 +300,76 @@ impl ServerState {
         */
         Ok(())
     }
+    async fn maintain_enclosure(&mut self) -> Result<()> {
+        let view_size = self.viewport_size.as_ref().unwrap().physical_size;
+        let enclosure_extent = PointF16::from(PointU32::new(view_size.0, view_size.1));
+        if self.state_data.enclosure.is_none()
+            || self
+                .state_data
+                .enclosure
+                .as_ref()
+                .unwrap()
+                .enclosure_meta
+                .extent
+                != enclosure_extent
+        {
+            let containers = &mut self.state_data.compositor.as_mut().unwrap().containers;
+            let mut sub_blocks = SmallVec::with_capacity(containers.len());
+            for (_id, container) in containers.iter_mut() {
+                container.resize(enclosure_extent);
+                //                let MetaDrawBlock { extent, buffered, alpha, sub_blocks }
+                let block_loc = RenderBlockLocation {
+                    id: container.top_container_id(),
+                    location: PointF16::default(),
+                    layer: 0x40,
+                };
+                sub_blocks.push(block_loc);
+            }
 
+            self.state_data.enclosure = Some(EditorEnclosure {
+                enclosure_location: RenderBlockLocation {
+                    id: RenderBlockId(0),
+                    location: PointF16::default(),
+                    layer: 0x10,
+                },
+                enclosure_meta: MetaDrawBlock {
+                    extent: enclosure_extent,
+                    buffered: false,
+                    alpha: None,
+                    sub_blocks,
+                },
+            });
+            self.state_data
+                .enclosure
+                .as_mut()
+                .unwrap()
+                .send_message(&mut self.channel_tx)
+                .await?;
+            log::trace!(
+                "Sent editor enclosure for view dimensions {:?}",
+                enclosure_extent
+            );
+        }
+
+        Ok(())
+    }
     async fn sync_screen(&mut self) -> Result<()> {
-        self.send_simple_test_shaped_string().await?;
+        self.maintain_enclosure().await?;
+        //        self.send_simple_test_shaped_string().await?;
         let mut compositor = self.state_data.compositor.take();
         let compositor = tokio::task::spawn_blocking(move || {
-            compositor.as_mut().unwrap().sync_screen();
+            compositor.as_mut().unwrap().sync_screen().unwrap();
             compositor
         })
         .await
         .unwrap();
         self.state_data.compositor = compositor;
+        self.state_data
+            .compositor
+            .as_mut()
+            .unwrap()
+            .transfer_messages_to_client(&mut self.channel_tx)
+            .await?;
         Ok(())
     }
 
@@ -533,6 +601,30 @@ impl ServerState {
         Ok(())
     }
 }
+impl EditorEnclosure {
+    pub async fn send_message(
+        &mut self,
+        channel_tx: &mut Sender<TcpBridgeToClientMessage>,
+    ) -> Result<()> {
+        let newblock = NewRenderBlock {
+            id: self.enclosure_location.id,
+            contents: RenderBlockDescription::MetaBox(self.enclosure_meta.clone()),
+        };
+        let send_msg = TcpBridgeToClientMessage {
+            message: HelicoidToClientMessage {
+                update: RemoteBoxUpdate {
+                    parent: RenderBlockPath::top(),
+                    new_render_blocks: smallvec![newblock],
+                    remove_render_blocks: Default::default(),
+                    move_block_locations: smallvec![self.enclosure_location.clone()],
+                },
+            },
+        };
+        log::trace!("Enclosure msg: {:?}", send_msg);
+        channel_tx.send(send_msg).await?;
+        Ok(())
+    }
+}
 #[async_trait]
 impl TcpBridgeServerConnectionState for ServerState {
     type StateData = ServerStateData;
@@ -595,6 +687,20 @@ impl Compositor {
     fn sync_screen(&mut self) -> anyhow::Result<()> {
         for (id, tree) in self.containers.iter_mut() {
             tree.update(&mut self.content_visitor);
+            tree.transfer_changes(&mut self.client_messages_scratch);
+        }
+        Ok(())
+    }
+    async fn transfer_messages_to_client(
+        &mut self,
+        channel_tx: &mut Sender<TcpBridgeToClientMessage>,
+    ) -> anyhow::Result<()> {
+        for message in self.client_messages_scratch.drain(..) {
+            channel_tx
+                .send(TcpBridgeToClientMessage {
+                    message: HelicoidToClientMessage { update: message },
+                })
+                .await?;
         }
         Ok(())
     }
