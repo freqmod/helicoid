@@ -525,8 +525,8 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
                 .push((id, PointF16::new(0f32, 0f32)));
             Ok(())
         } else {
-            /* TODO: Make a better, more structred error return */
-            log::warn!(
+            /* TODO: Make a better, more structured error return */
+            log::trace!(
                 "Trying to add block when it already is present: {:?} {:?}",
                 self.path,
                 id

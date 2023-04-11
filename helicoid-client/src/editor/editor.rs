@@ -269,7 +269,10 @@ impl HeliconeEditor {
         window: &winit::window::Window,
     ) -> Option<ControlFlow> {
         if !self.ensure_connected() {
-            log::warn!("Try to handle event before connection is established to server");
+            /*log::trace!(
+                "Try to handle event before connection is established to server: {:?}",
+                event
+            );*/
             return self.handle_event_disconnected(event);
         }
         if let Some(mut inner) = self.inner.try_lock().ok() {

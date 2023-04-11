@@ -409,13 +409,7 @@ impl EditorTree {
         let mut editor_tree_logic = EditorModel::new(line_height, font_info);
         editor_tree_logic.view_id = view_id;
         let path = RenderBlockPath::new(smallvec::smallvec![tree_id]);
-        let root = ShadowMetaContainerBlock::new(
-            tree_id,
-            extent,
-            true,
-            None,
-            editor_tree_logic,
-        );
+        let root = ShadowMetaContainerBlock::new(tree_id, extent, true, None, editor_tree_logic);
         Self { root, path }
     }
     pub fn initialize(&mut self, visitor: &mut ContentVisitor) {
@@ -429,10 +423,10 @@ impl EditorTree {
             .inner_mut()
             .client_transfer_messages(&self.path, messages_vec);
     }
-    pub fn top_container_id(&self) -> RenderBlockId{
+    pub fn top_container_id(&self) -> RenderBlockId {
         self.root.inner_ref().id()
     }
-    pub fn resize(&mut self, extent: PointF16){
+    pub fn resize(&mut self, extent: PointF16) {
         self.root.set_extent(extent)
     }
 }
@@ -539,9 +533,9 @@ impl GfxComposibleBlock for EditorTop {
 impl StatusLineModel {
     fn render_mode(editor: &Editor, out_string: &mut ShapableString) {
         match editor.mode {
-            Mode::Normal => out_string.push_plain_str(" 󰄮 ", DEFAULT_TEXT_COLOR),
-            Mode::Select => out_string.push_plain_str(" 󰒅 ", DEFAULT_TEXT_COLOR),
-            Mode::Insert => out_string.push_plain_str(" 󰫙 ", DEFAULT_TEXT_COLOR),
+            Mode::Normal => out_string.push_plain_str(" N󰄮 ", DEFAULT_TEXT_COLOR),
+            Mode::Select => out_string.push_plain_str(" S󰒅 ", DEFAULT_TEXT_COLOR),
+            Mode::Insert => out_string.push_plain_str(" I󰫙 ", DEFAULT_TEXT_COLOR),
         };
     }
 
@@ -556,11 +550,11 @@ impl StatusLineModel {
             counts
         });
         if warnings > 0 {
-            out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("{} W ", warnings).as_str(), DEFAULT_TEXT_COLOR);
         }
 
         if errors > 0 {
-            out_string.push_plain_str(format!("{}  ", errors).as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("{} E ", errors).as_str(), DEFAULT_TEXT_COLOR);
         }
     }
     fn render_workspace_diagnostics(editor: &Editor, out_string: &mut ShapableString) {
@@ -578,7 +572,7 @@ impl StatusLineModel {
                     counts
                 });
         if warnings > 0 || errors > 0 {
-            out_string.push_plain_str(format!("󰪏: ").as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("N󰪏: ").as_str(), DEFAULT_TEXT_COLOR);
         }
         if warnings > 0 {
             out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR);
@@ -601,7 +595,7 @@ impl StatusLineModel {
                     Self::render_mode(editor, out_string);
                 }
                 /* Currently no animations are implemented for the spinner */
-                StatusLineElement::Spinner => out_string.push_plain_str("  ", DEFAULT_TEXT_COLOR),
+                StatusLineElement::Spinner => out_string.push_plain_str(" L ", DEFAULT_TEXT_COLOR),
                 /* TODO: Currently FileName and File BaseName is not distinguished, we prbably want to do that */
                 StatusLineElement::FileName | StatusLineElement::FileBaseName => {
                     if let Some(path_buf) = doc.relative_path() {
@@ -765,7 +759,9 @@ impl ContainerBlockLogic for StatusLineModel {
                 location: PointF16::default(),
                 layer: 0,
             },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(STATUSLINE_CHILD_ID_LEFT))),
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(
+                STATUSLINE_CHILD_ID_LEFT,
+            ))),
         );
         block.set_child(
             RenderBlockLocation {
@@ -773,7 +769,9 @@ impl ContainerBlockLogic for StatusLineModel {
                 location: PointF16::default(),
                 layer: 0,
             },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(STATUSLINE_CHILD_ID_CENTER))),
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(
+                STATUSLINE_CHILD_ID_CENTER,
+            ))),
         );
         block.set_child(
             RenderBlockLocation {
@@ -781,7 +779,9 @@ impl ContainerBlockLogic for StatusLineModel {
                 location: PointF16::default(),
                 layer: 0,
             },
-            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(STATUSLINE_CHILD_ID_RIGHT))),
+            ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(
+                STATUSLINE_CHILD_ID_RIGHT,
+            ))),
         );
     }
 }

@@ -532,7 +532,6 @@ impl CachingShaper {
         let mut max_y_advance = 0f32;
 
         for (run_index, run) in text.metadata_runs.iter().enumerate() {
-            //            current_text_offset += run.substring_length as usize;
             let (mut cluster_list, shaped_string_list) = Self::build_clusters(
                 &inner,
                 text,
@@ -600,6 +599,7 @@ impl CachingShaper {
                 resulting_block.metadata_runs.push(metadata);
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }
+            current_text_offset += run.substring_length as usize;
         }
         resulting_block.extent = PointF16::new(current_pixel_offset, max_y_advance);
 
