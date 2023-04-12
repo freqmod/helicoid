@@ -617,15 +617,41 @@ impl SkiaClientRenderBlock {
             /* TODO: Do we trust the hash here, or do we want to store the previous contents too so
             we can do a proper equality comparision?*/
             if cached.description_hash == hashed && !meta.contains_blur() {
-                log::trace!("Disable reuse hash: {} for {:?}", hashed, self);
-                /*
+                log::trace!("Reuse hash: {} for {:?}", hashed, self);
                 /* Contents is already rendered, reuse the rendered image */
-                target_surface.canvas().draw_image(
+                /*                target_surface.canvas().draw_image(
                     &cached.image,
                     as_skpoint(&location.location),
                     Some(&paint),
-                );
-                return;*/
+                );*/
+                let src_img = &cached.image;
+                let img_tmp; /* For lifetime reasons */
+                let extent = mb.extent;
+                if (extent.x() as i32 > 0) && (extent.y() as i32 > 0) {
+                    let clipped_src_img = if (src_img.width() as f32 > extent.x()
+                        || src_img.height() as f32 > extent.y())
+                    {
+                        /* Clip image as it is too big */
+                        img_tmp = src_img
+                            .new_subset(skia::IRect::new(
+                                0,
+                                0,
+                                extent.x() as i32,
+                                extent.y() as i32,
+                            ))
+                            .unwrap();
+                        &img_tmp
+                    } else {
+                        src_img
+                    };
+                    paint.set_blend_mode(BlendMode::SrcOver);
+                    target_surface.canvas().draw_image(
+                        src_img,
+                        as_skpoint(&location.location),
+                        Some(&paint),
+                    );
+                }
+                return;
             }
         }
         if mb.buffered {
