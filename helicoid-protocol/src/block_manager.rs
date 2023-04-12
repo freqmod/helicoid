@@ -249,8 +249,8 @@ impl<BG: BlockGfx> Manager<BG> {
             }
         } else {
             /* If the block update has a parent, find the parent and forward the update */
-            if let Some(parent_block) = self.block_for_path_mut(client_id, &update.parent) {
-                parent_block.handle_block_update(update, gfx_manager);
+            if let Some(child_block) = self.block_for_path_mut(client_id, &update.parent) {
+                child_block.handle_block_update(update, gfx_manager);
             } else {
                 log::debug!(
                     "Could not get block for path: {:?} {:?}",

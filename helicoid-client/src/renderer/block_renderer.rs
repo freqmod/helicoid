@@ -294,7 +294,7 @@ impl SkiaClientRenderBlock {
         /* TODO: Use and configuration  of blob builder and storage of fonts should be improved,
         probably delegated to storage */
         let mut blob_builder = ShapedBlobBuilder::new();
-        blob_builder.set_font_key(0, String::from("Anonymous Pro"));
+        blob_builder.set_font_key(0, String::from("AnonymiceNerd"));
         //blob_builder.set_font_key(1, String::from("NotoSansMono-Regular"));
         blob_builder.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
         blob_builder.set_font_key(2, String::from("NotoColorEmoji"));
@@ -313,7 +313,13 @@ impl SkiaClientRenderBlock {
         canvas.save();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
-        log::trace!("Draw text: {:?}", blobs);
+        log::trace!(
+            "Draw text: {:?} at x:{}, y:{}, paint: {:?}",
+            blobs,
+            x,
+            y,
+            shaped.metadata_runs.first().map(|r| &r.paint)
+        );
         for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
             let paint = font_paint_to_sk_paint(&metadata_run.paint);
             canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
@@ -549,7 +555,7 @@ impl SkiaClientRenderBlock {
                         let sk_paint = simple_paint_to_sk_paint(&svg.paint, true);
                         let pixmap_img = Image::from_raster_data(
                             &ImageInfo::new(
-                                ISize::new(sx as i32, sy as i32),
+                                ISize::new((sx as i32).max(1), (sy as i32).max(1)),
                                 skia::ColorType::RGBA8888,
                                 skia::AlphaType::Premul,
                                 None,
@@ -611,14 +617,15 @@ impl SkiaClientRenderBlock {
             /* TODO: Do we trust the hash here, or do we want to store the previous contents too so
             we can do a proper equality comparision?*/
             if cached.description_hash == hashed && !meta.contains_blur() {
-                log::trace!("Reused hash: {} for {:?}", hashed, self);
+                log::trace!("Disable reuse hash: {} for {:?}", hashed, self);
+                /*
                 /* Contents is already rendered, reuse the rendered image */
                 target_surface.canvas().draw_image(
                     &cached.image,
                     as_skpoint(&location.location),
                     Some(&paint),
                 );
-                return;
+                return;*/
             }
         }
         if mb.buffered {
@@ -630,13 +637,14 @@ impl SkiaClientRenderBlock {
             let target_image_info = target_surface.image_info();
             let image_info = ImageInfo::new(
                 ISize {
-                    width: mb.extent.x() as i32,
-                    height: mb.extent.y() as i32,
+                    width: (mb.extent.x() as i32).max(1),
+                    height: (mb.extent.y() as i32).max(1),
                 },
                 target_image_info.color_type(),
                 target_image_info.alpha_type(),
                 target_image_info.color_space(),
             );
+            //TODO: We should try to reuse the same surface as before if the parameters has not changed
             let mut dest_surface = build_sub_surface(&mut context, image_info.clone());
             dest_surface.canvas().clear(Color::new(0));
             log::trace!(
@@ -657,8 +665,10 @@ impl SkiaClientRenderBlock {
             });
             let src_img = &self.rendered.as_ref().unwrap().image;
             let img_tmp; /* For lifetime reasons */
-            let clipped_src_img =
-                if (src_img.width() as f32 > extent.x() || src_img.height() as f32 > extent.y()) {
+            if (extent.x() as i32 > 0) && (extent.y() as i32 > 0) {
+                let clipped_src_img = if (src_img.width() as f32 > extent.x()
+                    || src_img.height() as f32 > extent.y())
+                {
                     /* Clip image as it is too big */
                     img_tmp = src_img
                         .new_subset(skia::IRect::new(0, 0, extent.x() as i32, extent.y() as i32))
@@ -667,12 +677,13 @@ impl SkiaClientRenderBlock {
                 } else {
                     src_img
                 };
-            paint.set_blend_mode(BlendMode::SrcOver);
-            target_surface.canvas().draw_image(
-                src_img,
-                as_skpoint(&location.location),
-                Some(&paint),
-            );
+                paint.set_blend_mode(BlendMode::SrcOver);
+                target_surface.canvas().draw_image(
+                    src_img,
+                    as_skpoint(&location.location),
+                    Some(&paint),
+                );
+            }
         } else {
             let adjusted_location = RenderBlockLocation {
                 id: location.id,
@@ -760,7 +771,11 @@ impl BlockGfx for SkiaClientRenderBlock {
         block: &mut MetaBlock<Self>,
         target: &mut Self::RenderTarget<'_>,
     ) {
-        log::trace!("Render block gfx");
+        log::trace!(
+            "Render block gfx: {:?}/{}",
+            block.parent_path(),
+            block.id().0
+        );
         //        let target = parents.gfx_block.painter;
         //        let desc = block.wire_description();
         if let Some(wire_description) = block.wire_description().as_ref() {
@@ -811,7 +826,7 @@ fn build_sub_surface(context: &mut DirectContext, image_info: ImageInfo) -> Surf
         Some(&props),
         None,
     )
-    .expect("Could not create surface")
+    .expect(format!("Could not create surface: {:?}", image_info).as_str())
 }
 
 fn as_skpoint(p: &PointF16) -> Point {

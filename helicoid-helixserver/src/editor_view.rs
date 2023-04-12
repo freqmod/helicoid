@@ -50,7 +50,7 @@ const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
 const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
 const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
 
-const DEFAULT_TEXT_COLOR: u32 = 0xFFFFFF;
+const DEFAULT_TEXT_COLOR: u32 = 0xFFFFFFFF;
 trait RenderContext {
     fn shaper(&mut self) -> &mut CachingShaper;
 }
@@ -125,6 +125,7 @@ struct StatusLineModel {
     left: ShapableString,
     center: ShapableString,
     right: ShapableString,
+    scaled_font_size: OrderedFloat<f32>,
     cfg_hash: Option<u64>,
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
@@ -183,6 +184,7 @@ struct EditorModel {
     //    main_font_metrics: Metrics,
     font_average_width: OrderedFloat<f32>,
     font_average_height: OrderedFloat<f32>,
+    scaled_font_size: OrderedFloat<f32>,
 }
 
 pub struct EditorContainer {
@@ -211,6 +213,7 @@ impl EditorModel {
         context: &mut ContentVisitor,
     ) {
         let (block, model) = outer_block.destruct_mut();
+        log::info!("Editor top level layout with extent: {:?}", model.extent);
         if let Some(mut header_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_HEADER)) {
             let header_extent = header_block.block().extent_mut();
             *header_extent = PointF16::new(model.extent.x() as f32, header_extent.y());
@@ -220,7 +223,7 @@ impl EditorModel {
         if let Some(mut statusline_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_STATUSLINE))
         {
             let statusline_extent = statusline_block.block().extent_mut();
-            *statusline_extent = PointF16::new(model.extent.x() as f32, statusline_extent.y());
+            *statusline_extent = PointF16::new(model.extent.x() as f32, f32::from(model.scaled_font_size)*1.5f32);
         } else {
             log::info!("No right block when laying out editor");
         }
@@ -282,7 +285,7 @@ impl ContainerBlockLogic for EditorModel {
         debug_assert!(context.active_view_id.is_none());
         context.active_view_id = Some(model.view_id.unwrap());
         if block.extent() != model.extent || model.scale != context.scale {
-            model.extent = model.extent;
+            model.extent = block.extent();
             model.scale = context.scale.clone();
             Self::layout(outer_block, context);
         }
@@ -317,11 +320,12 @@ impl ContainerBlockLogic for EditorModel {
                 Default::default(),
            ),
         };*/
-        let statusline_model = StatusLineModel::default();
+        let mut statusline_model = StatusLineModel::default();
+        statusline_model.scaled_font_size = logic.scaled_font_size;
         let statusline_block = ShadowMetaContainerBlock::new(
             RenderBlockId(EDITOR_CHILD_STATUSLINE),
             PointF16::default(),
-            false,
+            true,
             None,
             statusline_model,
         );
@@ -418,10 +422,14 @@ impl EditorTree {
     pub fn update(&mut self, visitor: &mut ContentVisitor) {
         self.root.update(visitor);
     }
-    pub fn transfer_changes(&mut self, messages_vec: &mut Vec<RemoteBoxUpdate>) {
+    pub fn transfer_changes(
+        &mut self,
+        parent_path: &RenderBlockPath,
+        messages_vec: &mut Vec<RemoteBoxUpdate>,
+    ) {
         self.root
             .inner_mut()
-            .client_transfer_messages(&self.path, messages_vec);
+            .client_transfer_messages(&parent_path, messages_vec);
     }
     pub fn top_container_id(&self) -> RenderBlockId {
         self.root.inner_ref().id()
@@ -442,6 +450,7 @@ impl EditorModel {
             view_id: None,
             font_average_width: OrderedFloat(font_info.average_width),
             font_average_height: OrderedFloat(font_info.ascent + font_info.descent),
+            scaled_font_size: OrderedFloat(line_height),
         }
     }
 }
@@ -531,15 +540,15 @@ impl GfxComposibleBlock for EditorTop {
     fn render(&mut self, context: &mut dyn RenderContext) {}
 }
 impl StatusLineModel {
-    fn render_mode(editor: &Editor, out_string: &mut ShapableString) {
+    fn render_mode(font_size: f32, editor: &Editor, out_string: &mut ShapableString) {
         match editor.mode {
-            Mode::Normal => out_string.push_plain_str(" N󰄮 ", DEFAULT_TEXT_COLOR),
-            Mode::Select => out_string.push_plain_str(" S󰒅 ", DEFAULT_TEXT_COLOR),
-            Mode::Insert => out_string.push_plain_str(" I󰫙 ", DEFAULT_TEXT_COLOR),
+            Mode::Normal => out_string.push_plain_str(" N󰄮 ", DEFAULT_TEXT_COLOR, font_size),
+            Mode::Select => out_string.push_plain_str(" S󰒅 ", DEFAULT_TEXT_COLOR, font_size),
+            Mode::Insert => out_string.push_plain_str(" I󰫙 ", DEFAULT_TEXT_COLOR, font_size),
         };
     }
 
-    fn render_diagnostics(doc: &Document, out_string: &mut ShapableString) {
+    fn render_diagnostics(font_size: f32, doc: &Document, out_string: &mut ShapableString) {
         let (warnings, errors) = doc.diagnostics().iter().fold((0, 0), |mut counts, diag| {
             use helix_core::diagnostic::Severity;
             match diag.severity {
@@ -550,14 +559,14 @@ impl StatusLineModel {
             counts
         });
         if warnings > 0 {
-            out_string.push_plain_str(format!("{} W ", warnings).as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("{} W ", warnings).as_str(), DEFAULT_TEXT_COLOR, font_size);
         }
 
         if errors > 0 {
-            out_string.push_plain_str(format!("{} E ", errors).as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("{} E ", errors).as_str(), DEFAULT_TEXT_COLOR, font_size);
         }
     }
-    fn render_workspace_diagnostics(editor: &Editor, out_string: &mut ShapableString) {
+    fn render_workspace_diagnostics(font_size: f32, editor: &Editor, out_string: &mut ShapableString) {
         let (warnings, errors) =
             editor
                 .diagnostics
@@ -572,17 +581,18 @@ impl StatusLineModel {
                     counts
                 });
         if warnings > 0 || errors > 0 {
-            out_string.push_plain_str(format!("N󰪏: ").as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("N󰪏: ").as_str(), DEFAULT_TEXT_COLOR, font_size);
         }
         if warnings > 0 {
-            out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR, font_size);
         }
 
         if errors > 0 {
-            out_string.push_plain_str(format!("{}  ", errors).as_str(), DEFAULT_TEXT_COLOR);
+            out_string.push_plain_str(format!("{}  ", errors).as_str(), DEFAULT_TEXT_COLOR, font_size);
         }
     }
     fn render_elements(
+        font_size: f32,
         elements: &Vec<StatusLineElement>,
         editor: &Editor,
         doc: &Document,
@@ -592,31 +602,31 @@ impl StatusLineModel {
         for element in elements.iter() {
             match element {
                 StatusLineElement::Mode => {
-                    Self::render_mode(editor, out_string);
+                    Self::render_mode(font_size, editor, out_string);
                 }
                 /* Currently no animations are implemented for the spinner */
-                StatusLineElement::Spinner => out_string.push_plain_str(" L ", DEFAULT_TEXT_COLOR),
+                StatusLineElement::Spinner => out_string.push_plain_str(" L ", DEFAULT_TEXT_COLOR, font_size),
                 /* TODO: Currently FileName and File BaseName is not distinguished, we prbably want to do that */
                 StatusLineElement::FileName | StatusLineElement::FileBaseName => {
                     if let Some(path_buf) = doc.relative_path() {
                         if let Ok(path_str) = path_buf.into_os_string().into_string() {
-                            out_string.push_plain_str(&path_str, DEFAULT_TEXT_COLOR);
+                            out_string.push_plain_str(&path_str, DEFAULT_TEXT_COLOR, font_size);
                         }
                     } else {
-                        out_string.push_plain_str(UNNAMED_NAME, DEFAULT_TEXT_COLOR);
+                        out_string.push_plain_str(UNNAMED_NAME, DEFAULT_TEXT_COLOR, font_size);
                     }
                 }
                 StatusLineElement::FileModificationIndicator => {
                     if doc.is_modified() {
-                        out_string.push_plain_str("  ", DEFAULT_TEXT_COLOR);
+                        out_string.push_plain_str("  ", DEFAULT_TEXT_COLOR, font_size);
                     } else {
                     }
                 }
                 StatusLineElement::Diagnostics => {
-                    Self::render_diagnostics(doc, out_string);
+                    Self::render_diagnostics(font_size, doc, out_string);
                 }
                 StatusLineElement::WorkspaceDiagnostics => {
-                    Self::render_workspace_diagnostics(editor, out_string);
+                    Self::render_workspace_diagnostics(font_size, editor, out_string);
                 }
                 StatusLineElement::FileEncoding => {}
                 StatusLineElement::FileLineEnding => {}
@@ -635,9 +645,10 @@ impl StatusLineModel {
     }
     fn update_state(&mut self, editor: &Editor, document: &Document) {
         let status_config = &editor.config().statusline;
-        Self::render_elements(&status_config.left, editor, document, &mut self.left);
-        Self::render_elements(&status_config.center, editor, document, &mut self.center);
-        Self::render_elements(&status_config.right, editor, document, &mut self.right);
+        let font_size = f32::from(self.scaled_font_size);
+        Self::render_elements(font_size, &status_config.left, editor, document, &mut self.left);
+        Self::render_elements(font_size, &status_config.center, editor, document, &mut self.center);
+        Self::render_elements(font_size, &status_config.right, editor, document, &mut self.right);
     }
     fn hash_state(&self) -> u64 {
         let mut hasher =
@@ -661,6 +672,7 @@ impl StatusLineModel {
             .flatten()
             .unwrap_or(block.extent().y());
         let line_y = block.extent().y() / 6f32; /* Vert layout: 1/6 4/6 1/6 */
+        log::trace!("Char width: {} Y: {}", char_width, line_y);
         let container_width = block.extent().x();
 
         let shaped = shaper.shape(string_to_shape, &None);
@@ -760,7 +772,7 @@ impl ContainerBlockLogic for StatusLineModel {
                 layer: 0,
             },
             ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(
-                STATUSLINE_CHILD_ID_LEFT,
+                STATUSLINE_CHILD_ID_LEFT, 
             ))),
         );
         block.set_child(

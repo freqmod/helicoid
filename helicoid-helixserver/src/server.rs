@@ -1,9 +1,11 @@
+use ahash::AHasher;
 use anyhow::{anyhow, Result};
 use arc_swap::{access::Map, ArcSwap};
 use async_trait::async_trait;
 use hashbrown::HashMap;
 
 use helicoid_protocol::{
+    block_manager::RenderBlockFullId,
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
@@ -29,7 +31,11 @@ use helix_view::{
 };
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    hash::{Hash, Hasher},
+    net::SocketAddr,
+    sync::Arc,
+};
 use tokio::sync::{
     broadcast::{self, Receiver as BReceiver, Sender as BSender},
     mpsc::{self, Receiver, Sender},
@@ -40,12 +46,16 @@ use crate::editor::Editor as HcEditor;
 use crate::editor_view::{ContentVisitor, EditorContainer, EditorTree};
 
 const CONTAINER_IDS_BASE: u16 = 0x100;
+const ENCLOSURE_ID: u16 = 0x0;
 
+const UNSCALED_FONT_SIZE: f32 = 32f32;
 struct Compositor {
     containers: HashMap<RenderBlockId, EditorTree>,
     content_visitor: ContentVisitor,
     client_messages_scratch: Vec<RemoteBoxUpdate>,
 }
+
+#[derive(Debug)]
 struct EditorEnclosure {
     enclosure_location: RenderBlockLocation,
     enclosure_meta: MetaDrawBlock,
@@ -55,6 +65,7 @@ information */
 struct ServerStateData {
     compositor: Option<Box<Compositor>>,
     enclosure: Option<EditorEnclosure>,
+    enclosure_hash: Option<u64>,
 }
 
 struct ServerState {
@@ -89,7 +100,7 @@ impl HelicoidServer {
         scale_factor: f32,
         editor: Arc<TMutex<HcEditor>>,
     ) -> ContentVisitor {
-        let unscaled_font_size = 12.0f32;
+        let unscaled_font_size = UNSCALED_FONT_SIZE;
         let mut shaper = CachingShaper::new(scale_factor, unscaled_font_size);
         shaper.set_font_key(0, String::from("AnonymiceNerd"));
         shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
@@ -99,10 +110,11 @@ impl HelicoidServer {
 
         let mut line_height = 0f32;
         for id in 0..5 {
-            let options = SmallFontOptions {
+            let mut options = SmallFontOptions {
                 family_id: id,
                 font_parameters: shaper.default_parameters(),
             };
+            options.font_parameters.size = OrderedFloat(unscaled_font_size);
             if let Some((metrics, _advance)) = shaper.info(&options) {
                 line_height = line_height.max(metrics.ascent + metrics.descent);
             }
@@ -115,14 +127,16 @@ impl HelicoidServer {
             let mut visitor = Self::make_content_visitor(1.0f32, self.editor.clone());
 
             let shaper = visitor.shaper();
-            let font_options = SmallFontOptions {
+            let mut font_options = SmallFontOptions {
                 family_id: 0,
                 font_parameters: shaper.default_parameters(),
             };
+            font_options.font_parameters.size = OrderedFloat(UNSCALED_FONT_SIZE);
             let font_metrics = shaper.info(&font_options).unwrap().0;
 
             let mut state_data = ServerStateData {
                 enclosure: None,
+                enclosure_hash: None,
                 compositor: Some(Box::new(Compositor {
                     containers: HashMap::default(),
                     content_visitor: visitor,
@@ -139,7 +153,7 @@ impl HelicoidServer {
             };
             let mut initial_container = EditorTree::new(
                 RenderBlockId(CONTAINER_IDS_BASE),
-                12.0f32,
+                UNSCALED_FONT_SIZE,
                 font_metrics,
                 view_id,
                 PointF16::default(),
@@ -303,15 +317,22 @@ impl ServerState {
     async fn maintain_enclosure(&mut self) -> Result<()> {
         let view_size = self.viewport_size.as_ref().unwrap().physical_size;
         let enclosure_extent = PointF16::from(PointU32::new(view_size.0, view_size.1));
+        let mut content_list_hasher = AHasher::default();
+        enclosure_extent.hash(&mut content_list_hasher);
+        {
+            for (_id, container) in &self.state_data.compositor.as_ref().unwrap().containers {
+                //                let MetaDrawBlock { extent, buffered, alpha, sub_blocks }
+                content_list_hasher.write_u16(container.top_container_id().0);
+            }
+        }
+        let enclosure_content_hash = content_list_hasher.finish();
+
         if self.state_data.enclosure.is_none()
             || self
                 .state_data
-                .enclosure
-                .as_ref()
-                .unwrap()
-                .enclosure_meta
-                .extent
-                != enclosure_extent
+                .enclosure_hash
+                .map(|h| h != enclosure_content_hash)
+                .unwrap_or(false)
         {
             let containers = &mut self.state_data.compositor.as_mut().unwrap().containers;
             let mut sub_blocks = SmallVec::with_capacity(containers.len());
@@ -328,7 +349,7 @@ impl ServerState {
 
             self.state_data.enclosure = Some(EditorEnclosure {
                 enclosure_location: RenderBlockLocation {
-                    id: RenderBlockId(0),
+                    id: RenderBlockId(ENCLOSURE_ID),
                     location: PointF16::default(),
                     layer: 0x10,
                 },
@@ -345,9 +366,11 @@ impl ServerState {
                 .unwrap()
                 .send_message(&mut self.channel_tx)
                 .await?;
+            self.state_data.enclosure_hash = Some(enclosure_content_hash);
             log::trace!(
                 "Sent editor enclosure for view dimensions {:?}",
-                enclosure_extent
+                enclosure_extent,
+                //self.state_data.enclosure,
             );
         }
 
@@ -370,6 +393,7 @@ impl ServerState {
             .unwrap()
             .transfer_messages_to_client(&mut self.channel_tx)
             .await?;
+        self.maintain_enclosure().await?;
         Ok(())
     }
 
@@ -687,7 +711,10 @@ impl Compositor {
     fn sync_screen(&mut self) -> anyhow::Result<()> {
         for (id, tree) in self.containers.iter_mut() {
             tree.update(&mut self.content_visitor);
-            tree.transfer_changes(&mut self.client_messages_scratch);
+            tree.transfer_changes(
+                &RenderBlockPath::new(smallvec![RenderBlockId(ENCLOSURE_ID)]),
+                &mut self.client_messages_scratch,
+            );
         }
         Ok(())
     }

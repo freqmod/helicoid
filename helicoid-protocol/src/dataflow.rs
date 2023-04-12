@@ -631,10 +631,6 @@ where
             return;
         }
         let child_path = RenderBlockPath::child(parent, self.id);
-        /* TODO: NB: Push any contents that the current box refers to before sending the message about them */
-        for element in self.child_blocks.iter_mut() {
-            element.client_transfer_messages(&child_path, messages_vec);
-        }
         if Some(self.meta_hash) != self.client_meta_hash {
             /* Transfer location metadata for this metablock to the client */
             messages_vec.push(RemoteBoxUpdate {
@@ -646,6 +642,10 @@ where
                 remove_render_blocks: Default::default(),
                 move_block_locations: Default::default(),
             })
+        }
+        /* Push contents after the outside block, to ensure that the client knows about them */
+        for element in self.child_blocks.iter_mut() {
+            element.client_transfer_messages(&child_path, messages_vec);
         }
     }
     pub fn id(&self) -> RenderBlockId {
@@ -699,12 +699,12 @@ impl<C> ShadowMetaBlock<C>
 where
     C: VisitingContext + 'static,
 {
-    fn client_transfer_container<'a>(
+    /*fn client_transfer_container<'a>(
         container: &'a mut dyn AnyShadowMetaContainerBlock<C>,
         parent: &RenderBlockPath,
         messages_vec: &mut Vec<RemoteBoxUpdate>,
     ) {
-    }
+    }*/
     pub fn client_transfer_messages(
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children

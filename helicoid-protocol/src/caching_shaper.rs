@@ -86,8 +86,9 @@ pub struct CachingShaper {
 
 impl CachingShaper {
     pub fn new(scale_factor: f32, unscaled_font_size: f32) -> CachingShaper {
-        let options = FontOptions::default();
+        let mut options = FontOptions::default();
         let scaled_font_size = unscaled_font_size * scale_factor;
+        options.font_parameters.size = OrderedFloat(scaled_font_size);
         let default_font =
             KeyedSwashFont::load_keyed(&base_asset_path(), Default::default(), scaled_font_size)
                 .unwrap();
@@ -602,6 +603,7 @@ impl CachingShaper {
             current_text_offset += run.substring_length as usize;
         }
         resulting_block.extent = PointF16::new(current_pixel_offset, max_y_advance);
+        trace!("Shaped text: {:?}", resulting_block);
 
         resulting_block
     }
