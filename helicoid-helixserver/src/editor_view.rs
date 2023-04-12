@@ -542,9 +542,9 @@ impl GfxComposibleBlock for EditorTop {
 impl StatusLineModel {
     fn render_mode(font_size: f32, editor: &Editor, out_string: &mut ShapableString) {
         match editor.mode {
-            Mode::Normal => out_string.push_plain_str(" N󰄮 ", DEFAULT_TEXT_COLOR, font_size),
-            Mode::Select => out_string.push_plain_str(" S󰒅 ", DEFAULT_TEXT_COLOR, font_size),
-            Mode::Insert => out_string.push_plain_str(" I󰫙 ", DEFAULT_TEXT_COLOR, font_size),
+            Mode::Normal => out_string.push_plain_str(" 󰄮 ", DEFAULT_TEXT_COLOR, font_size),
+            Mode::Select => out_string.push_plain_str(" 󰒅 ", DEFAULT_TEXT_COLOR, font_size),
+            Mode::Insert => out_string.push_plain_str(" 󰫙 ", DEFAULT_TEXT_COLOR, font_size),
         };
     }
 
@@ -581,7 +581,7 @@ impl StatusLineModel {
                     counts
                 });
         if warnings > 0 || errors > 0 {
-            out_string.push_plain_str(format!("N󰪏: ").as_str(), DEFAULT_TEXT_COLOR, font_size);
+            out_string.push_plain_str(format!("󰪏: ").as_str(), DEFAULT_TEXT_COLOR, font_size);
         }
         if warnings > 0 {
             out_string.push_plain_str(format!("{}  ", warnings).as_str(), DEFAULT_TEXT_COLOR, font_size);

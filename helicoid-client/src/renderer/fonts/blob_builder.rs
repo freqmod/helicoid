@@ -144,6 +144,12 @@ impl ShapedBlobBuilder {
                             *shaped_string.font_info.font_parameters.size,
                         );
                         if let Some(loaded) = loaded {
+                            log::trace!(
+                                "Succeded loading font with name: {} at {:?} {:?}",
+                                font_name,
+                                &base_asset_path(),
+                                font_name
+                            );
                             self.font_cache
                                 .insert(shaped_string.font_info.clone(), loaded);
                         } else {
@@ -248,22 +254,24 @@ impl KeyedFont {
 
         if let Some(family_name) = &font_key.family_name {
             trace!("Loading font {:?}", font_key);
-            match font_manager.match_family_style(family_name, font_style) {
-                Some(typeface) => {
-                    /* Load typeface from system fonts */
-                    KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
-                }
-                None => {
-                    /* See if there is a local ttf file in assets we can load */
-                    let font_file_path = base_directory
-                        .join("fonts")
-                        .join(format!("{}.ttf", family_name));
-                    let font_data_vec = std::fs::read(font_file_path).ok()?;
-                    let font_data = Data::new_copy(&font_data_vec.as_slice());
-                    let typeface = Typeface::from_data(font_data, 0).unwrap();
-                    KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
-                }
+            // Skip the system fonts for now, todo: Consider loading system fonts if file not found
+            /*match font_manager.match_family_style(family_name, font_style) {
+            Some(typeface) => {
+                /* Load typeface from system fonts */
+                KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
             }
+            None => {*/
+            /* See if there is a local ttf file in assets we can load */
+            let font_file_path = base_directory
+                .join("fonts")
+                .join(format!("{}.ttf", family_name));
+            trace!("Load font name: {:?}", font_file_path);
+            let font_data_vec = std::fs::read(font_file_path).ok()?;
+            let font_data = Data::new_copy(&font_data_vec.as_slice());
+            let typeface = Typeface::from_data(font_data, 0).unwrap();
+            KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))
+        //                }
+        //            }
         } else {
             trace!("Loading default font {:?}", font_key);
             let data = Data::new_copy(DEFAULT_FONT);

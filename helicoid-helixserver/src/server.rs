@@ -103,10 +103,10 @@ impl HelicoidServer {
         let unscaled_font_size = UNSCALED_FONT_SIZE;
         let mut shaper = CachingShaper::new(scale_factor, unscaled_font_size);
         shaper.set_font_key(0, String::from("AnonymiceNerd"));
-        shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
+        /*        shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
         shaper.set_font_key(2, String::from("NotoColorEmoji"));
         shaper.set_font_key(3, String::from("MissingGlyphs"));
-        shaper.set_font_key(4, String::from("LastResort-Regular"));
+        shaper.set_font_key(4, String::from("LastResort-Regular"));*/
 
         let mut line_height = 0f32;
         for id in 0..5 {

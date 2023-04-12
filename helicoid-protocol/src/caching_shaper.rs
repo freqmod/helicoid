@@ -654,6 +654,8 @@ impl KeyedSwashFont {
                 .map(|font| KeyedSwashFont::new_string(name, font));
             if res.is_none() {
                 trace!("KSFLoading font failed: {:?}", font_file_path);
+            } else {
+                trace!("KSFLoading font succeeded: {:?}", font_file_path);
             }
             res
         } else {
