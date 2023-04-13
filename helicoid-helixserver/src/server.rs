@@ -711,8 +711,16 @@ impl Compositor {
     fn sync_screen(&mut self) -> anyhow::Result<()> {
         for (id, tree) in self.containers.iter_mut() {
             tree.update(&mut self.content_visitor);
+            /*TODO: Retrieve the proper location and id from the enclosure, this is needed to be done
+            if multiple enclosures in the same client / changing the location live is required */
+            let mut loc = RenderBlockLocation {
+                id: RenderBlockId(ENCLOSURE_ID),
+                location: PointF16::default(),
+                layer: 0,
+            };
             tree.transfer_changes(
                 &RenderBlockPath::new(smallvec![RenderBlockId(ENCLOSURE_ID)]),
+                &mut loc,
                 &mut self.client_messages_scratch,
             );
         }

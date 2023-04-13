@@ -263,6 +263,31 @@ impl HeliconeEditor {
             .map_err(|e| log::warn!("Error while sending key code update to server: {:?}", e));
     }
 
+    fn send_size_info(
+        sender: &mut Sender<TcpBridgeToServerMessage>,
+        current_viewport_info_out: &mut Option<ViewportInfo>,
+        physical_size: (u32, u32),
+        scale_factor: f64,
+    ) {
+        /* Convert event to helicoid protocol and send off  to server. */
+        let size = ViewportInfo {
+            physical_size,
+            scale_factor: OrderedFloat(scale_factor as f32),
+            container_physical_size: None,
+            container_scale_factor: None,
+        };
+        *current_viewport_info_out = Some(size.clone());
+        let size_msg = TcpBridgeToServerMessage {
+            message: HelicoidToServerMessage::ViewportSizeUpdate(size),
+        };
+        let _ = sender.blocking_send(size_msg).map_err(|e| {
+            log::warn!(
+                "Error while sending intitial viewport update to server: {:?}",
+                e
+            )
+        });
+        log::trace!("Resize sent viewport info");
+    }
     pub fn handle_event(
         &mut self,
         event: &Event<()>,
@@ -304,36 +329,19 @@ impl HeliconeEditor {
                             1.0
                         };
                         let logical_size = event.to_logical::<u32>(scale_factor);
-                        /* Convert event to helicoid protocol and send off  to server. */
-                        let size = ViewportInfo {
-                            physical_size: (event.width, event.height),
-                            scale_factor: OrderedFloat(scale_factor as f32),
-                            container_physical_size: None,
-                            container_scale_factor: None,
-                        };
                         log::trace!(
-                            "Window resize: {:?} Logical size: {:?} ({}) VPI:{:?}",
+                            "Window resize: {:?} Logical size: {:?} ({})",
                             event,
                             logical_size,
                             scale_factor,
-                            size,
                         );
-                        self.current_viewport_info = Some(size.clone());
-                        let size_msg = TcpBridgeToServerMessage {
-                            message: HelicoidToServerMessage::ViewportSizeUpdate(size),
-                        };
-                        let _ = self
-                            .sender
-                            .as_mut()
-                            .unwrap()
-                            .blocking_send(size_msg)
-                            .map_err(|e| {
-                                log::warn!(
-                                    "Error while sending intitial viewport update to server: {:?}",
-                                    e
-                                )
-                            });
-                        log::trace!("Resize sent viewport info");
+                        let physical_size = (event.width, event.height);
+                        Self::send_size_info(
+                            self.sender.as_mut().unwrap(),
+                            &mut self.current_viewport_info,
+                            physical_size,
+                            scale_factor,
+                        );
                     }
                     WindowEvent::Moved(_) => {}
                     WindowEvent::CloseRequested => {
@@ -387,6 +395,13 @@ impl HeliconeEditor {
                         if let Some(inner) = inner.as_mut() {
                             inner.scale_factor = *scale_factor;
                         }
+                        let physical_size = (new_inner_size.width, new_inner_size.height);
+                        Self::send_size_info(
+                            self.sender.as_mut().unwrap(),
+                            &mut self.current_viewport_info,
+                            physical_size,
+                            *scale_factor,
+                        );
                     }
                     WindowEvent::ThemeChanged(_) => {}
                     WindowEvent::ReceivedCharacter(_) => {}

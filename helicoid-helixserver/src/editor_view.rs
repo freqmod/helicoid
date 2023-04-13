@@ -31,7 +31,7 @@ use std::{
 };
 use swash::Metrics;
 
-const UNNAMED_NAME: &str = "<Not saved>";
+const UNNAMED_NAME: &str = "<Not saved-> >";
 
 /* Seeds for hashes: The hashes should stay consistent during program execution,
 so we can compare them */
@@ -224,6 +224,7 @@ impl EditorModel {
         {
             let statusline_extent = statusline_block.block().extent_mut();
             *statusline_extent = PointF16::new(model.extent.x() as f32, f32::from(model.scaled_font_size)*1.5f32);
+            statusline_block.location().location = PointF16::new(0f32, model.extent.y() - statusline_extent.y())
         } else {
             log::info!("No right block when laying out editor");
         }
@@ -425,11 +426,13 @@ impl EditorTree {
     pub fn transfer_changes(
         &mut self,
         parent_path: &RenderBlockPath,
+        location: &mut RenderBlockLocation,
         messages_vec: &mut Vec<RemoteBoxUpdate>,
     ) {
-        self.root
+                self.root
             .inner_mut()
-            .client_transfer_messages(&parent_path, messages_vec);
+            .client_transfer_messages(&parent_path, location,
+                messages_vec);
     }
     pub fn top_container_id(&self) -> RenderBlockId {
         self.root.inner_ref().id()
