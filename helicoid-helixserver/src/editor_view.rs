@@ -31,7 +31,7 @@ use std::{
 };
 use swash::Metrics;
 
-const UNNAMED_NAME: &str = "<Not saved-> >";
+const UNNAMED_NAME: &str = "<Not saved != a-> >";
 
 /* Seeds for hashes: The hashes should stay consistent during program execution,
 so we can compare them */

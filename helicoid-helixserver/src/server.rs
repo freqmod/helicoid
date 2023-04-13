@@ -102,7 +102,8 @@ impl HelicoidServer {
     ) -> ContentVisitor {
         let unscaled_font_size = UNSCALED_FONT_SIZE;
         let mut shaper = CachingShaper::new(scale_factor, unscaled_font_size);
-        shaper.set_font_key(0, String::from("AnonymiceNerd"));
+        //shaper.set_font_key(0, String::from("AnonymiceNerd"));
+        shaper.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
         /*        shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
         shaper.set_font_key(2, String::from("NotoColorEmoji"));
         shaper.set_font_key(3, String::from("MissingGlyphs"));
