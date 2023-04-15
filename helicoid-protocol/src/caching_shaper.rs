@@ -125,10 +125,16 @@ impl CachingShaper {
                 })
         }
     */
+    pub fn change_scale_factor(&self, scale_factor: f32) {
+        let mut inner = self.inner.write();
+        inner.scale_factor = scale_factor;
+    }
+
     pub fn current_size(&self) -> f32 {
         let inner = self.inner.read();
         inner.options.font_parameters.size() * inner.scale_factor
     }
+
     fn reset_font_loader(&mut self) {
         let mut inner = self.inner.write();
         inner.font_names.clear();

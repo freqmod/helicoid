@@ -43,7 +43,7 @@ use tokio::sync::{
 };
 
 use crate::editor::Editor as HcEditor;
-use crate::editor_view::{ContentVisitor, EditorContainer, EditorTree};
+use crate::editor_view::{ContentVisitor, EditorTree};
 
 const CONTAINER_IDS_BASE: u16 = 0x100;
 const ENCLOSURE_ID: u16 = 0x0;
@@ -155,6 +155,7 @@ impl HelicoidServer {
             let mut initial_container = EditorTree::new(
                 RenderBlockId(CONTAINER_IDS_BASE),
                 UNSCALED_FONT_SIZE,
+                1.0f32, /* Scale factor is determined when a resize event occurs */
                 font_metrics,
                 view_id,
                 PointF16::default(),
@@ -317,6 +318,7 @@ impl ServerState {
     }
     async fn maintain_enclosure(&mut self) -> Result<()> {
         let view_size = self.viewport_size.as_ref().unwrap().physical_size;
+        let scale_factor = self.viewport_size.as_ref().unwrap().scale_factor;
         let enclosure_extent = PointF16::from(PointU32::new(view_size.0, view_size.1));
         let mut content_list_hasher = AHasher::default();
         enclosure_extent.hash(&mut content_list_hasher);
@@ -335,10 +337,19 @@ impl ServerState {
                 .map(|h| h != enclosure_content_hash)
                 .unwrap_or(false)
         {
+            /* Make sure visitor scale factor is up to date */
+            self.state_data
+                .compositor
+                .as_mut()
+                .unwrap()
+                .content_visitor
+                .shaper()
+                .change_scale_factor(f32::from(scale_factor));
+
             let containers = &mut self.state_data.compositor.as_mut().unwrap().containers;
             let mut sub_blocks = SmallVec::with_capacity(containers.len());
             for (_id, container) in containers.iter_mut() {
-                container.resize(enclosure_extent);
+                container.resize(enclosure_extent, scale_factor);
                 //                let MetaDrawBlock { extent, buffered, alpha, sub_blocks }
                 let block_loc = RenderBlockLocation {
                     id: container.top_container_id(),

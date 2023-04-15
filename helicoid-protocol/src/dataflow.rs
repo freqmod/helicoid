@@ -770,6 +770,24 @@ where
             None
         }
     }
+    pub fn container(&self) -> Option<&(dyn AnyShadowMetaContainerBlock<C> + 'static)> {
+        if let ShadowMetaBlock::Container(c) = self {
+            Some(c)
+        } else if let ShadowMetaBlock::WrappedContainer(ref wc) = self {
+            Some(wc.as_ref())
+        } else {
+            None
+        }
+    }
+    pub fn container_mut(&mut self) -> Option<&mut (dyn AnyShadowMetaContainerBlock<C> + 'static)> {
+        if let ShadowMetaBlock::Container(c) = self {
+            Some(c)
+        } else if let ShadowMetaBlock::WrappedContainer(ref mut wc) = self {
+            Some(wc.as_mut())
+        } else {
+            None
+        }
+    }
 }
 
 impl ShadowMetaTextBlock {
