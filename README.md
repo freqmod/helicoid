@@ -67,6 +67,10 @@ where the goal is to first get something simple up and running to see that it is
 is completed to a state where it is somewhat usable cleanup and better test coverage will likely be introduced.
 
 
+Current plan:
+- Finish/Get the possibility to render a document stored in helix-view to work, scrolling up and down the document.
+- Look into making a key input system that can be (re) configured runtime based on some kind of serde (toml)
+description.
 
 How to use:
 Enter the helicoid folder in a shell (where this readme file is) in two terminals. Build and run the server first, 
