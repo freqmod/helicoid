@@ -33,7 +33,7 @@ struct HeliconeEditorInner {
     //bridge: ClientTcpBridge,
     sender: Option<Sender<TcpBridgeToServerMessage>>,
     receiver: Option<Receiver<TcpBridgeToClientMessage>>,
-    scale_factor: f64,
+    //    scale_factor: f64,
     time_ref_base: Instant,
 }
 pub struct HeliconeEditor {
@@ -76,7 +76,7 @@ impl HeliconeEditor {
                             *inner_locked = Some(HeliconeEditorInner {
                                 sender: Some(sender),
                                 receiver: Some(receiver),
-                                scale_factor: 1.0,
+                                //                                scale_factor: 1.0,
                                 time_ref_base: Instant::now(),
                             });
                         }
@@ -175,25 +175,46 @@ impl HeliconeEditor {
             .as_millis()
             % (u32::MAX as u128)) as u32
     }
-    pub fn handle_event_disconnected(&mut self, event: &Event<()>) -> Option<ControlFlow> {
+    pub fn handle_event_disconnected(
+        &mut self,
+        event: &Event<()>,
+        window: &winit::window::Window,
+    ) -> Option<ControlFlow> {
         match event {
             Event::WindowEvent { window_id, event } => match event {
                 WindowEvent::CloseRequested => {
                     return Some(ControlFlow::Exit);
                 }
                 WindowEvent::Resized(event) => {
-                    let scale_factor = if let Some(inner) = self.inner.try_lock().ok() {
-                        inner.as_ref().map(|i| i.scale_factor).unwrap_or(1.0)
+                    let scale_factor = if let Some(monitor) = window.current_monitor() {
+                        monitor.scale_factor()
                     } else {
                         1.0
                     };
-                    let size = ViewportInfo {
-                        physical_size: (event.width, event.height),
-                        scale_factor: OrderedFloat(scale_factor as f32),
-                        container_physical_size: None,
-                        container_scale_factor: None,
-                    };
-                    self.current_viewport_info = Some(size.clone());
+                    /*let scale_factor = if let Some(inner) = self.inner.try_lock().ok() {
+                        inner.as_ref().map(|i| i.scale_factor).unwrap_or(1.0)
+                    } else {
+                        1.0
+                    };*/
+                    Self::send_size_info(
+                        None,
+                        &mut self.current_viewport_info,
+                        (event.width, event.height),
+                        scale_factor,
+                    );
+                }
+                WindowEvent::ScaleFactorChanged {
+                    scale_factor,
+                    new_inner_size,
+                } => {
+                    log::trace!("Scale factor change: {} {:?}", scale_factor, new_inner_size);
+                    let physical_size = (new_inner_size.width, new_inner_size.height);
+                    Self::send_size_info(
+                        None,
+                        &mut self.current_viewport_info,
+                        physical_size,
+                        *scale_factor,
+                    );
                 }
                 _ => {}
             },
@@ -264,7 +285,7 @@ impl HeliconeEditor {
     }
 
     fn send_size_info(
-        sender: &mut Sender<TcpBridgeToServerMessage>,
+        sender: Option<&mut Sender<TcpBridgeToServerMessage>>,
         current_viewport_info_out: &mut Option<ViewportInfo>,
         physical_size: (u32, u32),
         scale_factor: f64,
@@ -280,13 +301,20 @@ impl HeliconeEditor {
         let size_msg = TcpBridgeToServerMessage {
             message: HelicoidToServerMessage::ViewportSizeUpdate(size),
         };
-        let _ = sender.blocking_send(size_msg).map_err(|e| {
-            log::warn!(
-                "Error while sending intitial viewport update to server: {:?}",
-                e
-            )
-        });
-        log::trace!("Resize sent viewport info");
+        if let Some(sender) = sender {
+            let _ = sender.blocking_send(size_msg).map_err(|e| {
+                log::warn!(
+                    "Error while sending intitial viewport update to server: {:?}",
+                    e
+                )
+            });
+            log::trace!("Resize sent viewport info: {:?}", current_viewport_info_out);
+        } else {
+            log::trace!(
+                "Resize stored viewport info: {:?}",
+                current_viewport_info_out
+            );
+        }
     }
     pub fn handle_event(
         &mut self,
@@ -298,7 +326,7 @@ impl HeliconeEditor {
                 "Try to handle event before connection is established to server: {:?}",
                 event
             );*/
-            return self.handle_event_disconnected(event);
+            return self.handle_event_disconnected(event, window);
         }
         if let Some(mut inner) = self.inner.try_lock().ok() {
             match event {
@@ -330,14 +358,14 @@ impl HeliconeEditor {
                         };
                         let logical_size = event.to_logical::<u32>(scale_factor);
                         log::trace!(
-                            "Window resize: {:?} Logical size: {:?} ({})",
+                            "Window resize: {:?} Logical size: {:?} (SF: {:?})",
                             event,
                             logical_size,
                             scale_factor,
                         );
                         let physical_size = (event.width, event.height);
                         Self::send_size_info(
-                            self.sender.as_mut().unwrap(),
+                            Some(self.sender.as_mut().unwrap()),
                             &mut self.current_viewport_info,
                             physical_size,
                             scale_factor,
@@ -392,12 +420,9 @@ impl HeliconeEditor {
                         new_inner_size,
                     } => {
                         log::trace!("Scale factor change: {} {:?}", scale_factor, new_inner_size);
-                        if let Some(inner) = inner.as_mut() {
-                            inner.scale_factor = *scale_factor;
-                        }
                         let physical_size = (new_inner_size.width, new_inner_size.height);
                         Self::send_size_info(
-                            self.sender.as_mut().unwrap(),
+                            Some(self.sender.as_mut().unwrap()),
                             &mut self.current_viewport_info,
                             physical_size,
                             *scale_factor,
