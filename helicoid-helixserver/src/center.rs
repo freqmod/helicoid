@@ -26,8 +26,17 @@ use helicoid_protocol::{
     },
     text::{FontEdging, FontHinting, ShapableString},
 };
+use helix_core::{
+    doc_formatter::{DocumentFormatter, TextFormat},
+    syntax::{Highlight, HighlightEvent},
+    text_annotations::TextAnnotations,
+    visual_offset_from_block, Position, RopeSlice,
+};
 use helix_lsp::lsp::DiagnosticSeverity;
-use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor, ViewId};
+use helix_view::{
+    document::Mode, editor::StatusLineElement, theme::Style, view::ViewPosition, Document,
+    DocumentId, Editor, Theme, ViewId,
+};
 use ordered_float::OrderedFloat;
 use std::{
     hash::{BuildHasher, Hash, Hasher},
@@ -35,16 +44,16 @@ use std::{
 };
 use swash::Metrics;
 
-const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
-const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
-const STATUSLINE_CHILD_ID_RIGHT: u16 = 0x12;
+const CENTER_PARAGRAPH_BASE: u16 = 0x1000;
 
 const UNNAMED_NAME: &str = "<Not saved != a-> >";
 
 pub type ParagraphId = u16;
 #[derive(Hash, PartialEq, Default)]
-pub struct ParagraphModel {}
-
+pub struct Paragraph {
+    data_hash: u64, /* Of the latest changed value, it is up to the model to make it synced with the client */
+    last_modified: u32, /* Age counter when this paragraph was last changed, for cache eviction */
+}
 /* How should we organise the status line, helix view has a very string based approach
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
@@ -59,7 +68,60 @@ pub struct CenterModel {
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
-    paragraphs: Vec<ParagraphId>,
+    paragraphs: Vec<Option<Paragraph>>,
+}
+impl CenterModel {
+    /* This code is adopted from the corresponding functionality in helix-term/document */
+    pub fn render_document<'t>(
+        text: RopeSlice<'t>,
+        offset: ViewPosition,
+        text_fmt: &TextFormat,
+        text_annotations: &TextAnnotations,
+        highlight_iter: impl Iterator<Item = HighlightEvent>,
+        theme: &Theme,
+        //        line_decorations: &mut [Box<dyn LineDecoration + '_>],
+        //        translated_positions: &mut [TranslatedPosition],
+    ) {
+        /* This function updates the center model to match the document,
+        changing blocks if neccesary */
+        let (
+            Position {
+                row: mut row_off, ..
+            },
+            mut char_pos,
+        ) = visual_offset_from_block(
+            text,
+            offset.anchor,
+            offset.anchor,
+            text_fmt,
+            text_annotations,
+        );
+        row_off += offset.vertical_offset;
+        let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
+            text,
+            text_fmt,
+            text_annotations,
+            offset.anchor,
+        );
+        let mut styles = StyleIter {
+            text_style: Style::default(), // TODO: Reintroduce custom styles
+            active_highlights: Vec::with_capacity(64),
+            highlight_iter,
+            theme,
+        };
+
+        let mut last_line_pos = LinePos {
+            first_visual_line: false,
+            doc_line: usize::MAX,
+            visual_line: u16::MAX,
+            start_char_idx: usize::MAX,
+        };
+        let mut is_in_indent_area = true;
+        let mut last_line_indent_level = 0;
+        let mut style_span = styles
+            .next()
+            .unwrap_or_else(|| (Style::default(), usize::MAX));
+    }
 }
 impl ContainerBlockLogic for CenterModel {
     type UpdateContext = ContentVisitor;
@@ -86,4 +148,69 @@ impl ContainerBlockLogic for CenterModel {
         Self: Sized,
     {
     }
+}
+
+impl Paragraph {}
+pub fn hash_line<'t>(
+    text: RopeSlice<'t>,
+    offset: ViewPosition,
+    text_fmt: &TextFormat,
+    text_annotations: &TextAnnotations,
+    highlight_iter: impl Iterator<Item = HighlightEvent>,
+    theme: &Theme,
+) {
+}
+
+/* From helix-term */
+struct StyleIter<'a, H: Iterator<Item = HighlightEvent>> {
+    text_style: Style,
+    active_highlights: Vec<Highlight>,
+    highlight_iter: H,
+    theme: &'a Theme,
+}
+
+impl<H: Iterator<Item = HighlightEvent>> Iterator for StyleIter<'_, H> {
+    type Item = (Style, usize);
+    fn next(&mut self) -> Option<(Style, usize)> {
+        while let Some(event) = self.highlight_iter.next() {
+            match event {
+                HighlightEvent::HighlightStart(highlights) => {
+                    self.active_highlights.push(highlights)
+                }
+                HighlightEvent::HighlightEnd => {
+                    self.active_highlights.pop();
+                }
+                HighlightEvent::Source { start, end } => {
+                    if start == end {
+                        continue;
+                    }
+                    let style = self
+                        .active_highlights
+                        .iter()
+                        .fold(self.text_style, |acc, span| {
+                            acc.patch(self.theme.highlight(span.0))
+                        });
+                    return Some((style, end));
+                }
+            }
+        }
+        None
+    }
+}
+
+/* From helix-term */
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub struct LinePos {
+    /// Indicates whether the given visual line
+    /// is the first visual line of the given document line
+    pub first_visual_line: bool,
+    /// The line index of the document line that contains the given visual line
+    pub doc_line: usize,
+    /// Vertical offset from the top of the inner view area
+    pub visual_line: u16,
+    /// The first char index of this visual line.
+    /// Note that if the visual line is entirely filled by
+    /// a very long inline virtual text then this index will point
+    /// at the next (non-virtual) char after this visual line
+    pub start_char_idx: usize,
 }
