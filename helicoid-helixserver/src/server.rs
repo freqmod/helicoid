@@ -48,7 +48,7 @@ use crate::editor_view::{ContentVisitor, EditorTree};
 const CONTAINER_IDS_BASE: u16 = 0x100;
 const ENCLOSURE_ID: u16 = 0x0;
 
-const UNSCALED_FONT_SIZE: f32 = 32f32;
+const UNSCALED_FONT_SIZE: f32 = 12f32;
 struct Compositor {
     containers: HashMap<RenderBlockId, EditorTree>,
     content_visitor: ContentVisitor,

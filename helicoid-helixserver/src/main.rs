@@ -11,10 +11,13 @@ use tokio::runtime::Runtime;
 use tokio::time as ttime;
 //use futures_util::stream::stream::StreamExt;
 
+mod center;
 mod compositor;
+mod constants;
 mod editor;
 mod editor_view;
 mod server;
+mod statusline;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
