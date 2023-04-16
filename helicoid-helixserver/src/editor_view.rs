@@ -1,4 +1,4 @@
-use crate::{editor::Editor as HcEditor, statusline::StatusLineModel};
+use crate::{center::CenterModel, editor::Editor as HcEditor, statusline::StatusLineModel};
 use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
@@ -366,8 +366,8 @@ impl ContainerBlockLogic for EditorModel {
             ))),
         );
 
-        //        let mut center_model = CenterModel::default();
-        //        center_model.scaled_font_size = logic.scaled_font_size;
+        let mut center_model = CenterModel::default();
+        center_model.scaled_font_size = logic.scaled_font_size;
         block_inner.set_child(
             RenderBlockLocation {
                 id: RenderBlockId(EDITOR_CHILD_CENTER),
@@ -379,8 +379,7 @@ impl ContainerBlockLogic for EditorModel {
                 PointF16::default(),
                 false,
                 None,
-                NoContainerBlockLogic::default(),
-                //center_model,
+                center_model,
             ))),
         );
     }
