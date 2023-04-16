@@ -486,12 +486,14 @@ impl HeliconeEditor {
                     Ok(event) => {
                         log::trace!("Got event from server: {:?}", event);
                         let update = &event.message.update;
+                        let client_id = RenderBlockId::normal(0).unwrap();
                         //todo!("Instantiate GFX manager, and call handle block update")
                         self.renderer.handle_block_update(
-                            RenderBlockId::normal(0).unwrap(),
+                            client_id,
                             update,
                             &mut self.graphics_manager,
                         );
+                        self.renderer.log_block_tree(client_id);
                         REDRAW_SCHEDULER.queue_next_frame();
                     }
                     Err(e) => match e {

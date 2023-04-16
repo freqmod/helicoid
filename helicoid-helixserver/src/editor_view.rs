@@ -407,6 +407,7 @@ impl SizeScale {
 
 impl EditorTree {
     pub fn new(
+        parent_path: RenderBlockPath,
         tree_id: RenderBlockId,
         line_height: f32,
         scale_factor: f32,
@@ -416,9 +417,11 @@ impl EditorTree {
     ) -> Self {
         let mut editor_tree_logic = EditorModel::new(line_height, scale_factor, font_info);
         editor_tree_logic.view_id = view_id;
-        let path = RenderBlockPath::new(smallvec::smallvec![tree_id]);
         let root = ShadowMetaContainerBlock::new(tree_id, extent, true, None, editor_tree_logic);
-        Self { root, path }
+        Self {
+            root,
+            path: parent_path,
+        }
     }
     pub fn initialize(&mut self, visitor: &mut ContentVisitor) {
         self.root.initialize(visitor);

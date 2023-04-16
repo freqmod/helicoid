@@ -61,6 +61,7 @@ pub trait BlockContainer<G: BlockGfx>: std::fmt::Debug {
         dst_mask_id: RenderBlockId,
         base_id: RenderBlockId,
     );
+    fn log_block_tree(&self, depth: usize);
     // Not sure if the ability to add blocks should be part of this interface
 }
 
@@ -120,8 +121,13 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
         }
     }
     pub fn update_location(&mut self, new_location: &RenderBlockLocation) {
+        log::debug!(
+            "Updated location on a block container: {:?} <- update: {:?}",
+            self.path(),
+            new_location.id
+        );
         let Some(cblock) = self.blocks.get_mut(&new_location.id) else {
-            log::warn!("Tried to update location on a non existing block container: {:?} update: {:?}", self, new_location);
+            log::warn!("Tried to update location on a non existing block container: {:?} <- update: {:?}", self.path(), new_location.id);
             return;
         };
 
@@ -247,6 +253,15 @@ impl<BG: BlockGfx> Manager<BG> {
                     .is_none());*/
                 }*/
             }
+
+            for new_location in update.move_block_locations.iter() {
+                mgr_entry
+                    .meta
+                    .container
+                    .as_mut()
+                    .unwrap()
+                    .update_location(new_location);
+            }
         } else {
             /* If the block update has a parent, find the parent and forward the update */
             if let Some(child_block) = self.block_for_path_mut(client_id, &update.parent) {
@@ -259,6 +274,10 @@ impl<BG: BlockGfx> Manager<BG> {
                 )
             }
         }
+    }
+    pub fn log_block_tree(&self, client_id: RenderBlockId) {
+        let mgr_entry = self.containers.get(&client_id).unwrap();
+        mgr_entry.meta.container.as_ref().unwrap().log_block_tree(0);
     }
     pub fn block_for_path_mut(
         &mut self,
@@ -569,6 +588,16 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     ) {
         todo!()
     }
+    fn log_block_tree(&self, depth: usize) {
+        for (id, block) in self.blocks.iter() {
+            log::debug!("{}{:4x}", "  ".repeat(depth), id.0);
+            if let Some(ref block) = block.block {
+                if let Some(ref container) = block.meta().container {
+                    container.log_block_tree(depth + 1);
+                }
+            }
+        }
+    }
 }
 
 impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
@@ -602,6 +631,10 @@ impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
         dst_mask_id: RenderBlockId,
         base_id: RenderBlockId,
     ) {
+        todo!()
+    }
+
+    fn log_block_tree(&self, depth: usize) {
         todo!()
     }
 }
