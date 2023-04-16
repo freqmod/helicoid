@@ -27,7 +27,7 @@ use helicoid_protocol::{
     text::{FontEdging, FontHinting, ShapableString},
 };
 use helix_core::{
-    doc_formatter::{DocumentFormatter, TextFormat},
+    doc_formatter::{DocumentFormatter, GraphemeSource, TextFormat},
     syntax::{Highlight, HighlightEvent},
     text_annotations::TextAnnotations,
     visual_offset_from_block, Position, RopeSlice,
@@ -38,6 +38,7 @@ use helix_view::{
     DocumentId, Editor, Theme, ViewId,
 };
 use ordered_float::OrderedFloat;
+use smallvec::SmallVec;
 use std::{
     hash::{BuildHasher, Hash, Hasher},
     sync::Arc,
@@ -45,14 +46,13 @@ use std::{
 use swash::Metrics;
 
 const CENTER_PARAGRAPH_BASE: u16 = 0x1000;
-
-const UNNAMED_NAME: &str = "<Not saved != a-> >";
+const MAX_AGE: i16 = 10;
 
 pub type ParagraphId = u16;
 #[derive(Hash, PartialEq, Default)]
 pub struct Paragraph {
     data_hash: u64, /* Of the latest changed value, it is up to the model to make it synced with the client */
-    last_modified: u32, /* Age counter when this paragraph was last changed, for cache eviction */
+    last_modified: u16, /* Age counter when this paragraph was last changed, for cache eviction */
 }
 /* How should we organise the status line, helix view has a very string based approach
 while it would be nice with a bit more semantics here to enable more fancy graphics
@@ -69,10 +69,30 @@ pub struct CenterModel {
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
     paragraphs: Vec<Option<Paragraph>>,
+    viewport: PointU32,
+    current_generation: u16,
 }
 impl CenterModel {
+    pub fn prune_old_paragraphs(&mut self, messages_vec: &mut Vec<RemoteBoxUpdate>) {
+        let removed_paragraphs = SmallVec::<[RenderBlockId; 32]>::new();
+        for paragraph in self.paragraphs.iter_mut() {
+            if let Some(paragraph_val) = paragraph {
+                let age =
+                    wrapping_age(paragraph_val.last_modified, self.current_generation).unwrap();
+                debug_assert!(age >= 0);
+                if age > MAX_AGE {
+                    /*  Anything unused for more than max age iterations gets pruned */
+                    //                        removed_paragraphs.push_back(paragraph_val.id);
+                    *paragraph = None;
+                }
+            }
+        }
+
+        //        })
+    }
     /* This code is adopted from the corresponding functionality in helix-term/document */
     pub fn render_document<'t>(
+        &self,
         text: RopeSlice<'t>,
         offset: ViewPosition,
         text_fmt: &TextFormat,
@@ -121,6 +141,112 @@ impl CenterModel {
         let mut style_span = styles
             .next()
             .unwrap_or_else(|| (Style::default(), usize::MAX));
+
+        loop {
+            // formattter.line_pos returns to line index of the next grapheme
+            // so it must be called before formatter.next
+            let doc_line = formatter.line_pos();
+            let Some((grapheme, mut pos)) = formatter.next() else {
+                let mut last_pos = formatter.visual_pos();
+                if last_pos.row >= row_off {
+                    last_pos.col -= 1;
+                    last_pos.row -= row_off;
+                    // check if any positions translated on the fly (like cursor) are at the EOF
+                    /*translate_positions(
+                        char_pos + 1,
+                        first_visible_char_idx,
+                        translated_positions,
+                        text_fmt,
+                        renderer,
+                        last_pos,
+                    );*/
+                }
+            break;
+            };
+
+            // skip any graphemes on visual lines before the block start
+            if pos.row < row_off {
+                if char_pos >= style_span.1 {
+                    style_span = if let Some(style_span) = styles.next() {
+                        style_span
+                    } else {
+                        break;
+                    }
+                }
+                char_pos += grapheme.doc_chars();
+                first_visible_char_idx = char_pos + 1;
+                continue;
+            }
+            pos.row -= row_off;
+
+            // if the end of the viewport is reached stop rendering
+            if pos.row as u32 >= self.viewport.y() {
+                break;
+            }
+
+            // apply decorations before rendering a new line
+            if pos.row as u16 != last_line_pos.visual_line {
+                if pos.row > 0 {
+                    //renderer.draw_indent_guides(last_line_indent_level, last_line_pos.visual_line);
+                    is_in_indent_area = true;
+                    /*for line_decoration in &mut *line_decorations {
+                        line_decoration.render_foreground(renderer, last_line_pos, char_pos);
+                    }*/
+                }
+                last_line_pos = LinePos {
+                    first_visual_line: doc_line != last_line_pos.doc_line,
+                    doc_line,
+                    visual_line: pos.row as u16,
+                    start_char_idx: char_pos,
+                };
+                /*for line_decoration in &mut *line_decorations {
+                    line_decoration.render_background(renderer, last_line_pos);
+                }*/
+            }
+
+            // acquire the correct grapheme style
+            if char_pos >= style_span.1 {
+                style_span = styles.next().unwrap_or((default_text_style(), usize::MAX));
+            }
+            char_pos += grapheme.doc_chars();
+
+            // check if any positions translated on the fly (like cursor) has been reached
+            /*translate_positions(
+                char_pos,
+                first_visible_char_idx,
+                translated_positions,
+                text_fmt,
+                renderer,
+                pos,
+            );*/
+
+            let grapheme_style = if let GraphemeSource::VirtualText { highlight } = grapheme.source
+            {
+                let style = default_text_style();
+                if let Some(highlight) = highlight {
+                    style.patch(theme.highlight(highlight.0))
+                } else {
+                    style
+                }
+            } else {
+                style_span.0
+            };
+
+            let virt = grapheme.is_virtual();
+            /*renderer.draw_grapheme(
+                grapheme.grapheme,
+                grapheme_style,
+                virt,
+                &mut last_line_indent_level,
+                &mut is_in_indent_area,
+                pos,
+            );*/
+        }
+
+        /*renderer.draw_indent_guides(last_line_indent_level, last_line_pos.visual_line);
+        for line_decoration in &mut *line_decorations {
+            line_decoration.render_foreground(renderer, last_line_pos, char_pos);
+        }*/
     }
 }
 impl ContainerBlockLogic for CenterModel {
@@ -213,4 +339,30 @@ pub struct LinePos {
     /// a very long inline virtual text then this index will point
     /// at the next (non-virtual) char after this visual line
     pub start_char_idx: usize,
+}
+
+/* It would have been best to use a const expression here, but because default
+is part of a trait, and not const settle for a function instead */
+fn default_text_style() -> Style {
+    Style::default()
+}
+
+/* Determine the age of an individual, based on a wrapping generation number */
+pub fn wrapping_age(individual: u16, generation: u16) -> Option<i16> {
+    wrapping_subtract_u16(generation, individual)
+}
+
+pub fn wrapping_subtract_u16(a: u16, b: u16) -> Option<i16> {
+    const U14: u16 = u16::MAX >> 2;
+    let aq = a >> 14;
+    let bq = b >> 14;
+    if aq == bq || aq == (bq + 1) % 4 || (aq + 1) % 4 == bq {
+        Some(if aq == 0 || bq == 0 || aq == 3 || bq == 3 {
+            (a.wrapping_add(U14) as i16) - (b.wrapping_add(U14) as i16)
+        } else {
+            (a as i16) - (b as i16)
+        })
+    } else {
+        None
+    }
 }

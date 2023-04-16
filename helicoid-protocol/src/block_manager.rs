@@ -199,6 +199,15 @@ impl<BG: BlockGfx> Manager<BG> {
                 )
             });
 
+            for update in update.remove_render_blocks.iter() {
+                //                if let Some(render_block) = self.containers.get_mut(&block.id) {
+                mgr_entry
+                    .meta
+                    .container
+                    .as_mut()
+                    .unwrap()
+                    .remove_blocks(update.mask, update.offset);
+            }
             /* If the block update is for a top level block */
             for block in update.new_render_blocks.iter() {
                 log::trace!("Update new render block: {:?}", block.id);
@@ -237,15 +246,6 @@ impl<BG: BlockGfx> Manager<BG> {
                     .insert(block.id, new_rendered_block)
                     .is_none());*/
                 }*/
-            }
-            for update in update.remove_render_blocks.iter() {
-                //                if let Some(render_block) = self.containers.get_mut(&block.id) {
-                mgr_entry
-                    .meta
-                    .container
-                    .as_mut()
-                    .unwrap()
-                    .remove_blocks(update.mask, update.offset);
             }
         } else {
             /* If the block update has a parent, find the parent and forward the update */
