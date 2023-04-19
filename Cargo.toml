@@ -12,4 +12,5 @@ default-members = [
 
 [patch.crates-io]
 rkyv = { git = "https://github.com/rkyv/rkyv.git"}
+ordered-float = { git = "https://github.com/freqmod/rust-ordered-float.git"}
 winit = { git = "https://github.com/freqmod/winit.git", branch="keys"}

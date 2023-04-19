@@ -47,7 +47,7 @@ winit = { version = "0.28"}
 xdg = "2.4.1"
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}
 half = {version = "2.1", features=["serde", "bytemuck"]}
-rkyv = { version = "0.7", features = ["validation", "smallvec"] }
+rkyv = { version = "0.8", features = ["validation", "smallvec"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
 anyhow = {version="1.0.68"}
 #skia-safe = {path = "/home/freqmod/Downloads/rust-skia/skia-safe/",features = ["gl"]}

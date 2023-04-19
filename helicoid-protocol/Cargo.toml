@@ -12,7 +12,7 @@ log = "0.4.16"
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}
 half = {version = "2.1", features=["serde", "bytemuck"]}
 bytecheck = { version = "0.6.9", features = [] }
-rkyv = { version = "0.7", features = ["validation", "smallvec", "bytecheck"] }
+rkyv = { version = "0.8", features = ["validation", "smallvec", "bytecheck"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
 swash = "0.1.6"
 lru = "0.9"
