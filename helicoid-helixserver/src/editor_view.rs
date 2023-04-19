@@ -23,13 +23,16 @@ use helicoid_protocol::{
     text::{FontEdging, FontHinting, ShapableString},
 };
 use helix_lsp::lsp::DiagnosticSeverity;
-use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor, ViewId};
+use helix_view::{
+    document::Mode, editor::StatusLineElement, Document, DocumentId, Editor, View, ViewId,
+};
 use ordered_float::OrderedFloat;
 use std::{
     hash::{BuildHasher, Hash, Hasher},
     sync::Arc,
 };
 use swash::Metrics;
+use tokio::sync::MutexGuard;
 
 const EDITOR_CHILD_CENTER: u16 = 0x10;
 const EDITOR_CHILD_HEADER: u16 = 0x11;
@@ -55,6 +58,30 @@ pub struct ActiveIds{
     pub document: DocumentId,
     pub view: ViewId,
 }*/
+pub struct ContentDocContainer<'a> {
+    editor: MutexGuard<'a, HcEditor>,
+    view_id: ViewId,
+}
+impl ContentDocContainer<'_> {
+    pub fn editor(&self) -> &HcEditor {
+        &self.editor
+    }
+    pub fn view_id(&self) -> ViewId {
+        self.view_id
+    }
+    pub fn view(&self) -> &View {
+        self.editor.editor().tree.get(self.view_id)
+    }
+    pub fn document(&self) -> Option<&Document> {
+        let view = self.editor.editor().tree.get(self.view_id);
+        self.editor.editor().document(view.doc)
+    }
+    pub fn destruct(&self) -> (&HcEditor, &View, Option<&Document>) {
+        let view = self.editor.editor().tree.get(self.view_id);
+        let document = self.editor.editor().document(view.doc);
+        (&self.editor, view, document)
+    }
+}
 pub struct ContentVisitor {
     shaper: CachingShaper,
     scale: SizeScale,
@@ -79,13 +106,27 @@ impl ContentVisitor {
     pub fn shaper(&mut self) -> &mut CachingShaper {
         &mut self.shaper
     }
+    pub fn shaper_ref(&self) -> &CachingShaper {
+        &self.shaper
+    }
     pub fn editor(&self) -> &Arc<tokio::sync::Mutex<HcEditor>> {
         &self.editor
+    }
+    pub fn current_doc(&self) -> Option<ContentDocContainer<'_>> {
+        if let Some(current_view_id) = self.active_view_id {
+            Some(ContentDocContainer {
+                editor: self.editor().blocking_lock(),
+                view_id: current_view_id,
+            })
+        } else {
+            None
+        }
     }
     pub fn active_view_id(&self) -> Option<ViewId> {
         self.active_view_id
     }
 }
+
 impl VisitingContext for ContentVisitor {
     fn as_any(&self) -> &dyn std::any::Any {
         self

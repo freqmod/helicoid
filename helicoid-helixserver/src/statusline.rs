@@ -283,11 +283,12 @@ impl ContainerBlockLogic for StatusLineModel {
         };
         if !skip_render {
             {
-                let current_view_id = context.active_view_id().unwrap();
-                let editor = context.editor().blocking_lock();
-                let view = editor.editor().tree.get(current_view_id);
-                let document = editor.editor().document(view.doc).unwrap();
-                Self::update_state(model, editor.editor(), document);
+                let doc_container = context.current_doc().unwrap();
+                Self::update_state(
+                    model,
+                    doc_container.editor().editor(),
+                    doc_container.document().unwrap(),
+                );
             }
             Self::render_string(
                 &model.left,

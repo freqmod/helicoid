@@ -1,6 +1,6 @@
 use ahash::AHasher;
 use hashbrown::HashSet;
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use std::{
     any::Any,
     hash::{Hash, Hasher},
@@ -296,7 +296,8 @@ where
 {
     id: RenderBlockId,
     wire: MetaDrawBlock,
-    child_blocks: Vec<ShadowMetaBlock<C>>, // Corresponding index wise to the sub_blocks in wire
+    child_blocks: Vec<ShadowMetaBlock<C>>, // Corresponding index wise to the sub_blocks in i2
+    pending_removal: SmallVec<[RenderBlockId; 8]>,
     hash: Option<u64>,
     client_hash: Option<u64>,
     meta_hash: u64,
@@ -401,6 +402,7 @@ where
                     sub_blocks: Default::default(),
                 },
                 child_blocks: Default::default(),
+                pending_removal: Default::default(),
                 hash: None,
                 client_hash: None,
                 meta_hash: 0,

@@ -10,11 +10,12 @@ use helicoid_protocol::{
         ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
         ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
     },
+    font_options::FontOptions,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
         PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
-        SimplePaint, SimpleRoundRect, SimpleSvg,
+        RenderBlockPath, RenderBlockRemoveInstruction, SimpleDrawBlock, SimpleDrawElement,
+        SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -24,7 +25,7 @@ use helicoid_protocol::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
         TcpBridgeToServerMessage,
     },
-    text::{FontEdging, FontHinting, ShapableString},
+    text::{FontEdging, FontHinting, ShapableString, SmallFontOptions},
 };
 use helix_core::{
     doc_formatter::{DocumentFormatter, GraphemeSource, TextFormat},
@@ -73,9 +74,9 @@ pub struct CenterModel {
     current_generation: u16,
 }
 impl CenterModel {
-    pub fn prune_old_paragraphs(&mut self, messages_vec: &mut Vec<RemoteBoxUpdate>) {
-        let removed_paragraphs = SmallVec::<[RenderBlockId; 32]>::new();
-        for paragraph in self.paragraphs.iter_mut() {
+    fn prune_old_paragraphs(&mut self, block: &mut ShadowMetaContainerBlockInner<ContentVisitor>) {
+        for (par_id_offs, paragraph) in self.paragraphs.iter_mut().enumerate() {
+            let par_id = RenderBlockId(CENTER_PARAGRAPH_BASE + (par_id_offs as u16));
             if let Some(paragraph_val) = paragraph {
                 let age =
                     wrapping_age(paragraph_val.last_modified, self.current_generation).unwrap();
@@ -83,12 +84,11 @@ impl CenterModel {
                 if age > MAX_AGE {
                     /*  Anything unused for more than max age iterations gets pruned */
                     //                        removed_paragraphs.push_back(paragraph_val.id);
+                    block.remove_child(par_id);
                     *paragraph = None;
                 }
             }
         }
-
-        //        })
     }
     /* This code is adopted from the corresponding functionality in helix-term/document */
     pub fn render_document<'t>(
@@ -257,6 +257,24 @@ impl ContainerBlockLogic for CenterModel {
     ) where
         Self: Sized,
     {
+        let (block, model) = outer_block.destruct_mut();
+        let options = SmallFontOptions {
+            font_parameters: context.shaper_ref().default_parameters(),
+            family_id: 0,
+        };
+        let avg_char_width = context.shaper().info(&options).unwrap().1;
+        let doc_container = context.current_doc().unwrap();
+        let document = doc_container.document().unwrap();
+        let width_chars = (block.extent().y() / avg_char_width) as u16;
+        model.prune_old_paragraphs(block);
+        model.render_document(
+            document.text().slice(..),
+            doc_container.view().offset,
+            &document.text_format(width_chars, Some(&doc_container.editor().editor().theme)),
+            &Default::default(),
+            std::iter::empty(),
+            &doc_container.editor().editor().theme,
+        );
     }
 
     fn initialize(

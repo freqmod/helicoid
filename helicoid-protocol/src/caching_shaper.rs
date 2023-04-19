@@ -271,7 +271,7 @@ impl CachingShaper {
     fn metrics(&mut self, font_options: &SmallFontOptions) -> Option<Metrics> {
         self.info(font_options).map(|i| i.0)
     }
-    pub fn default_parameters(&mut self) -> FontParameters {
+    pub fn default_parameters(&self) -> FontParameters {
         let inner = self.inner.read();
         inner.options.font_parameters.clone()
     }
