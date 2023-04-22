@@ -29,6 +29,7 @@ use helicoid_protocol::{
 };
 use helix_core::{
     doc_formatter::{DocumentFormatter, GraphemeSource, TextFormat},
+    graphemes::Grapheme,
     syntax::{Highlight, HighlightEvent},
     text_annotations::TextAnnotations,
     visual_offset_from_block, Position, RopeSlice,
@@ -58,6 +59,8 @@ pub struct Paragraph {
 /* How should we organise the status line, helix view has a very string based approach
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
+
+struct RenderParagraph {}
 
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
 time (possibly together with helix-view). A special symbol font is used to be able to render
@@ -92,7 +95,7 @@ impl CenterModel {
     }
     /* This code is adopted from the corresponding functionality in helix-term/document */
     pub fn render_document<'t>(
-        &self,
+        &mut self,
         text: RopeSlice<'t>,
         offset: ViewPosition,
         text_fmt: &TextFormat,
@@ -116,6 +119,7 @@ impl CenterModel {
             text_fmt,
             text_annotations,
         );
+        let mut paragraph = RenderParagraph {};
         row_off += offset.vertical_offset;
         let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
             text,
@@ -151,6 +155,7 @@ impl CenterModel {
                 if last_pos.row >= row_off {
                     last_pos.col -= 1;
                     last_pos.row -= row_off;
+                    /* TODO */
                     // check if any positions translated on the fly (like cursor) are at the EOF
                     /*translate_positions(
                         char_pos + 1,
@@ -161,7 +166,7 @@ impl CenterModel {
                         last_pos,
                     );*/
                 }
-            break;
+                break;
             };
 
             // skip any graphemes on visual lines before the block start
@@ -210,7 +215,7 @@ impl CenterModel {
             }
             char_pos += grapheme.doc_chars();
 
-            // check if any positions translated on the fly (like cursor) has been reached
+            // TODO: check if any positions translated on the fly (like cursor) has been reached
             /*translate_positions(
                 char_pos,
                 first_visible_char_idx,
@@ -233,20 +238,33 @@ impl CenterModel {
             };
 
             let virt = grapheme.is_virtual();
-            /*renderer.draw_grapheme(
+            self.draw_grapheme(
+                &mut paragraph,
                 grapheme.grapheme,
                 grapheme_style,
                 virt,
                 &mut last_line_indent_level,
                 &mut is_in_indent_area,
                 pos,
-            );*/
+            );
         }
 
         /*renderer.draw_indent_guides(last_line_indent_level, last_line_pos.visual_line);
         for line_decoration in &mut *line_decorations {
             line_decoration.render_foreground(renderer, last_line_pos, char_pos);
         }*/
+    }
+    /* TODO: Add a separate parameter with pragraph struct data to this function ? */
+    fn draw_grapheme(
+        &mut self,
+        render_paragraph: &mut RenderParagraph,
+        grapheme: Grapheme,
+        mut style: Style,
+        is_virtual: bool,
+        last_indent_level: &mut usize,
+        is_in_indent_area: &mut bool,
+        position: Position,
+    ) {
     }
 }
 impl ContainerBlockLogic for CenterModel {

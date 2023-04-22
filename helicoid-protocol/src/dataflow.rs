@@ -11,7 +11,8 @@ use std::{
 use crate::{
     gfx::{
         MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate, RenderBlockDescription,
-        RenderBlockId, RenderBlockLocation, RenderBlockPath, SimpleDrawBlock,
+        RenderBlockId, RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction,
+        SimpleDrawBlock,
     },
     text::ShapedTextBlock,
 };
@@ -555,6 +556,8 @@ where
                 self.child_blocks.remove(block_idx),
                 self.wire.sub_blocks.remove(block_idx),
             ));
+            /* Notify client about the removal next time it is synced */
+            self.pending_removal.push(id);
             removed
         } else {
             None
@@ -621,6 +624,9 @@ where
                 hasher.write_u64(0);
             }
         }
+
+        self.pending_removal.hash(&mut hasher);
+
         let new_hash = hasher.finish();
         self.hash = Some(new_hash);
     }
@@ -654,7 +660,12 @@ where
                     id: self.id,
                     contents: RenderBlockDescription::MetaBox(self.wire.clone())
                 }],
-                remove_render_blocks: Default::default(),
+                remove_render_blocks: SmallVec::from_iter(self.pending_removal.drain(..).map(
+                    |id| RenderBlockRemoveInstruction {
+                        offset: id,
+                        mask: RenderBlockId(0),
+                    },
+                )),
                 move_block_locations: smallvec![self.location.clone().unwrap()],
             })
         }
@@ -666,6 +677,8 @@ where
                 messages_vec,
             );
         }
+        /* Make sure to update hash to cover any changes that have been pushed to the client */
+        self.rehash();
     }
     pub fn id(&self) -> RenderBlockId {
         self.id
