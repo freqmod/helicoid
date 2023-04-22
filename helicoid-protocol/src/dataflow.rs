@@ -296,7 +296,7 @@ where
 {
     id: RenderBlockId,
     wire: MetaDrawBlock,
-    child_blocks: Vec<ShadowMetaBlock<C>>, // Corresponding index wise to the sub_blocks in i2
+    child_blocks: Vec<ShadowMetaBlock<C>>, // Corresponding index wise to the sub_blocks in wire
     pending_removal: SmallVec<[RenderBlockId; 8]>,
     hash: Option<u64>,
     client_hash: Option<u64>,
@@ -551,10 +551,11 @@ where
             .enumerate()
             .find_map(|(idx, b)| if b.id == id { Some(idx) } else { None })
         {
-            Some((
+            let removed = Some((
                 self.child_blocks.remove(block_idx),
                 self.wire.sub_blocks.remove(block_idx),
-            ))
+            ));
+            removed
         } else {
             None
         };
