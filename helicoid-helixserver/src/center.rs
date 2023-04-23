@@ -70,6 +70,7 @@ struct RenderParagraph {
     text: ShapableString,
     current_meta_font: FontParameters,
     current_meta_paint: FontPaint,
+    last_substring_end: u16,
 }
 
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
@@ -83,7 +84,7 @@ pub struct CenterModel {
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
     paragraphs: Vec<Option<Paragraph>>,
-    paragraph_temp: Vec<Paragraph>,
+    paragraph_temp: Vec<RenderParagraph>,
     viewport: PointU32,
     current_generation: u16,
     col_offset: u32,
@@ -216,6 +217,7 @@ impl CenterModel {
                         line_decoration.render_foreground(renderer, last_line_pos, char_pos);
                     }*/
                     /* Flush current line, and prepare a new empty one */
+                    self.flush_line(&mut paragraph, shaper);
                 }
                 last_line_pos = LinePos {
                     first_visual_line: doc_line != last_line_pos.doc_line,
@@ -329,7 +331,14 @@ impl CenterModel {
                 Self::flush_metadata(render_paragraph, shaper);
             }
         }
+        /* TODO: This is probably a bit too simple,
+        and should be replaced by swash ttf-shaping
+        (although a neccesary way to cache it) */
+        for byte in grapheme.as_bytes() {
+            render_paragraph.text.text.push(*byte)
+        }
     }
+
     fn flush_metadata(render_paragraph: &mut RenderParagraph, shaper: &CachingShaper) {
         let substring_length = render_paragraph.text.text.len()
             - render_paragraph
@@ -354,7 +363,25 @@ impl CenterModel {
                 baseline_y: Default::default(),
             })
     }
-    fn flush_line(&mut self) {}
+
+    fn flush_line(&mut self, render_paragraph: &mut RenderParagraph, shaper: &CachingShaper) {
+        if !render_paragraph.text.metadata_runs.is_empty() {
+            if render_paragraph.last_substring_end
+                + render_paragraph
+                    .text
+                    .metadata_runs
+                    .last()
+                    .map(|r| r.substring_length)
+                    .unwrap_or(0)
+                != render_paragraph.text.text.len() as u16
+            {
+                Self::flush_metadata(render_paragraph, shaper)
+            }
+        }
+        let mut new_paragraph = RenderParagraph::default(); // TOOD: Does this need further init?
+        std::mem::swap(render_paragraph, &mut new_paragraph);
+        self.paragraph_temp.push(new_paragraph);
+    }
 }
 impl ContainerBlockLogic for CenterModel {
     type UpdateContext = ContentVisitor;
