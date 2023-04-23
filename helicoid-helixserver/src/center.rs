@@ -25,19 +25,23 @@ use helicoid_protocol::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
         TcpBridgeToServerMessage,
     },
-    text::{FontEdging, FontHinting, ShapableString, SmallFontOptions},
+    text::{
+        FontEdging, FontHinting, FontParameters, ShapableString, ShapedStringMetadata,
+        SmallFontOptions,
+    },
 };
 use helix_core::{
     doc_formatter::{DocumentFormatter, GraphemeSource, TextFormat},
     graphemes::Grapheme,
+    str_utils::char_to_byte_idx,
     syntax::{Highlight, HighlightEvent},
     text_annotations::TextAnnotations,
     visual_offset_from_block, Position, RopeSlice,
 };
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::{
-    document::Mode, editor::StatusLineElement, theme::Style, view::ViewPosition, Document,
-    DocumentId, Editor, Theme, ViewId,
+    document::Mode, editor::StatusLineElement, graphics::UnderlineStyle, theme::Style,
+    view::ViewPosition, Document, DocumentId, Editor, Theme, ViewId,
 };
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
@@ -49,6 +53,7 @@ use swash::Metrics;
 
 const CENTER_PARAGRAPH_BASE: u16 = 0x1000;
 const MAX_AGE: i16 = 10;
+const DEFAULT_FONT_ID: u8 = 0;
 
 pub type ParagraphId = u16;
 #[derive(Hash, PartialEq, Default)]
@@ -60,7 +65,12 @@ pub struct Paragraph {
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
 
-struct RenderParagraph {}
+#[derive(Hash, PartialEq, Default)]
+struct RenderParagraph {
+    text: ShapableString,
+    current_meta_font: FontParameters,
+    current_meta_paint: FontPaint,
+}
 
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
 time (possibly together with helix-view). A special symbol font is used to be able to render
@@ -73,8 +83,11 @@ pub struct CenterModel {
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
     paragraphs: Vec<Option<Paragraph>>,
+    paragraph_temp: Vec<Paragraph>,
     viewport: PointU32,
     current_generation: u16,
+    col_offset: u32,
+    tab: String,
 }
 impl CenterModel {
     fn prune_old_paragraphs(&mut self, block: &mut ShadowMetaContainerBlockInner<ContentVisitor>) {
@@ -96,17 +109,22 @@ impl CenterModel {
     /* This code is adopted from the corresponding functionality in helix-term/document */
     pub fn render_document<'t>(
         &mut self,
+        doc: &Document,
         text: RopeSlice<'t>,
         offset: ViewPosition,
         text_fmt: &TextFormat,
         text_annotations: &TextAnnotations,
         highlight_iter: impl Iterator<Item = HighlightEvent>,
         theme: &Theme,
+        shaper: &CachingShaper,
         //        line_decorations: &mut [Box<dyn LineDecoration + '_>],
         //        translated_positions: &mut [TranslatedPosition],
     ) {
         /* This function updates the center model to match the document,
         changing blocks if neccesary */
+        if doc.tab_width() != self.tab.len() {
+            self.tab = " ".repeat(doc.tab_width());
+        }
         let (
             Position {
                 row: mut row_off, ..
@@ -119,7 +137,7 @@ impl CenterModel {
             text_fmt,
             text_annotations,
         );
-        let mut paragraph = RenderParagraph {};
+        let mut paragraph = RenderParagraph::default();
         row_off += offset.vertical_offset;
         let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
             text,
@@ -197,6 +215,7 @@ impl CenterModel {
                     /*for line_decoration in &mut *line_decorations {
                         line_decoration.render_foreground(renderer, last_line_pos, char_pos);
                     }*/
+                    /* Flush current line, and prepare a new empty one */
                 }
                 last_line_pos = LinePos {
                     first_visual_line: doc_line != last_line_pos.doc_line,
@@ -236,7 +255,9 @@ impl CenterModel {
             } else {
                 style_span.0
             };
-
+            /* TODO: Currently this is using helix core for deciding when
+            to cut of the line. Consider bringing in more swash (font specific)
+            shaping knowlegde into this */
             let virt = grapheme.is_virtual();
             self.draw_grapheme(
                 &mut paragraph,
@@ -246,6 +267,7 @@ impl CenterModel {
                 &mut last_line_indent_level,
                 &mut is_in_indent_area,
                 pos,
+                shaper,
             );
         }
 
@@ -264,8 +286,75 @@ impl CenterModel {
         last_indent_level: &mut usize,
         is_in_indent_area: &mut bool,
         position: Position,
+        shaper: &CachingShaper,
     ) {
+        /* Quick and dirty solution, to have sometheing to add at a later time */
+        let width = grapheme.width();
+        /* TODO: Support virtual / printed whitespace */
+        let grapheme = match grapheme {
+            Grapheme::Tab { width } => {
+                let grapheme_tab_width = char_to_byte_idx(&self.tab, width);
+                &self.tab[..grapheme_tab_width]
+            }
+            // TODO special rendering for other whitespaces?
+            Grapheme::Other { ref g } => g,
+            Grapheme::Newline => "",
+        };
+
+        let in_bounds = self.col_offset <= position.col as u32
+            && position.col < self.viewport.x() as usize + self.col_offset as usize;
+        if !in_bounds {
+            return;
+        }
+        //        render_paragraph.text.push_str()
+        /* Figure out if the metadata (draw style) has changed */
+        let meta_font = FontParameters {
+            size: self.scaled_font_size,
+            allow_float_size: true,
+            underlined: style
+                .underline_style
+                .map(|s| s != UnderlineStyle::Reset)
+                .unwrap_or(false), // todo: Make font praameters support more underlin styles
+            hinting: Default::default(),
+            edging: Default::default(),
+        };
+        let font_paint: FontPaint = Default::default();
+        if (meta_font != render_paragraph.current_meta_font
+            && font_paint != render_paragraph.current_meta_paint)
+        {
+            if render_paragraph.text.text.is_empty() {
+                render_paragraph.current_meta_font = meta_font;
+                render_paragraph.current_meta_paint = font_paint;
+            } else {
+                Self::flush_metadata(render_paragraph, shaper);
+            }
+        }
     }
+    fn flush_metadata(render_paragraph: &mut RenderParagraph, shaper: &CachingShaper) {
+        let substring_length = render_paragraph.text.text.len()
+            - render_paragraph
+                .text
+                .metadata_runs
+                .last()
+                .map(|r| r.substring_length as usize)
+                .unwrap_or(0);
+
+        render_paragraph
+            .text
+            .metadata_runs
+            .push(ShapedStringMetadata {
+                substring_length: substring_length as u16,
+                font_info: SmallFontOptions {
+                    family_id: DEFAULT_FONT_ID,
+                    font_parameters: render_paragraph.current_meta_font.clone(),
+                },
+                paint: render_paragraph.current_meta_paint.clone(),
+                advance_x: Default::default(),
+                advance_y: Default::default(),
+                baseline_y: Default::default(),
+            })
+    }
+    fn flush_line(&mut self) {}
 }
 impl ContainerBlockLogic for CenterModel {
     type UpdateContext = ContentVisitor;
@@ -286,12 +375,14 @@ impl ContainerBlockLogic for CenterModel {
         let width_chars = (block.extent().y() / avg_char_width) as u16;
         model.prune_old_paragraphs(block);
         model.render_document(
+            document,
             document.text().slice(..),
             doc_container.view().offset,
             &document.text_format(width_chars, Some(&doc_container.editor().editor().theme)),
             &Default::default(),
             std::iter::empty(),
             &doc_container.editor().editor().theme,
+            context.shaper_ref(),
         );
     }
 
