@@ -27,7 +27,7 @@ use helicoid_protocol::{
     },
     text::{
         FontEdging, FontHinting, FontParameters, ShapableString, ShapedStringMetadata,
-        SmallFontOptions,
+        SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
     },
 };
 use helix_core::{
@@ -73,6 +73,20 @@ struct RenderParagraph {
     last_substring_end: u16,
 }
 
+/* Formatting information per font run */
+#[derive(Hash, PartialEq, Default)]
+struct LayoutStringMetadata {
+    section_length: u16,
+    style: Style,
+}
+#[derive(Hash, PartialEq, Default)]
+struct LayoutParagraph {
+    text: SmallVec<[u8; SHAPABLE_STRING_ALLOC_LEN]>, //text should always contain valid UTF-8?
+    metadata_runs: SmallVec<[LayoutStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
+    current_style: Style,
+    substring_end: u16,
+}
+
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
 time (possibly together with helix-view). A special symbol font is used to be able to render
 relatively fancy graphics using text shaping engine. */
@@ -83,16 +97,19 @@ pub struct CenterModel {
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
-    paragraphs: Vec<Option<Paragraph>>,
-    paragraph_temp: Vec<RenderParagraph>,
+    paragraphs_render: Vec<Option<Paragraph>>,
+    paragraph_layout: Vec<LayoutParagraph>,
     viewport: PointU32,
     current_generation: u16,
     col_offset: u32,
     tab: String,
 }
 impl CenterModel {
-    fn prune_old_paragraphs(&mut self, block: &mut ShadowMetaContainerBlockInner<ContentVisitor>) {
-        for (par_id_offs, paragraph) in self.paragraphs.iter_mut().enumerate() {
+    fn prune_old_render_paragraphs(
+        &mut self,
+        block: &mut ShadowMetaContainerBlockInner<ContentVisitor>,
+    ) {
+        for (par_id_offs, paragraph) in self.paragraphs_render.iter_mut().enumerate() {
             let par_id = RenderBlockId(CENTER_PARAGRAPH_BASE + (par_id_offs as u16));
             if let Some(paragraph_val) = paragraph {
                 let age =
@@ -138,7 +155,7 @@ impl CenterModel {
             text_fmt,
             text_annotations,
         );
-        let mut paragraph = RenderParagraph::default();
+        let mut paragraph = LayoutParagraph::default();
         row_off += offset.vertical_offset;
         let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
             text,
@@ -281,7 +298,7 @@ impl CenterModel {
     /* TODO: Add a separate parameter with pragraph struct data to this function ? */
     fn draw_grapheme(
         &mut self,
-        render_paragraph: &mut RenderParagraph,
+        layout_paragraph: &mut LayoutParagraph,
         grapheme: Grapheme,
         mut style: Style,
         is_virtual: bool,
@@ -308,9 +325,9 @@ impl CenterModel {
         if !in_bounds {
             return;
         }
-        //        render_paragraph.text.push_str()
+        //        layout_paragraph.text.push_str()
         /* Figure out if the metadata (draw style) has changed */
-        let meta_font = FontParameters {
+        /*        let meta_font = FontParameters {
             size: self.scaled_font_size,
             allow_float_size: true,
             underlined: style
@@ -319,68 +336,58 @@ impl CenterModel {
                 .unwrap_or(false), // todo: Make font praameters support more underlin styles
             hinting: Default::default(),
             edging: Default::default(),
-        };
-        let font_paint: FontPaint = Default::default();
-        if (meta_font != render_paragraph.current_meta_font
-            && font_paint != render_paragraph.current_meta_paint)
-        {
-            if render_paragraph.text.text.is_empty() {
-                render_paragraph.current_meta_font = meta_font;
-                render_paragraph.current_meta_paint = font_paint;
+        };*/
+        if style != layout_paragraph.current_style {
+            if layout_paragraph.text.is_empty() {
+                layout_paragraph.current_style = style;
             } else {
-                Self::flush_metadata(render_paragraph, shaper);
+                Self::flush_metadata(layout_paragraph, shaper);
             }
         }
         /* TODO: This is probably a bit too simple,
         and should be replaced by swash ttf-shaping
         (although a neccesary way to cache it) */
         for byte in grapheme.as_bytes() {
-            render_paragraph.text.text.push(*byte)
+            layout_paragraph.text.push(*byte)
         }
     }
-
-    fn flush_metadata(render_paragraph: &mut RenderParagraph, shaper: &CachingShaper) {
-        let substring_length = render_paragraph.text.text.len()
-            - render_paragraph
-                .text
+    fn flush_metadata(layout_paragraph: &mut LayoutParagraph, shaper: &CachingShaper) {
+        let substring_length = layout_paragraph.text.len()
+            - layout_paragraph
                 .metadata_runs
                 .last()
-                .map(|r| r.substring_length as usize)
+                .map(|r| r.section_length as usize)
                 .unwrap_or(0);
 
-        render_paragraph
-            .text
-            .metadata_runs
-            .push(ShapedStringMetadata {
-                substring_length: substring_length as u16,
-                font_info: SmallFontOptions {
-                    family_id: DEFAULT_FONT_ID,
-                    font_parameters: render_paragraph.current_meta_font.clone(),
-                },
-                paint: render_paragraph.current_meta_paint.clone(),
-                advance_x: Default::default(),
-                advance_y: Default::default(),
-                baseline_y: Default::default(),
-            })
+        layout_paragraph.metadata_runs.push(LayoutStringMetadata {
+            section_length: substring_length as u16,
+            style: layout_paragraph.current_style, /*            font_info: SmallFontOptions {
+                                                       family_id: DEFAULT_FONT_ID,
+                                                       font_parameters: layout_paragraph.current_meta_font.clone(),
+                                                   },
+                                                   paint: layout_paragraph.current_meta_paint.clone(),
+                                                   advance_x: Default::default(),
+                                                   advance_y: Default::default(),
+                                                   baseline_y: Default::default(),*/
+        })
     }
 
-    fn flush_line(&mut self, render_paragraph: &mut RenderParagraph, shaper: &CachingShaper) {
-        if !render_paragraph.text.metadata_runs.is_empty() {
-            if render_paragraph.last_substring_end
-                + render_paragraph
-                    .text
+    fn flush_line(&mut self, layout_paragraph: &mut LayoutParagraph, shaper: &CachingShaper) {
+        if !layout_paragraph.text.is_empty() {
+            if layout_paragraph.substring_end
+                + layout_paragraph
                     .metadata_runs
                     .last()
-                    .map(|r| r.substring_length)
+                    .map(|r| r.section_length)
                     .unwrap_or(0)
-                != render_paragraph.text.text.len() as u16
+                != layout_paragraph.text.len() as u16
             {
-                Self::flush_metadata(render_paragraph, shaper)
+                Self::flush_metadata(layout_paragraph, shaper)
             }
         }
-        let mut new_paragraph = RenderParagraph::default(); // TOOD: Does this need further init?
-        std::mem::swap(render_paragraph, &mut new_paragraph);
-        self.paragraph_temp.push(new_paragraph);
+        let mut new_paragraph = LayoutParagraph::default(); // TOOD: Does this need further init?
+        std::mem::swap(layout_paragraph, &mut new_paragraph);
+        self.paragraph_layout.push(new_paragraph);
     }
 }
 impl ContainerBlockLogic for CenterModel {
@@ -400,7 +407,7 @@ impl ContainerBlockLogic for CenterModel {
         let doc_container = context.current_doc().unwrap();
         let document = doc_container.document().unwrap();
         let width_chars = (block.extent().y() / avg_char_width) as u16;
-        model.prune_old_paragraphs(block);
+        model.prune_old_render_paragraphs(block);
         model.render_document(
             document,
             document.text().slice(..),
