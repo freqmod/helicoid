@@ -358,18 +358,14 @@ impl CenterModel {
                 .last()
                 .map(|r| r.section_length as usize)
                 .unwrap_or(0);
-
-        layout_paragraph.metadata_runs.push(LayoutStringMetadata {
-            section_length: substring_length as u16,
-            style: layout_paragraph.current_style, /*            font_info: SmallFontOptions {
-                                                       family_id: DEFAULT_FONT_ID,
-                                                       font_parameters: layout_paragraph.current_meta_font.clone(),
-                                                   },
-                                                   paint: layout_paragraph.current_meta_paint.clone(),
-                                                   advance_x: Default::default(),
-                                                   advance_y: Default::default(),
-                                                   baseline_y: Default::default(),*/
-        })
+        /* Only flush non empty metadata blocks */
+        if substring_length != 0 {
+            layout_paragraph.substring_end += substring_length as u16;
+            layout_paragraph.metadata_runs.push(LayoutStringMetadata {
+                section_length: substring_length as u16,
+                style: layout_paragraph.current_style,
+            })
+        }
     }
 
     fn flush_line(&mut self, layout_paragraph: &mut LayoutParagraph, shaper: &CachingShaper) {
