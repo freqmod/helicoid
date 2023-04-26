@@ -3,6 +3,7 @@ use crate::{
     editor::Editor as HcEditor,
     editor_view::ContentVisitor,
 };
+use ahash::AHasher;
 use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
@@ -65,12 +66,13 @@ pub struct Paragraph {
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
 
-#[derive(Hash, PartialEq, Default)]
+#[derive(Hash, PartialEq)]
 struct RenderParagraph {
     text: ShapableString,
-    current_meta_font: FontParameters,
-    current_meta_paint: FontPaint,
-    last_substring_end: u16,
+    id: RenderBlockId,
+    location: RenderBlockLocation,
+    data_hash: u64, /* Of the latest changed value, it is up to the model to make it synced with the client */
+    last_modified: u16, /* Age counter when this paragraph was last changed, for cache eviction */
 }
 
 /* Formatting information per font run */
@@ -86,7 +88,13 @@ struct LayoutParagraph {
     current_style: Style,
     substring_end: u16,
 }
-
+#[derive(Hash, PartialEq, Default)]
+struct LayoutParagraphEntry {
+    layout: LayoutParagraph,
+    client_hash: Option<u64>,
+    layout_hash: u64,
+    rendered_id: Option<RenderBlockId>,
+}
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
 time (possibly together with helix-view). A special symbol font is used to be able to render
 relatively fancy graphics using text shaping engine. */
@@ -97,19 +105,81 @@ pub struct CenterModel {
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
     next_frame_time: Option<u32>,
-    paragraphs_render: Vec<Option<Paragraph>>,
-    paragraph_layout: Vec<LayoutParagraph>,
+    client_layout: Vec<LayoutParagraphEntry>,
+    offline_layout: Vec<LayoutParagraphEntry>,
+    rendered_paragraphs: Vec<Option<RenderParagraph>>,
     viewport: PointU32,
     current_generation: u16,
     col_offset: u32,
     tab: String,
+}
+impl LayoutParagraphEntry {
+    /* Reuse a client entry from earlier, removing the context from the old entry */
+    fn reuse(&mut self, other: &mut Self) {
+        debug_assert!(self.layout_hash == other.layout_hash);
+        self.rendered_id = other.rendered_id.take();
+        self.client_hash = other.client_hash.take();
+    }
+    /* Returns a render block location to send to the client, unless the block
+    is at the right location at the client already */
+    fn new_location(&mut self) -> Option<RenderBlockLocation> {
+        None
+    }
+    fn render(&mut self, scaled_font_size: OrderedFloat<f32>) -> Result<RenderParagraph, ()> {
+        let text = ShapableString {
+            text: self.layout.text.clone(),
+            metadata_runs: SmallVec::from_iter(self.layout.metadata_runs.iter().map(|run| {
+                let font_info = SmallFontOptions {
+                    family_id: 0,
+                    font_parameters: FontParameters {
+                        size: scaled_font_size,
+                        allow_float_size: true,
+                        underlined: run
+                            .style
+                            .underline_style
+                            .map(|s| s != UnderlineStyle::Reset)
+                            .unwrap_or(false), // todo: Make font praameters support more underlin styles
+                        hinting: Default::default(),
+                        edging: Default::default(),
+                    },
+                };
+                let paint: FontPaint = Default::default();
+
+                ShapedStringMetadata {
+                    substring_length: run.section_length,
+                    font_info,
+                    paint,
+                    ..Default::default()
+                }
+            })),
+        };
+        let rendered = RenderParagraph {
+            text,
+            id: todo!(),
+            location: todo!(),
+            data_hash: todo!(),
+            last_modified: todo!(),
+        };
+        Ok(rendered)
+    }
+    /** @brief Assign render id, unless it is assigned already
+     * returns false if an id is already assigned and the supplied id is unused
+     */
+    fn assign_id(&mut self, block_id: RenderBlockId) -> Result<(), ()> {
+        if self.rendered_id.is_none() {
+            self.rendered_id = Some(block_id);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
 impl CenterModel {
     fn prune_old_render_paragraphs(
         &mut self,
         block: &mut ShadowMetaContainerBlockInner<ContentVisitor>,
     ) {
-        for (par_id_offs, paragraph) in self.paragraphs_render.iter_mut().enumerate() {
+        for (par_id_offs, paragraph) in self.rendered_paragraphs.iter_mut().enumerate() {
             let par_id = RenderBlockId(CENTER_PARAGRAPH_BASE + (par_id_offs as u16));
             if let Some(paragraph_val) = paragraph {
                 let age =
@@ -155,6 +225,7 @@ impl CenterModel {
             text_fmt,
             text_annotations,
         );
+        self.offline_layout.clear();
         let mut paragraph = LayoutParagraph::default();
         row_off += offset.vertical_offset;
         let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
@@ -381,9 +452,78 @@ impl CenterModel {
                 Self::flush_metadata(layout_paragraph, shaper)
             }
         }
-        let mut new_paragraph = LayoutParagraph::default(); // TOOD: Does this need further init?
+        let mut new_paragraph = LayoutParagraph::default(); // TODO: Does this need further init?
         std::mem::swap(layout_paragraph, &mut new_paragraph);
-        self.paragraph_layout.push(new_paragraph);
+        let mut hasher = AHasher::default();
+        self.hash(&mut hasher);
+        let layout_hash = hasher.finish();
+        let new_paragraph_entry = LayoutParagraphEntry {
+            layout: new_paragraph,
+            layout_hash,
+            rendered_id: None,
+            client_hash: None,
+        };
+        self.offline_layout.push(new_paragraph_entry);
+    }
+
+    /* @brief Retrieve an id that can be used for a new block.
+     *
+     * first see if an old id can be reused, otherwise extend the id range.
+     * A render paragraph for the id should be set before this function is called
+     * again to avoid multiple users for id's
+     */
+    fn new_id(rendered_paragraphs: &mut Vec<Option<RenderParagraph>>) -> RenderBlockId {
+        for (idx, paragraph) in rendered_paragraphs.iter().enumerate() {
+            if paragraph.is_none() {
+                return RenderBlockId(CENTER_PARAGRAPH_BASE + idx as u16);
+            }
+        }
+        /* If the loop above have not returned, make a new id */
+        rendered_paragraphs.push(None);
+        return RenderBlockId(CENTER_PARAGRAPH_BASE + rendered_paragraphs.len() as u16 - 1);
+    }
+
+    fn sync_client(&mut self) {
+        let mut removed_entry_ids = SmallVec::<[RenderBlockId; 128]>::new();
+        let mut updated_contents = SmallVec::<[RenderBlockId; 128]>::new();
+        let mut updated_locations = SmallVec::<[RenderBlockLocation; 128]>::new();
+        for entry in self.offline_layout.iter_mut() {
+            let entry_hash = entry.layout_hash;
+            let client_entry = self
+                .client_layout
+                .iter_mut()
+                .enumerate()
+                .find(|(_, cl)| cl.layout_hash == entry_hash);
+            if let Some((client_idx, _)) = client_entry {
+                /* If this entry is found, it is up to date, so there is no reason to update the contents */
+                let mut retrieved_entry = self.client_layout.swap_remove(client_idx);
+                if let Some(rendered_id) = retrieved_entry.rendered_id {
+                    removed_entry_ids.push(rendered_id);
+                    entry.reuse(&mut retrieved_entry);
+                }
+            } else {
+                /* No entry to reuse, so a new entry has to be made */
+                let block_id = Self::new_id(&mut self.rendered_paragraphs);
+                assert!(entry.assign_id(block_id).is_ok());
+                let rendered = entry.render(self.scaled_font_size).unwrap();
+                let rendered_slot =
+                    &mut self.rendered_paragraphs[(block_id.0 - CENTER_PARAGRAPH_BASE) as usize];
+                debug_assert!(rendered_slot.is_none());
+                *rendered_slot = Some(rendered);
+                updated_contents.push(block_id);
+            }
+            if let Some(location) = entry.new_location() {
+                updated_locations.push(location);
+            }
+        }
+        /* All entries left in client layout are unused. Drain and clean them up.
+        TODO: Consider leaving them in here to be aged out to avoid having to resend them if scrolling short distances */
+        for entry in self.client_layout.drain(..) {
+            if let Some(rendered_id) = entry.rendered_id {
+                removed_entry_ids.push(rendered_id)
+            }
+        }
+        /* TODO: Act on the remove vectors */
     }
 }
 impl ContainerBlockLogic for CenterModel {
@@ -404,6 +544,7 @@ impl ContainerBlockLogic for CenterModel {
         let document = doc_container.document().unwrap();
         let width_chars = (block.extent().y() / avg_char_width) as u16;
         model.prune_old_render_paragraphs(block);
+        /* This will update offline layout according to the current document */
         model.render_document(
             document,
             document.text().slice(..),
@@ -414,6 +555,9 @@ impl ContainerBlockLogic for CenterModel {
             &doc_container.editor().editor().theme,
             context.shaper_ref(),
         );
+        /* Figure out what differences there are between offline layout and client layout and make
+        instructions for the client to sync */
+        model.sync_client();
     }
 
     fn initialize(
