@@ -146,7 +146,7 @@ impl LayoutParagraphEntry {
     fn new_location(&mut self) -> Option<RenderBlockLocation> {
         None
     }
-    fn render(&mut self, scaled_font_size: OrderedFloat<f32>) -> Result<RenderParagraph, ()> {
+    fn render(&mut self, scaled_font_size: OrderedFloat<f32>) -> Result<RenderParagraphSource, ()> {
         let text = ShapableString {
             text: self.layout.text.clone(),
             metadata_runs: SmallVec::from_iter(self.layout.metadata_runs.iter().map(|run| {
@@ -174,13 +174,13 @@ impl LayoutParagraphEntry {
                 }
             })),
         };
-        let rendered = RenderParagraph {
+        /*        let rendered = RenderParagraph {
             location: todo!(),
-            data_hash: todo!(),
-            last_modified: todo!(),
+            data_hash: 0,
+            last_modified: current_generation,
             contents: MaybeRenderedParagraph::Source(RenderParagraphSource { text }),
-        };
-        Ok(rendered)
+        };*/
+        Ok(RenderParagraphSource { text })
     }
     /** @brief Assign render id, unless it is assigned already
      * returns false if an id is already assigned and the supplied id is unused
@@ -544,6 +544,17 @@ impl CenterModel {
                 let rendered_slot =
                     &mut self.rendered_paragraphs[(block_id.0 - CENTER_PARAGRAPH_BASE) as usize];
                 debug_assert!(rendered_slot.is_none());
+                /* TODO: The source paragraph needs to be added here?*/
+                *rendered_slot = Some(RenderParagraph {
+                    contents: MaybeRenderedParagraph::Source(rendered),
+                    location: RenderBlockLocation {
+                        id: block_id,
+                        location: PointF16::default(),
+                        layer: 0,
+                    },
+                    data_hash: 0, // TODO: Is hash needed here, or just set it as 0 and fill it further down this function
+                    last_modified: self.current_generation,
+                });
                 updated_contents.push(block_id);
             }
             /* Check if entry needs moving */
