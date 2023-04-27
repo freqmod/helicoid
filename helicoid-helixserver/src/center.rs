@@ -28,7 +28,7 @@ use helicoid_protocol::{
     },
     text::{
         FontEdging, FontHinting, FontParameters, ShapableString, ShapedStringMetadata,
-        SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+        ShapedTextBlock, SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
     },
 };
 use helix_core::{
@@ -45,6 +45,7 @@ use helix_view::{
     view::ViewPosition, Document, DocumentId, Editor, Theme, ViewId,
 };
 use ordered_float::OrderedFloat;
+use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::{
     hash::{BuildHasher, Hash, Hasher},
@@ -67,10 +68,24 @@ while it would be nice with a bit more semantics here to enable more fancy graph
 (e.g. for file edited state) */
 
 #[derive(Hash, PartialEq)]
-struct RenderParagraph {
+enum MaybeRenderedParagraph {
+    Source(RenderParagraphSource),
+    Rendered(ShapedTextBlock),
+}
+#[derive(Hash, PartialEq)]
+struct RenderedParagraph {
+    rendered_block: ShapedTextBlock,
+}
+#[derive(Hash, PartialEq)]
+struct RenderParagraphSource {
     text: ShapableString,
-    id: RenderBlockId,
+}
+
+#[derive(Hash, PartialEq)]
+struct RenderParagraph {
+    contents: MaybeRenderedParagraph,
     location: RenderBlockLocation,
+    //id: RenderBlockId,
     data_hash: u64, /* Of the latest changed value, it is up to the model to make it synced with the client */
     last_modified: u16, /* Age counter when this paragraph was last changed, for cache eviction */
 }
@@ -94,6 +109,12 @@ struct LayoutParagraphEntry {
     client_hash: Option<u64>,
     layout_hash: u64,
     rendered_id: Option<RenderBlockId>,
+}
+
+#[derive(Hash, PartialEq)]
+enum RenderingParagraph {
+    Source(RenderParagraph),
+    Dest((ShapedTextBlock, RenderBlockLocation)),
 }
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
 time (possibly together with helix-view). A special symbol font is used to be able to render
@@ -154,11 +175,10 @@ impl LayoutParagraphEntry {
             })),
         };
         let rendered = RenderParagraph {
-            text,
-            id: todo!(),
             location: todo!(),
             data_hash: todo!(),
             last_modified: todo!(),
+            contents: MaybeRenderedParagraph::Source(RenderParagraphSource { text }),
         };
         Ok(rendered)
     }
@@ -171,6 +191,17 @@ impl LayoutParagraphEntry {
             Ok(())
         } else {
             Err(())
+        }
+    }
+}
+impl RenderParagraph {
+    fn render_to_wire(&self) -> ShapedTextBlock {
+        unimplemented!()
+    }
+    fn ensure_rendered(&mut self) {
+        if let MaybeRenderedParagraph::Source(ref mut source) = self.contents {
+            let rendered = self.render_to_wire();
+            self.contents = MaybeRenderedParagraph::Rendered(rendered);
         }
     }
 }
@@ -483,22 +514,25 @@ impl CenterModel {
         return RenderBlockId(CENTER_PARAGRAPH_BASE + rendered_paragraphs.len() as u16 - 1);
     }
 
-    fn sync_client(&mut self) {
-        let mut removed_entry_ids = SmallVec::<[RenderBlockId; 128]>::new();
+    fn sync_client_view(&mut self, block: &mut ShadowMetaContainerBlockInner<ContentVisitor>) {
+        //        let mut removed_entry_ids = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_contents = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_locations = SmallVec::<[RenderBlockLocation; 128]>::new();
+        /* Try to make search faster by improving cache coherency of hashes */
+        let mut old_locations = SmallVec::<[u64; 128]>::with_capacity(self.client_layout.len());
+        old_locations.extend(self.client_layout.iter().map(|entry| entry.layout_hash));
         for entry in self.offline_layout.iter_mut() {
             let entry_hash = entry.layout_hash;
-            let client_entry = self
-                .client_layout
-                .iter_mut()
+            let client_entry = old_locations
+                .iter()
                 .enumerate()
-                .find(|(_, cl)| cl.layout_hash == entry_hash);
+                .find(|(_, h)| **h == entry_hash);
             if let Some((client_idx, _)) = client_entry {
                 /* If this entry is found, it is up to date, so there is no reason to update the contents */
+                old_locations.swap_remove(client_idx);
                 let mut retrieved_entry = self.client_layout.swap_remove(client_idx);
                 if let Some(rendered_id) = retrieved_entry.rendered_id {
-                    removed_entry_ids.push(rendered_id);
+                    block.remove_child(rendered_id);
                     entry.reuse(&mut retrieved_entry);
                 }
             } else {
@@ -509,7 +543,6 @@ impl CenterModel {
                 let rendered_slot =
                     &mut self.rendered_paragraphs[(block_id.0 - CENTER_PARAGRAPH_BASE) as usize];
                 debug_assert!(rendered_slot.is_none());
-                *rendered_slot = Some(rendered);
                 updated_contents.push(block_id);
             }
             if let Some(location) = entry.new_location() {
@@ -520,10 +553,26 @@ impl CenterModel {
         TODO: Consider leaving them in here to be aged out to avoid having to resend them if scrolling short distances */
         for entry in self.client_layout.drain(..) {
             if let Some(rendered_id) = entry.rendered_id {
-                removed_entry_ids.push(rendered_id)
+                block.remove_child(rendered_id);
             }
         }
+        self.rendered_paragraphs
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(idx, paragraph)| {
+                if let Some(ref mut paragraph) = paragraph {
+                    paragraph.ensure_rendered();
+                }
+            });
+        //        updated_contents.iter(){}
+        /*let block = ShadowMetaBlock::Text();
+        block.set_child(location, rendered);*/
+
         /* TODO: Act on the remove vectors */
+        /*        for remove_id in removed_entry_ids {
+            //            self.r
+            block.remove_child(remove_id);
+        }*/
     }
 }
 impl ContainerBlockLogic for CenterModel {
@@ -557,7 +606,7 @@ impl ContainerBlockLogic for CenterModel {
         );
         /* Figure out what differences there are between offline layout and client layout and make
         instructions for the client to sync */
-        model.sync_client();
+        model.sync_client_view(block);
     }
 
     fn initialize(
