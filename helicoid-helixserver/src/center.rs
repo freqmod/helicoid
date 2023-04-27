@@ -521,6 +521,7 @@ impl CenterModel {
         /* Try to make search faster by improving cache coherency of hashes */
         let mut old_locations = SmallVec::<[u64; 128]>::with_capacity(self.client_layout.len());
         old_locations.extend(self.client_layout.iter().map(|entry| entry.layout_hash));
+        /* Figure out which entries that can be reused, that only needs moving and that needs complete rerender */
         for entry in self.offline_layout.iter_mut() {
             let entry_hash = entry.layout_hash;
             let client_entry = old_locations
@@ -545,6 +546,7 @@ impl CenterModel {
                 debug_assert!(rendered_slot.is_none());
                 updated_contents.push(block_id);
             }
+            /* Check if entry needs moving */
             if let Some(location) = entry.new_location() {
                 updated_locations.push(location);
             }
@@ -576,11 +578,7 @@ impl CenterModel {
             });
         }
 
-        /* TODO: Act on the remove vectors */
-        /*        for remove_id in removed_entry_ids {
-            //            self.r
-            block.remove_child(remove_id);
-        }*/
+        /* TODO: Act on the moved vectors */
     }
 }
 impl ContainerBlockLogic for CenterModel {
