@@ -556,17 +556,25 @@ impl CenterModel {
                 block.remove_child(rendered_id);
             }
         }
-        self.rendered_paragraphs
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(idx, paragraph)| {
-                if let Some(ref mut paragraph) = paragraph {
-                    paragraph.ensure_rendered();
-                }
+        if updated_contents.len() > 8 {
+            /* Parallelise shaping */
+            self.rendered_paragraphs
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(idx, paragraph)| {
+                    if let Some(ref mut paragraph) = paragraph {
+                        paragraph.ensure_rendered();
+                    }
+                });
+        } else {
+            /* If few lines are updated it is probably faster to not try to paralelise the shaping_*/
+            updated_contents.iter().for_each(|id| {
+                self.rendered_paragraphs[(id.0 - CENTER_PARAGRAPH_BASE) as usize]
+                    .as_mut()
+                    .unwrap()
+                    .ensure_rendered();
             });
-        //        updated_contents.iter(){}
-        /*let block = ShadowMetaBlock::Text();
-        block.set_child(location, rendered);*/
+        }
 
         /* TODO: Act on the remove vectors */
         /*        for remove_id in removed_entry_ids {
