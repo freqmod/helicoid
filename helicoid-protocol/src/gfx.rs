@@ -135,7 +135,9 @@ pub struct PointU32 {
     y: u32,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(
+    Copy, Clone, PartialEq, Debug, Archive, Serialize, Deserialize, CheckBytes, Default, Hash,
+)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct PointU16 {
@@ -380,6 +382,32 @@ impl PointU32 {
 impl From<PointU32> for PointF16 {
     fn from(value: PointU32) -> Self {
         PointF16::new(value.x() as f32, value.y() as f32)
+    }
+}
+
+impl PointU16 {
+    pub fn floor<P: Into<PointF32>>(p: P) -> Self {
+        let p32: PointF32 = p.into();
+        Self {
+            x: p32.x.floor() as u16,
+            y: p32.y.floor() as u16,
+        }
+    }
+    pub fn ceil<P: Into<PointF32>>(p: P) -> Self {
+        let p32: PointF32 = p.into();
+        Self {
+            x: p32.x.ceil() as u16,
+            y: p32.y.ceil() as u16,
+        }
+    }
+    pub fn new(x: u16, y: u16) -> Self {
+        Self { x, y }
+    }
+    pub fn x(&self) -> u16 {
+        self.x
+    }
+    pub fn y(&self) -> u16 {
+        self.y
     }
 }
 

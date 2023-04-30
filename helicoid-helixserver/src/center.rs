@@ -14,9 +14,10 @@ use helicoid_protocol::{
     font_options::FontOptions,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath, RenderBlockRemoveInstruction, SimpleDrawBlock, SimpleDrawElement,
-        SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
+        PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
+        RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction, SimpleDrawBlock,
+        SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect,
+        SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -79,6 +80,7 @@ struct RenderedParagraph {
 #[derive(Hash, PartialEq)]
 struct RenderParagraphSource {
     text: ShapableString,
+    location: PointU16,
 }
 
 #[derive(Hash, PartialEq)]
@@ -106,6 +108,7 @@ struct LayoutParagraph {
 #[derive(Hash, PartialEq, Default)]
 struct LayoutParagraphEntry {
     layout: LayoutParagraph,
+    location: PointU16,
     client_hash: Option<u64>,
     layout_hash: u64,
     rendered_id: Option<RenderBlockId>,
@@ -180,7 +183,10 @@ impl LayoutParagraphEntry {
             last_modified: current_generation,
             contents: MaybeRenderedParagraph::Source(RenderParagraphSource { text }),
         };*/
-        Ok(RenderParagraphSource { text })
+        Ok(RenderParagraphSource {
+            text,
+            location: Default::default(),
+        })
     }
     /** @brief Assign render id, unless it is assigned already
      * returns false if an id is already assigned and the supplied id is unused
@@ -195,13 +201,23 @@ impl LayoutParagraphEntry {
     }
 }
 impl RenderParagraph {
-    fn render_to_wire(&self) -> ShapedTextBlock {
-        unimplemented!()
+    fn render_to_wire(&self, shaper: &mut CachingShaper) -> Option<ShapedTextBlock> {
+        /* TODO: Implement */
+        let MaybeRenderedParagraph::Source(ref source) = self.contents else { return None; };
+        let shaped = shaper.shape(&source.text, &None);
+        Some(shaped)
     }
-    fn ensure_rendered(&mut self) {
-        if let MaybeRenderedParagraph::Source(ref mut source) = self.contents {
-            let rendered = self.render_to_wire();
+    fn hash_contents(&self) -> u64 {
+        let mut hasher = AHasher::default();
+        self.contents.hash(&mut hasher);
+        self.location.hash(&mut hasher);
+        hasher.finish()
+    }
+    fn ensure_rendered(&mut self, shaper: &mut CachingShaper) {
+        //        if let MaybeRenderedParagraph::Source(ref mut source) = self.contents {
+        if let Some(rendered) = self.render_to_wire(shaper) {
             self.contents = MaybeRenderedParagraph::Rendered(rendered);
+            self.data_hash = self.hash_contents();
         }
     }
 }
@@ -336,8 +352,8 @@ impl CenterModel {
                         line_decoration.render_foreground(renderer, last_line_pos, char_pos);
                     }*/
                     /* Flush current line, and prepare a new empty one */
-                    self.flush_line(&mut paragraph, shaper);
                 }
+                self.flush_line(&mut paragraph, shaper, &last_line_pos);
                 last_line_pos = LinePos {
                     first_visual_line: doc_line != last_line_pos.doc_line,
                     doc_line,
@@ -470,7 +486,12 @@ impl CenterModel {
         }
     }
 
-    fn flush_line(&mut self, layout_paragraph: &mut LayoutParagraph, shaper: &CachingShaper) {
+    fn flush_line(
+        &mut self,
+        layout_paragraph: &mut LayoutParagraph,
+        shaper: &CachingShaper,
+        line_pos: &LinePos,
+    ) {
         if !layout_paragraph.text.is_empty() {
             if layout_paragraph.substring_end
                 + layout_paragraph
@@ -488,8 +509,13 @@ impl CenterModel {
         let mut hasher = AHasher::default();
         self.hash(&mut hasher);
         let layout_hash = hasher.finish();
+        let location = PointU16::new(
+            line_pos.start_char_idx as u16,
+            line_pos.first_visual_line as u16,
+        );
         let new_paragraph_entry = LayoutParagraphEntry {
             layout: new_paragraph,
+            location,
             layout_hash,
             rendered_id: None,
             client_hash: None,
@@ -514,7 +540,11 @@ impl CenterModel {
         return RenderBlockId(CENTER_PARAGRAPH_BASE + rendered_paragraphs.len() as u16 - 1);
     }
 
-    fn sync_client_view(&mut self, block: &mut ShadowMetaContainerBlockInner<ContentVisitor>) {
+    fn sync_client_view(
+        &mut self,
+        block: &mut ShadowMetaContainerBlockInner<ContentVisitor>,
+        shaper: &mut CachingShaper,
+    ) {
         //        let mut removed_entry_ids = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_contents = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_locations = SmallVec::<[RenderBlockLocation; 128]>::new();
@@ -544,7 +574,6 @@ impl CenterModel {
                 let rendered_slot =
                     &mut self.rendered_paragraphs[(block_id.0 - CENTER_PARAGRAPH_BASE) as usize];
                 debug_assert!(rendered_slot.is_none());
-                /* TODO: The source paragraph needs to be added here?*/
                 *rendered_slot = Some(RenderParagraph {
                     contents: MaybeRenderedParagraph::Source(rendered),
                     location: RenderBlockLocation {
@@ -576,7 +605,7 @@ impl CenterModel {
                 .enumerate()
                 .for_each(|(idx, paragraph)| {
                     if let Some(ref mut paragraph) = paragraph {
-                        paragraph.ensure_rendered();
+                        paragraph.ensure_rendered(&mut shaper.clone());
                     }
                 });
         } else {
@@ -585,7 +614,7 @@ impl CenterModel {
                 self.rendered_paragraphs[(id.0 - CENTER_PARAGRAPH_BASE) as usize]
                     .as_mut()
                     .unwrap()
-                    .ensure_rendered();
+                    .ensure_rendered(shaper);
             });
         }
 
@@ -606,7 +635,8 @@ impl ContainerBlockLogic for CenterModel {
             family_id: 0,
         };
         let avg_char_width = context.shaper().info(&options).unwrap().1;
-        let doc_container = context.current_doc().unwrap();
+        let (doc_container, shaper) = context.doc_and_shaper();
+        let doc_container = doc_container.unwrap();
         let document = doc_container.document().unwrap();
         let width_chars = (block.extent().y() / avg_char_width) as u16;
         model.prune_old_render_paragraphs(block);
@@ -619,11 +649,11 @@ impl ContainerBlockLogic for CenterModel {
             &Default::default(),
             std::iter::empty(),
             &doc_container.editor().editor().theme,
-            context.shaper_ref(),
+            shaper,
         );
         /* Figure out what differences there are between offline layout and client layout and make
         instructions for the client to sync */
-        model.sync_client_view(block);
+        model.sync_client_view(block, shaper);
     }
 
     fn initialize(

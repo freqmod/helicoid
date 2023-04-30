@@ -629,6 +629,8 @@ impl CachingShaper {
 }
 impl Clone for CachingShaper {
     fn clone(&self) -> Self {
+        /* TODO: See if it is possible to optimize this for many clones
+        and drops by some kind of pool */
         Self {
             inner: self.inner.clone(),
             shape_context: ShapeContext::new(),

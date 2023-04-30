@@ -122,6 +122,21 @@ impl ContentVisitor {
             None
         }
     }
+    /* Get both current document and shaper at once.
+    Needed as a hackish way of satisfying the borrow checker */
+    pub fn doc_and_shaper(&mut self) -> (Option<ContentDocContainer<'_>>, &mut CachingShaper) {
+        (
+            if let Some(current_view_id) = self.active_view_id {
+                Some(ContentDocContainer {
+                    editor: self.editor.blocking_lock(),
+                    view_id: current_view_id,
+                })
+            } else {
+                None
+            },
+            &mut self.shaper,
+        )
+    }
     pub fn active_view_id(&self) -> Option<ViewId> {
         self.active_view_id
     }
