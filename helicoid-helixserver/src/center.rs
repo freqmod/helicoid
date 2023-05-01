@@ -68,7 +68,7 @@ pub struct Paragraph {
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
 
-#[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq, Clone)]
 enum MaybeRenderedParagraph {
     Source(RenderParagraphSource),
     Rendered(ShapedTextBlock),
@@ -77,13 +77,13 @@ enum MaybeRenderedParagraph {
 struct RenderedParagraph {
     rendered_block: ShapedTextBlock,
 }
-#[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq, Clone)]
 struct RenderParagraphSource {
     text: ShapableString,
     location: PointU16,
 }
 
-#[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq, Clone)]
 struct RenderParagraph {
     contents: MaybeRenderedParagraph,
     location: RenderBlockLocation,
@@ -109,6 +109,7 @@ struct LayoutParagraph {
 struct LayoutParagraphEntry {
     layout: LayoutParagraph,
     location: PointF16,
+    client_location: Option<PointF16>,
     client_hash: Option<u64>,
     layout_hash: u64,
     rendered_id: Option<RenderBlockId>,
@@ -137,6 +138,38 @@ pub struct CenterModel {
     col_offset: u32,
     tab: String,
 }
+impl RenderingParagraph {
+    pub fn destination(&self) -> Option<&(ShapedTextBlock, RenderBlockLocation)> {
+        if let Self::Dest(tuple) = self {
+            Some(tuple)
+        } else {
+            None
+        }
+    }
+    pub fn source(&self) -> Option<&RenderParagraph> {
+        if let Self::Source(src) = self {
+            Some(src)
+        } else {
+            None
+        }
+    }
+}
+impl MaybeRenderedParagraph {
+    pub fn rendered(&self) -> Option<&ShapedTextBlock> {
+        if let Self::Rendered(rendered) = self {
+            Some(rendered)
+        } else {
+            None
+        }
+    }
+    pub fn source(&self) -> Option<&RenderParagraphSource> {
+        if let Self::Source(src) = self {
+            Some(src)
+        } else {
+            None
+        }
+    }
+}
 impl LayoutParagraphEntry {
     /* Reuse a client entry from earlier, removing the context from the old entry */
     fn reuse(&mut self, other: &mut Self) {
@@ -147,7 +180,19 @@ impl LayoutParagraphEntry {
     /* Returns a render block location to send to the client, unless the block
     is at the right location at the client already */
     fn new_location(&mut self) -> Option<RenderBlockLocation> {
-        None
+        if self
+            .client_location
+            .map(|loc| loc != self.location)
+            .unwrap_or(true)
+        {
+            Some(RenderBlockLocation {
+                id: self.rendered_id.unwrap(),
+                location: self.location,
+                layer: 0,
+            })
+        } else {
+            None
+        }
     }
     fn render(&mut self, scaled_font_size: OrderedFloat<f32>) -> Result<RenderParagraphSource, ()> {
         let text = ShapableString {
@@ -529,6 +574,7 @@ impl CenterModel {
             layout_hash,
             rendered_id: None,
             client_hash: None,
+            client_location: None,
         };
         self.offline_layout.push(new_paragraph_entry);
     }
@@ -598,6 +644,7 @@ impl CenterModel {
             }
             /* Check if entry needs moving */
             if let Some(location) = entry.new_location() {
+                // TODO: Where do we change statae for the entry, to track wthe client location?
                 updated_locations.push(location);
             }
         }
@@ -627,8 +674,31 @@ impl CenterModel {
                     .ensure_rendered(shaper);
             });
         }
-
-        /* TODO: Act on the moved vectors */
+        // TODO: Make sure rendered paragraphs are added to the parent block
+        for block_id in updated_contents.drain(..) {
+            //
+            let paragraph_block = self
+                .rendered_paragraphs
+                .get((block_id.0 - CENTER_PARAGRAPH_BASE) as usize)
+                .unwrap().as_ref()
+                .unwrap()
+                .clone();
+            let mut text_block = ShadowMetaTextBlock::new(block_id);
+            text_block.set_wire(paragraph_block.contents.rendered().unwrap().clone());
+            block.set_child(
+                RenderBlockLocation {
+                    id: block_id,
+                    location: PointF16::default(),
+                    layer: 0,
+                },
+                ShadowMetaBlock::Text(text_block),
+            );
+        }
+        /* TODO: Act on the updated locations */
+        for location in updated_locations.drain(..) {
+            let id = location.id;
+            *(block.child_mut(id).unwrap().location()) = location;
+        }
     }
 }
 impl ContainerBlockLogic for CenterModel {
