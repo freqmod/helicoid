@@ -108,7 +108,7 @@ struct LayoutParagraph {
 #[derive(Hash, PartialEq, Default)]
 struct LayoutParagraphEntry {
     layout: LayoutParagraph,
-    location: PointU16,
+    location: PointF16,
     client_hash: Option<u64>,
     layout_hash: u64,
     rendered_id: Option<RenderBlockId>,
@@ -251,7 +251,7 @@ impl CenterModel {
         text_annotations: &TextAnnotations,
         highlight_iter: impl Iterator<Item = HighlightEvent>,
         theme: &Theme,
-        shaper: &CachingShaper,
+        shaper: &mut CachingShaper,
         //        line_decorations: &mut [Box<dyn LineDecoration + '_>],
         //        translated_positions: &mut [TranslatedPosition],
     ) {
@@ -272,6 +272,11 @@ impl CenterModel {
             text_fmt,
             text_annotations,
         );
+        let shaper_font_options = SmallFontOptions {
+            font_parameters: shaper.default_parameters(),
+            family_id: 0,
+        };
+
         self.offline_layout.clear();
         let mut paragraph = LayoutParagraph::default();
         row_off += offset.vertical_offset;
@@ -294,6 +299,7 @@ impl CenterModel {
             visual_line: u16::MAX,
             start_char_idx: usize::MAX,
         };
+        let mut line_y = 0f32;
         let mut is_in_indent_area = true;
         let mut last_line_indent_level = 0;
         let mut style_span = styles
@@ -353,13 +359,21 @@ impl CenterModel {
                     }*/
                     /* Flush current line, and prepare a new empty one */
                 }
-                self.flush_line(&mut paragraph, shaper, &last_line_pos);
+                //        let location = PointF16::new(line_pos.start_char_idx as f32, line_pos.visual_line as f32);
+                /* TODO: It should probably be width of space, and not avg char here? */
+                let (font_metrics, avg_char_width) = shaper.info(&shaper_font_options).unwrap();
+                //                last_line_pos.start_char_idx * shaper.current_size()
+
+                let line_loc =
+                    PointF16::new(avg_char_width * last_line_pos.start_char_idx as f32, line_y);
+                self.flush_line(&mut paragraph, shaper, line_loc);
                 last_line_pos = LinePos {
                     first_visual_line: doc_line != last_line_pos.doc_line,
                     doc_line,
                     visual_line: pos.row as u16,
                     start_char_idx: char_pos,
                 };
+                line_y += font_metrics.ascent + font_metrics.descent + font_metrics.leading;
                 /*for line_decoration in &mut *line_decorations {
                     line_decoration.render_background(renderer, last_line_pos);
                 }*/
@@ -490,7 +504,7 @@ impl CenterModel {
         &mut self,
         layout_paragraph: &mut LayoutParagraph,
         shaper: &CachingShaper,
-        line_pos: &LinePos,
+        location: PointF16,
     ) {
         if !layout_paragraph.text.is_empty() {
             if layout_paragraph.substring_end
@@ -509,10 +523,6 @@ impl CenterModel {
         let mut hasher = AHasher::default();
         self.hash(&mut hasher);
         let layout_hash = hasher.finish();
-        let location = PointU16::new(
-            line_pos.start_char_idx as u16,
-            line_pos.first_visual_line as u16,
-        );
         let new_paragraph_entry = LayoutParagraphEntry {
             layout: new_paragraph,
             location,
