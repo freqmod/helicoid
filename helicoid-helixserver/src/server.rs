@@ -147,7 +147,11 @@ impl HelicoidServer {
             let view_id = {
                 let mut editor = self.editor.lock().await;
                 let heditor = editor.editor_mut();
-                let doc_id = Some(heditor.new_file(Action::VerticalSplit));
+                //                let doc_id = Some(heditor.new_file(Action::VerticalSplit));
+                let doc_id = heditor.open(
+                    &std::env::current_dir().unwrap().join("src/main.rs"),
+                    helix_view::editor::Action::VerticalSplit,
+                );
                 let view_id = heditor.tree.focus;
                 assert_eq!(heditor.tree.get(view_id).doc, doc_id.unwrap());
                 Some(view_id)

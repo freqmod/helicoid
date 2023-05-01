@@ -601,6 +601,7 @@ impl CenterModel {
         block: &mut ShadowMetaContainerBlockInner<ContentVisitor>,
         shaper: &mut CachingShaper,
     ) {
+        log::trace!("Sync center client");
         //        let mut removed_entry_ids = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_contents = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_locations = SmallVec::<[RenderBlockLocation; 128]>::new();
@@ -680,7 +681,8 @@ impl CenterModel {
             let paragraph_block = self
                 .rendered_paragraphs
                 .get((block_id.0 - CENTER_PARAGRAPH_BASE) as usize)
-                .unwrap().as_ref()
+                .unwrap()
+                .as_ref()
                 .unwrap()
                 .clone();
             let mut text_block = ShadowMetaTextBlock::new(block_id);
