@@ -68,7 +68,7 @@ pub struct Paragraph {
 while it would be nice with a bit more semantics here to enable more fancy graphics
 (e.g. for file edited state) */
 
-#[derive(Hash, PartialEq, Clone)]
+#[derive(Debug, Hash, PartialEq, Clone)]
 enum MaybeRenderedParagraph {
     Source(RenderParagraphSource),
     Rendered(ShapedTextBlock),
@@ -77,13 +77,13 @@ enum MaybeRenderedParagraph {
 struct RenderedParagraph {
     rendered_block: ShapedTextBlock,
 }
-#[derive(Hash, PartialEq, Clone)]
+#[derive(Debug, Hash, PartialEq, Clone)]
 struct RenderParagraphSource {
     text: ShapableString,
     location: PointU16,
 }
 
-#[derive(Hash, PartialEq, Clone)]
+#[derive(Debug, Hash, PartialEq, Clone)]
 struct RenderParagraph {
     contents: MaybeRenderedParagraph,
     location: RenderBlockLocation,
@@ -93,12 +93,12 @@ struct RenderParagraph {
 }
 
 /* Formatting information per font run */
-#[derive(Hash, PartialEq, Default)]
+#[derive(Hash, PartialEq, Default, Debug)]
 struct LayoutStringMetadata {
     section_length: u16,
     style: Style,
 }
-#[derive(Hash, PartialEq, Default)]
+#[derive(Hash, PartialEq, Default, Debug)]
 struct LayoutParagraph {
     text: SmallVec<[u8; SHAPABLE_STRING_ALLOC_LEN]>, //text should always contain valid UTF-8?
     metadata_runs: SmallVec<[LayoutStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
@@ -212,7 +212,10 @@ impl LayoutParagraphEntry {
                         edging: Default::default(),
                     },
                 };
-                let paint: FontPaint = Default::default();
+                let paint = FontPaint {
+                    color: DEFAULT_TEXT_COLOR,
+                    ..Default::default()
+                };
 
                 ShapedStringMetadata {
                     substring_length: run.section_length,
@@ -300,6 +303,7 @@ impl CenterModel {
         //        line_decorations: &mut [Box<dyn LineDecoration + '_>],
         //        translated_positions: &mut [TranslatedPosition],
     ) {
+        log::trace!("Render document: {:?}", doc.text());
         /* This function updates the center model to match the document,
         changing blocks if neccesary */
         if doc.tab_width() != self.tab.len() {
@@ -373,6 +377,7 @@ impl CenterModel {
                 }
                 break;
             };
+            log::trace!("Pos: {:?}", formatter.visual_pos());
 
             // skip any graphemes on visual lines before the block start
             if pos.row < row_off {
@@ -551,6 +556,7 @@ impl CenterModel {
         shaper: &CachingShaper,
         location: PointF16,
     ) {
+        log::trace!("Flush line:{:?}", layout_paragraph);
         if !layout_paragraph.text.is_empty() {
             if layout_paragraph.substring_end
                 + layout_paragraph
@@ -641,6 +647,7 @@ impl CenterModel {
                     data_hash: 0, // TODO: Is hash needed here, or just set it as 0 and fill it further down this function
                     last_modified: self.current_generation,
                 });
+                log::trace!("Added source slot: {:?} txt: {:?}", block_id, rendered_slot);
                 updated_contents.push(block_id);
             }
             /* Check if entry needs moving */
@@ -695,9 +702,11 @@ impl CenterModel {
                 },
                 ShadowMetaBlock::Text(text_block),
             );
+            log::trace!("Added child: {:?}", block_id);
         }
         /* TODO: Act on the updated locations */
         for location in updated_locations.drain(..) {
+            log::trace!("Moved child: {:?} location: {:?}", location.id, &location);
             let id = location.id;
             *(block.child_mut(id).unwrap().location()) = location;
         }
@@ -722,6 +731,8 @@ impl ContainerBlockLogic for CenterModel {
         let document = doc_container.document().unwrap();
         let width_chars = (block.extent().y() / avg_char_width) as u16;
         model.prune_old_render_paragraphs(block);
+        log::warn!("Center viewport extent: {:?}", block.extent());
+        model.viewport = PointU32::floor(block.extent());
         /* This will update offline layout according to the current document */
         model.render_document(
             document,
