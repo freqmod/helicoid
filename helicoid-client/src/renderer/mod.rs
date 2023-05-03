@@ -154,6 +154,10 @@ impl Renderer {
             self.grid_renderer.font_names()
         }
     */
+    /* Called after a potential draw, to sync resources etc */
+    pub fn is_prune_cache_data_needed(&mut self) -> bool {
+        return !self.editor.is_connected();
+    }
     /// Draws frame
     ///
     /// # Returns

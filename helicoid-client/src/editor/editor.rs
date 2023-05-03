@@ -102,6 +102,14 @@ impl HeliconeEditor {
             }
         });
     }
+    pub fn is_connected(&self) -> bool {
+        if self.sender.is_some() && self.receiver.is_some() {
+            if self.sender.as_ref().unwrap().is_closed() {
+                return false;
+            }
+        }
+        return true;
+    }
     fn ensure_connected(&mut self) -> bool {
         if self.sender.is_some() && self.receiver.is_some() {
             if self.sender.as_ref().unwrap().is_closed() {
@@ -474,7 +482,6 @@ impl HeliconeEditor {
         self.receiver = None;
         /* Send message to bridge (via sender) */
         self.sender = None;
-        unimplemented!();
         /* Spawn an async closure that disconncts the old bridge and sets up a new one to (try to) connect */
     }
     /// Check the receiver channel if any events are received from the editor server.
@@ -510,6 +517,8 @@ impl HeliconeEditor {
             }
         }
         if disconnected {
+            self.renderer.reset(&mut self.graphics_manager);
+            self.renderer = Manager::new();
             self.reconnect_bridge()
         }
     }

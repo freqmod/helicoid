@@ -316,6 +316,11 @@ impl GlutinWindowWrapper {
                     .flush_and_swap_buffers(&mut self.window);
             }
         }
+        if self.renderer.is_prune_cache_data_needed() {
+            if let GlutinWindowGl::Running(gl_run) = &mut self.glutin_context {
+                gl_run.skia_renderer.prune_cache_data();
+            }
+        }
 
         /*
         // Wait until fonts are loaded, so we can set proper window size.

@@ -133,7 +133,7 @@ pub struct CenterModel {
     client_layout: Vec<LayoutParagraphEntry>,
     offline_layout: Vec<LayoutParagraphEntry>,
     rendered_paragraphs: Vec<Option<RenderParagraph>>,
-    viewport: PointU32,
+    viewport: PointF16,
     current_generation: u16,
     col_offset: u32,
     tab: String,
@@ -283,11 +283,19 @@ impl CenterModel {
                 if age > MAX_AGE {
                     /*  Anything unused for more than max age iterations gets pruned */
                     //                        removed_paragraphs.push_back(paragraph_val.id);
+                    log::trace!(
+                        "Pruning old child: {:x} age {} (generation {} of {})",
+                        par_id.0,
+                        age,
+                        paragraph_val.last_modified,
+                        self.current_generation
+                    );
                     block.remove_child(par_id);
                     *paragraph = None;
                 }
             }
         }
+        self.current_generation = self.current_generation.saturating_add(1);
     }
     /* This code is adopted from the corresponding functionality in helix-term/document */
     pub fn render_document<'t>(
@@ -342,6 +350,8 @@ impl CenterModel {
             theme,
         };
 
+        let (font_metrics, avg_char_width) = shaper.info(&shaper_font_options).unwrap();
+
         let mut last_line_pos = LinePos {
             first_visual_line: false,
             doc_line: usize::MAX,
@@ -377,7 +387,7 @@ impl CenterModel {
                 }
                 break;
             };
-            log::trace!("Pos: {:?}", formatter.visual_pos());
+            //            log::trace!("Render document pos: {:?}", formatter.visual_pos());
 
             // skip any graphemes on visual lines before the block start
             if pos.row < row_off {
@@ -395,7 +405,7 @@ impl CenterModel {
             pos.row -= row_off;
 
             // if the end of the viewport is reached stop rendering
-            if pos.row as u32 >= self.viewport.y() {
+            if line_y >= self.viewport.y() {
                 break;
             }
 
@@ -411,11 +421,11 @@ impl CenterModel {
                 }
                 //        let location = PointF16::new(line_pos.start_char_idx as f32, line_pos.visual_line as f32);
                 /* TODO: It should probably be width of space, and not avg char here? */
-                let (font_metrics, avg_char_width) = shaper.info(&shaper_font_options).unwrap();
                 //                last_line_pos.start_char_idx * shaper.current_size()
 
-                let line_loc =
-                    PointF16::new(avg_char_width * last_line_pos.start_char_idx as f32, line_y);
+                let line_loc = PointF16::new(0f32, line_y);
+                //                    PointF16::new(avg_char_width * last_line_pos.start_char_idx as f32, line_y);
+
                 self.flush_line(&mut paragraph, shaper, line_loc);
                 last_line_pos = LinePos {
                     first_visual_line: doc_line != last_line_pos.doc_line,
@@ -424,8 +434,8 @@ impl CenterModel {
                     start_char_idx: char_pos,
                 };
                 line_y += font_metrics.ascent + font_metrics.descent + font_metrics.leading;
-                /*for line_decoration in &mut *line_decorations {
-                    line_decoration.render_background(renderer, last_line_pos);
+                /*for line_decoration in &mut *line_de`corations {
+                    line_decoration.render_background`(renderer, last_line_pos);
                 }*/
             }
 
@@ -607,13 +617,13 @@ impl CenterModel {
         block: &mut ShadowMetaContainerBlockInner<ContentVisitor>,
         shaper: &mut CachingShaper,
     ) {
-        log::trace!("Sync center client");
         //        let mut removed_entry_ids = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_contents = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_locations = SmallVec::<[RenderBlockLocation; 128]>::new();
         /* Try to make search faster by improving cache coherency of hashes */
         let mut old_locations = SmallVec::<[u64; 128]>::with_capacity(self.client_layout.len());
         old_locations.extend(self.client_layout.iter().map(|entry| entry.layout_hash));
+        log::trace!("Sync center client, old locations: {:?}", old_locations);
         /* Figure out which entries that can be reused, that only needs moving and that needs complete rerender */
         for entry in self.offline_layout.iter_mut() {
             let entry_hash = entry.layout_hash;
@@ -625,6 +635,11 @@ impl CenterModel {
                 /* If this entry is found, it is up to date, so there is no reason to update the contents */
                 old_locations.swap_remove(client_idx);
                 let mut retrieved_entry = self.client_layout.swap_remove(client_idx);
+                log::trace!(
+                    "Reused source slot: {:?} txt: {:?}",
+                    client_idx,
+                    retrieved_entry.rendered_id
+                );
                 if let Some(rendered_id) = retrieved_entry.rendered_id {
                     block.remove_child(rendered_id);
                     entry.reuse(&mut retrieved_entry);
@@ -729,10 +744,10 @@ impl ContainerBlockLogic for CenterModel {
         let (doc_container, shaper) = context.doc_and_shaper();
         let doc_container = doc_container.unwrap();
         let document = doc_container.document().unwrap();
-        let width_chars = (block.extent().y() / avg_char_width) as u16;
+        let width_chars = (block.extent().x() / avg_char_width) as u16;
         model.prune_old_render_paragraphs(block);
         log::warn!("Center viewport extent: {:?}", block.extent());
-        model.viewport = PointU32::floor(block.extent());
+        model.viewport = block.extent().clone();
         /* This will update offline layout according to the current document */
         model.render_document(
             document,

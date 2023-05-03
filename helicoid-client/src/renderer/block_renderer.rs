@@ -1,4 +1,5 @@
 use hashbrown::HashMap;
+use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 
 use helicoid_protocol::block_manager::{
@@ -27,6 +28,10 @@ use crate::renderer::fonts::blob_builder::ShapedBlobBuilder;
 
 lazy_static! {
     static ref SVG_CACHE: SvgResourcePixmapCache = SvgResourcePixmapCache::new();
+}
+
+thread_local! {
+    pub static SHAPED_BLOB_BUILDER : RefCell<ShapedBlobBuilder> = RefCell::new(ShapedBlobBuilder::new());
 }
 /* Seeds for hashes: The hashes should stay consistent so we can compare them */
 const S1: u64 = 0x1199AACCDD117766;
@@ -293,8 +298,14 @@ impl SkiaClientRenderBlock {
         log::trace!("Render text box: {:?} {:?}", meta.parent_path(), meta.id());
         /* TODO: Use and configuration  of blob builder and storage of fonts should be improved,
         probably delegated to storage */
-        let mut blob_builder = ShapedBlobBuilder::new();
-        blob_builder.set_font_key(0, String::from("FiraCodeNerdFont-Regular"));
+        let shaped = stb;
+        let blobs = SHAPED_BLOB_BUILDER.with(|blob_builder| {
+            let mut blob_builder_mut = blob_builder.borrow_mut();
+            if !blob_builder_mut.has_font_key(1) {
+                blob_builder_mut.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
+            }
+            blob_builder_mut.bulid_blobs(&shaped)
+        });
         //blob_builder.set_font_key(0, String::from("AnonymiceNerd"));
         //blob_builder.set_font_key(1, String::from("NotoSansMono-Regular"));
         /*        blob_builder.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
@@ -302,8 +313,6 @@ impl SkiaClientRenderBlock {
         blob_builder.set_font_key(3, String::from("MissingGlyphs"));
         blob_builder.set_font_key(4, String::from("LastResort-Regular"));*/
 
-        let shaped = stb;
-        let blobs = blob_builder.bulid_blobs(&shaped);
         let mut x = 0f32;
         let y = 0f32;
 
@@ -831,6 +840,9 @@ impl ManagerGfx<SkiaClientRenderBlock> for SkiaGfxManager {
 
     fn create_top_block(&mut self, id: RenderBlockId) -> SkiaClientRenderBlock {
         SkiaClientRenderBlock::new_top_block()
+    }
+    fn reset(&mut self) {
+        /* Clear any manager specific resources */
     }
 }
 impl SkiaGfxManager {

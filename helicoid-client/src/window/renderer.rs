@@ -2,6 +2,7 @@ use std::{
     convert::TryInto,
     ffi::{CStr, CString},
     num::NonZeroU32,
+    time::Duration,
 };
 
 use crate::redraw_scheduler::REDRAW_SCHEDULER;
@@ -173,5 +174,12 @@ impl SkiaRenderer {
         //        window.request_redraw();
         self.gr_context.flush_and_submit();
         self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+    }
+    pub fn prune_cache_data(&mut self) {
+        log::debug!("Cleaning gpu data");
+        self.gr_context.purge_unlocked_resources(None, false);
+        self.gr_context
+            .perform_deferred_cleanup(Duration::from_millis(0), None);
+        self.gr_context.free_gpu_resources();
     }
 }

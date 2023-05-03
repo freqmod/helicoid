@@ -92,6 +92,9 @@ impl ShapedBlobBuilder {
             .collect()
     }
 
+    pub fn has_font_key(&self, font_id: u8) -> bool {
+        (font_id as usize) < self.font_names.len()
+    }
     pub fn set_font_key(&mut self, font_id: u8, font_name: String) {
         if font_id as usize >= self.font_names.len() {
             self.font_names.resize(font_id as usize + 1, None);

@@ -46,6 +46,7 @@ pub trait ManagerGfx<B: BlockGfx> {
         id: RenderBlockId,
     ) -> B;
     fn create_top_block(&mut self, id: RenderBlockId) -> B;
+    fn reset(&mut self);
 }
 
 pub trait BlockContainer<G: BlockGfx>: std::fmt::Debug {
@@ -187,6 +188,12 @@ impl<BG: BlockGfx> Manager<BG> {
         }
     }
 
+    /* @brief Reset contents of manager as the client has disconnected
+     * (and the client wants to avoid leaking memory)*/
+    pub fn reset<MG: ManagerGfx<BG>>(&mut self, gfx_manager: &mut MG) {
+        gfx_manager.reset();
+        self.containers.clear();
+    }
     pub fn handle_block_update<MG: ManagerGfx<BG>>(
         &mut self,
         client_id: RenderBlockId,
