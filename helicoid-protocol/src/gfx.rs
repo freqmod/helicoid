@@ -17,7 +17,20 @@ pub const SVG_RESOURCE_NAME_LEN: usize = 32;
 /* Simple painting interface for describing the user interface at the helix
 backend and transferring it to the front end in a render agnostic way */
 /* There are some special considerations to take into account for ids, see the implementation methods for details */
-#[derive(Debug, Hash, Eq, Clone, Copy, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(
+    Debug,
+    Hash,
+    Eq,
+    Clone,
+    Copy,
+    PartialEq,
+    Archive,
+    Serialize,
+    Deserialize,
+    CheckBytes,
+    Ord,
+    PartialOrd,
+)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockId(pub u16);
 

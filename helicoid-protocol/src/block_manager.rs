@@ -122,15 +122,18 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
         }
     }
     pub fn update_location(&mut self, new_location: &RenderBlockLocation) {
-        log::debug!(
-            "Updated location on a block container: {:?} <- update: {:?}",
-            self.path(),
-            new_location.id
-        );
+        let path = self.path.clone();
         let Some(cblock) = self.blocks.get_mut(&new_location.id) else {
             log::warn!("Tried to update location on a non existing block container: {:?} <- update: {:?}", self.path(), new_location.id);
             return;
         };
+        log::debug!(
+            "Updated location on a block container: {:?} <- update: {:?} Layer: {} -> {}",
+            path,
+            new_location.id,
+            cblock.layer,
+            new_location.layer
+        );
 
         if cblock.layer != new_location.layer {
             /* Remove from old layer */
@@ -283,8 +286,14 @@ impl<BG: BlockGfx> Manager<BG> {
         }
     }
     pub fn log_block_tree(&self, client_id: RenderBlockId) {
-        let mgr_entry = self.containers.get(&client_id).unwrap();
-        mgr_entry.meta.container.as_ref().unwrap().log_block_tree(0);
+        if let Some(mgr_entry) = self.containers.get(&client_id) {
+            mgr_entry.meta.container.as_ref().unwrap().log_block_tree(0);
+        } else {
+            log::debug!(
+                "Could not log blocktree for unknown client id: {:?}",
+                client_id,
+            );
+        }
     }
     pub fn block_for_path_mut(
         &mut self,
@@ -477,6 +486,11 @@ impl<BG: BlockGfx> MetaBlock<BG> {
         container.sorted_layers_tmp.sort();
         //        let layer_ids = container.layers.iter().;
         //        for (_layer_id, layer_blocks) in container.layers.iter() {
+        let mut layer_dup_check = if cfg!(debug_assertions) {
+            Some(Vec::new())
+        } else {
+            None
+        };
         for layer_id in container.sorted_layers_tmp.iter() {
             let layer_blocks = container.layers.get_mut(layer_id).unwrap();
             log::trace!(
@@ -496,14 +510,30 @@ impl<BG: BlockGfx> MetaBlock<BG> {
                         location: location.clone(),
                         layer: container_block.layer,
                     };
+                    if cfg!(debug_assertions) {
+                        if let Some(layer_dup_check) = layer_dup_check.as_mut() {
+                            layer_dup_check.push(block_id);
+                        }
+                    }
                     gfx.render(&location, block, target);
                     // Put the block back
                     container_block.block = Some(moved_block);
                 }
             }
         }
+        if cfg!(debug_assertions) {
+            if let Some(layer_dup_check) = layer_dup_check.as_mut() {
+                let preduplen = layer_dup_check.len();
+                layer_dup_check.sort();
+                layer_dup_check.dedup();
+                debug_assert_eq!(
+                    preduplen,
+                    layer_dup_check.len(),
+                    "Duplicates in layers while rendering"
+                );
+            }
+        }
     }
-
     pub fn as_container(&self) -> Option<&dyn BlockContainer<BG>> {
         self.container
             .as_ref()

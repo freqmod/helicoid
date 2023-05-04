@@ -176,7 +176,15 @@ impl LayoutParagraphEntry {
         debug_assert!(self.layout_hash == other.layout_hash);
         self.rendered_id = other.rendered_id.take();
         self.client_hash = other.client_hash.take();
+        self.client_location = other.client_location.clone();
     }
+    fn recalculate_layout_hash(&mut self) {
+        let mut hasher = AHasher::default();
+        self.layout.hash(&mut hasher);
+        self.location.hash(&mut hasher);
+        self.layout_hash = hasher.finish();
+    }
+
     /* Returns a render block location to send to the client, unless the block
     is at the right location at the client already */
     fn new_location(&mut self) -> Option<RenderBlockLocation> {
@@ -194,6 +202,12 @@ impl LayoutParagraphEntry {
             None
         }
     }
+    /* @brief Set client location to the current new location (assuming that the caller
+     * will transfer this to the client) */
+    fn update_client_location(&mut self) {
+        self.client_location = Some(self.location);
+    }
+
     fn render(&mut self, scaled_font_size: OrderedFloat<f32>) -> Result<RenderParagraphSource, ()> {
         let text = ShapableString {
             text: self.layout.text.clone(),
@@ -581,17 +595,15 @@ impl CenterModel {
         }
         let mut new_paragraph = LayoutParagraph::default(); // TODO: Does this need further init?
         std::mem::swap(layout_paragraph, &mut new_paragraph);
-        let mut hasher = AHasher::default();
-        self.hash(&mut hasher);
-        let layout_hash = hasher.finish();
-        let new_paragraph_entry = LayoutParagraphEntry {
+        let mut new_paragraph_entry = LayoutParagraphEntry {
             layout: new_paragraph,
             location,
-            layout_hash,
+            layout_hash: 0,
             rendered_id: None,
             client_hash: None,
             client_location: None,
         };
+        new_paragraph_entry.recalculate_layout_hash();
         self.offline_layout.push(new_paragraph_entry);
     }
 
@@ -654,6 +666,11 @@ impl CenterModel {
                 if let Some(rendered_id) = retrieved_entry.rendered_id {
                     //block.remove_child(rendered_id);
                     entry.reuse(&mut retrieved_entry);
+                    let rendered_slot = &mut self.rendered_paragraphs
+                        [(rendered_id.0 - CENTER_PARAGRAPH_BASE) as usize]
+                        .as_mut()
+                        .unwrap();
+                    rendered_slot.last_modified = self.current_generation;
                     // need to make sure it gets back into client layout by by the end of this function
                 } else {
                     panic!("Not supported at the moment");
@@ -681,8 +698,16 @@ impl CenterModel {
             }
             /* Check if entry needs moving */
             if let Some(location) = entry.new_location() {
-                // TODO: Where do we change statae for the entry, to track wthe client location?
+                // TODO: Where do we change state for the entry, to track wthe client location?
+                log::trace!(
+                    "Newloc({:?}): {:?} oldloc: {:?}",
+                    entry.rendered_id,
+                    entry.location,
+                    entry.client_location
+                );
+
                 updated_locations.push(location);
+                entry.update_client_location();
             }
         }
         /* All entries left in client layout are unused. Drain and clean them up.
@@ -713,7 +738,6 @@ impl CenterModel {
         }
         // TODO: Make sure rendered paragraphs are added to the parent block
         for block_id in updated_contents.drain(..) {
-            //
             let paragraph_block = self
                 .rendered_paragraphs
                 .get((block_id.0 - CENTER_PARAGRAPH_BASE) as usize)

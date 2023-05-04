@@ -500,7 +500,6 @@ impl HeliconeEditor {
                             update,
                             &mut self.graphics_manager,
                         );
-                        self.renderer.log_block_tree(client_id);
                         REDRAW_SCHEDULER.queue_next_frame();
                     }
                     Err(e) => match e {
@@ -528,6 +527,8 @@ impl HeliconeEditor {
             return false;
         }
         log::trace!("Editor: got request to draw frame");
+        let client_id = RenderBlockId::normal(0).unwrap();
+        //self.renderer.log_block_tree(client_id);
         self.peek_and_process_events();
         let location = RenderBlockLocation {
             id: RenderBlockId::normal(0).unwrap(),
@@ -539,7 +540,7 @@ impl HeliconeEditor {
             target_surface: root_surface,
         };
         self.renderer
-            .process_blocks_for_client(RenderBlockId::normal(0).unwrap(), &mut target);
+            .process_blocks_for_client(client_id, &mut target);
         // render(root_surface);
         false
     }
