@@ -584,7 +584,11 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     }
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {
-        todo!()
+        if mask_id.0 == 0 {
+            self.blocks.remove(&mask_id);
+        } else {
+            todo!("Removing multiple blocks at a time is not implemented yet")
+        }
     }
 
     fn move_blocks(

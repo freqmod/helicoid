@@ -621,19 +621,30 @@ impl CenterModel {
         let mut updated_contents = SmallVec::<[RenderBlockId; 128]>::new();
         let mut updated_locations = SmallVec::<[RenderBlockLocation; 128]>::new();
         /* Try to make search faster by improving cache coherency of hashes */
-        let mut old_locations = SmallVec::<[u64; 128]>::with_capacity(self.client_layout.len());
-        old_locations.extend(self.client_layout.iter().map(|entry| entry.layout_hash));
-        log::trace!("Sync center client, old locations: {:?}", old_locations);
+        let mut existing_entries =
+            SmallVec::<[(RenderBlockId, u64); 128]>::with_capacity(self.client_layout.len());
+        existing_entries.extend(
+            self.client_layout
+                .iter()
+                .map(|entry| (entry.rendered_id.unwrap(), entry.layout_hash)),
+        );
+        log::trace!(
+            "Sync center client, old locations: {:?}, client layout len: {}",
+            existing_entries,
+            self.client_layout.len()
+        );
         /* Figure out which entries that can be reused, that only needs moving and that needs complete rerender */
         for entry in self.offline_layout.iter_mut() {
             let entry_hash = entry.layout_hash;
-            let client_entry = old_locations
+            let client_entry = existing_entries
                 .iter()
                 .enumerate()
-                .find(|(_, h)| **h == entry_hash);
-            if let Some((client_idx, _)) = client_entry {
-                /* If this entry is found, it is up to date, so there is no reason to update the contents */
-                old_locations.swap_remove(client_idx);
+                .find(|(_, (_, h))| *h == entry_hash);
+            if let Some((client_idx, (client_id, _client_hash))) = client_entry {
+                /* If this entry is found, it is up to date, so there is no reason to update the contents,
+                however it is removed and added back to the client layout list to be able to move it and
+                avoid it being reused again in the same iteration */
+                existing_entries.swap_remove(client_idx);
                 let mut retrieved_entry = self.client_layout.swap_remove(client_idx);
                 log::trace!(
                     "Reused source slot: {:?} txt: {:?}",
@@ -641,8 +652,11 @@ impl CenterModel {
                     retrieved_entry.rendered_id
                 );
                 if let Some(rendered_id) = retrieved_entry.rendered_id {
-                    block.remove_child(rendered_id);
+                    //block.remove_child(rendered_id);
                     entry.reuse(&mut retrieved_entry);
+                    // need to make sure it gets back into client layout by by the end of this function
+                } else {
+                    panic!("Not supported at the moment");
                 }
             } else {
                 /* No entry to reuse, so a new entry has to be made */
@@ -725,6 +739,7 @@ impl CenterModel {
             let id = location.id;
             *(block.child_mut(id).unwrap().location()) = location;
         }
+        std::mem::swap(&mut self.client_layout, &mut self.offline_layout);
     }
 }
 impl ContainerBlockLogic for CenterModel {
