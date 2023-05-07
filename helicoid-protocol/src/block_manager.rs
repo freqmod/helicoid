@@ -121,6 +121,29 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
             path,
         }
     }
+    fn remove_from_layer(
+        layers: &mut HashMap<BlockLayer, Vec<(RenderBlockId, PointF16)>>,
+        cblock: &ContainerBlock<G>,
+        block_id: RenderBlockId,
+    ) {
+        if let Some(old_layer) = layers.get_mut(&cblock.layer) {
+            if let Some(old_block_idx) = old_layer.iter().enumerate().find_map(|(idx, (id, _))| {
+                if *id == block_id {
+                    Some(idx)
+                } else {
+                    None
+                }
+            }) {
+                old_layer.swap_remove(old_block_idx);
+            } else {
+                log::debug!(
+                    "Tried to remove {:?} from layer {}, but could not find it",
+                    block_id,
+                    cblock.layer
+                );
+            }
+        }
+    }
     pub fn update_location(&mut self, new_location: &RenderBlockLocation) {
         let path = self.path.clone();
         let Some(cblock) = self.blocks.get_mut(&new_location.id) else {
@@ -137,19 +160,7 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
 
         if cblock.layer != new_location.layer {
             /* Remove from old layer */
-            if let Some(old_layer) = self.layers.get_mut(&cblock.layer) {
-                if let Some(old_block_idx) =
-                    old_layer.iter().enumerate().find_map(|(idx, (id, _))| {
-                        if *id == new_location.id {
-                            Some(idx)
-                        } else {
-                            None
-                        }
-                    })
-                {
-                    old_layer.swap_remove(old_block_idx);
-                }
-            }
+            Self::remove_from_layer(&mut self.layers, cblock, new_location.id);
             /* Add to new layer */
             self.layers
                 .entry(new_location.layer)
@@ -571,6 +582,10 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     fn add_block(&mut self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
         log::trace!("Adding block {:?} <- {:?}", self.path, id);
         let container_block = ContainerBlock::new(block, 0);
+        if self.blocks.contains_key(&id) {
+            log::trace!("Readd block, removing first: {:?} {:?}", self.path, id);
+            self.remove_blocks(RenderBlockId(0), id);
+        }
         if self.blocks.insert(id, container_block).is_none() {
             log::trace!("Adding to layer");
             /* TODO: Consider remove: Should we require a new location before displaying or display
@@ -615,7 +630,10 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {
         if mask_id.0 == 0 {
-            self.blocks.remove(&mask_id);
+            let removed = self.blocks.remove(&mask_id);
+            if let Some(removed) = removed {
+                Self::remove_from_layer(&mut self.layers, &removed, base_id);
+            }
         } else {
             todo!("Removing multiple blocks at a time is not implemented yet")
         }
