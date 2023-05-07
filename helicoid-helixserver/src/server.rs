@@ -23,7 +23,11 @@ use helicoid_protocol::{
     },
     text::{FontEdging, FontHinting, ShapableString, SmallFontOptions},
 };
-use helix_core::{config::user_syntax_loader, syntax};
+use helix_core::{
+    config::user_syntax_loader,
+    movement::{move_horizontally, move_vertically, Direction},
+    syntax,
+};
 use helix_view::{
     editor::{Action, Config},
     graphics::Rect,
@@ -242,6 +246,26 @@ impl ServerState {
                         VirtualKeycode::Y => Some('Y'),
                         VirtualKeycode::Z => Some('Z'),
                         VirtualKeycode::Space => Some(' '),
+                        VirtualKeycode::Up => {
+                            self.move_document(None, Some(Direction::Backward)).await;
+                            self.sync_screen().await?;
+                            None
+                        }
+                        VirtualKeycode::Down => {
+                            self.move_document(None, Some(Direction::Forward)).await;
+                            self.sync_screen().await?;
+                            None
+                        }
+                        VirtualKeycode::Left => {
+                            self.move_document(Some(Direction::Backward), None).await;
+                            self.sync_screen().await?;
+                            None
+                        }
+                        VirtualKeycode::Right => {
+                            self.move_document(Some(Direction::Forward), None).await;
+                            self.sync_screen().await?;
+                            None
+                        }
                         _ => None,
                     };
                     if let Some(text) = text {
@@ -276,6 +300,72 @@ impl ServerState {
 
         Ok(())
     }
+
+    async fn move_document(&mut self, dx: Option<Direction>, dy: Option<Direction>) {
+        let view_id = self
+            .state_data
+            .compositor
+            .as_ref()
+            .unwrap()
+            .containers()
+            .get(&RenderBlockId(CONTAINER_IDS_BASE))
+            .unwrap()
+            .current_view_id()
+            .unwrap();
+        let context = &mut self.state_data.compositor.as_mut().unwrap().content_visitor;
+        let editor_locked = context.editor();
+        let mut editor = editor_locked.lock().await;
+        //        let mut doc = context.current_doc().unwrap();
+        //        let (view, doc) = doc.destruct_mut();
+        let view = editor.editor().tree.get(view_id);
+        let doc_id = view.doc.clone();
+        let doc = editor.editor().documents.get(&doc_id);
+        let doc = doc.unwrap();
+        let viewport_width = view.inner_area(doc).width;
+        let count = 10;
+        let text = doc.text().slice(..);
+        let text_fmt = doc.text_format(viewport_width, None);
+        let mut annotations = view.text_annotations(doc, None);
+
+        let mut selection = doc.selection(view.id).clone();
+        let old_selection = selection.clone();
+        if let Some(dx) = dx {
+            selection = selection.transform(|range| {
+                move_horizontally(
+                    text,
+                    range,
+                    dx,
+                    count,
+                    helix_core::movement::Movement::Move,
+                    &text_fmt,
+                    &mut annotations,
+                )
+            });
+        }
+        if let Some(dy) = dy {
+            selection = selection.transform(|range| {
+                move_vertically(
+                    text,
+                    range,
+                    dy,
+                    count,
+                    helix_core::movement::Movement::Move,
+                    &text_fmt,
+                    &mut annotations,
+                )
+            });
+        }
+        let doc_mut = editor.editor_mut().documents.get_mut(&doc_id).unwrap();
+        log::debug!(
+            "Moving section: x: {:?} y: {:?} {:?} -> {:?}",
+            dx,
+            dy,
+            old_selection,
+            selection
+        );
+        doc_mut.set_selection(view_id, selection);
+    }
+
     async fn maintain_enclosure(&mut self) -> Result<()> {
         let view_size = self.viewport_size.as_ref().unwrap().physical_size;
         let scale_factor = self.viewport_size.as_ref().unwrap().scale_factor;
@@ -392,6 +482,7 @@ impl EditorEnclosure {
         let newblock = NewRenderBlock {
             id: self.enclosure_location.id,
             contents: RenderBlockDescription::MetaBox(self.enclosure_meta.clone()),
+            update: true,
         };
         let send_msg = TcpBridgeToClientMessage {
             message: HelicoidToClientMessage {
@@ -498,5 +589,8 @@ impl Compositor {
                 .await?;
         }
         Ok(())
+    }
+    pub fn containers(&self) -> &HashMap<RenderBlockId, EditorTree> {
+        &self.containers
     }
 }

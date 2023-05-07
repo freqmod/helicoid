@@ -658,7 +658,8 @@ where
                 parent: parent.clone(),
                 new_render_blocks: smallvec![NewRenderBlock {
                     id: self.id,
-                    contents: RenderBlockDescription::MetaBox(self.wire.clone())
+                    contents: RenderBlockDescription::MetaBox(self.wire.clone()),
+                    update: true,
                 }],
                 remove_render_blocks: SmallVec::from_iter(self.pending_removal.drain(..).map(
                     |id| RenderBlockRemoveInstruction {
@@ -821,7 +822,10 @@ impl ShadowMetaTextBlock {
     }
     fn rehash(&mut self) {
         let mut hasher = AHasher::default();
-        self.hash(&mut hasher);
+        //self.hash(&mut hasher);
+        self.wire.hash(&mut hasher);
+        self.id.hash(&mut hasher);
+        //        self.location.hash(&mut hasher);
         self.hash = Some(hasher.finish());
     }
     pub fn id(&self) -> RenderBlockId {
@@ -845,15 +849,18 @@ impl ShadowMetaTextBlock {
                 .map(|l| l == location)
                 .unwrap_or(false)
         {
+            log::trace!("Skip transferring text block due to hash reuse");
             return;
         }
         self.location = Some(location.clone());
-        /* Transfer location metadata for this metablock to the client */
+        self.client_hash = self.hash; // This doesn't work, probably a parent is removed
+                                      /* Transfer location metadata for this metablock to the client */
         messages_vec.push(RemoteBoxUpdate {
             parent: parent.clone(),
             new_render_blocks: smallvec![NewRenderBlock {
                 id: self.id,
-                contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone())
+                contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone()),
+                update: true,
             }],
             remove_render_blocks: Default::default(),
             move_block_locations: smallvec![self.location.clone().unwrap()],

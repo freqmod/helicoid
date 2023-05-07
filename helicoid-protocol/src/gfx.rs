@@ -249,6 +249,7 @@ pub enum RenderBlockDescription {
 pub struct NewRenderBlock {
     pub id: RenderBlockId,
     pub contents: RenderBlockDescription,
+    pub update: bool,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]

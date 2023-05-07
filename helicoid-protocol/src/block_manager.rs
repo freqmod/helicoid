@@ -51,6 +51,12 @@ pub trait ManagerGfx<B: BlockGfx> {
 
 pub trait BlockContainer<G: BlockGfx>: std::fmt::Debug {
     fn path(&self) -> &RenderBlockPath;
+    /* Return true if the block exists and was updated, false if not (and add_block should be called) */
+    fn update_block(
+        &mut self,
+        id: RenderBlockId,
+        block_description: &RenderBlockDescription,
+    ) -> bool;
     fn add_block(&mut self, id: RenderBlockId, block: Block<G>) -> anyhow::Result<()>;
     fn block(&self, id: RenderBlockId) -> Option<&Block<G>>;
     fn block_mut(&mut self, id: RenderBlockId) -> Option<&mut Block<G>>;
@@ -68,7 +74,7 @@ pub trait BlockContainer<G: BlockGfx>: std::fmt::Debug {
 
 #[derive(Debug)]
 struct ContainerBlock<G: BlockGfx> {
-    layer: BlockLayer,
+    pub(crate) layer: Option<BlockLayer>,
     //location: PointF16,
     block: Option<Block<G>>,
     hash: u64,
@@ -126,21 +132,25 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
         cblock: &ContainerBlock<G>,
         block_id: RenderBlockId,
     ) {
-        if let Some(old_layer) = layers.get_mut(&cblock.layer) {
-            if let Some(old_block_idx) = old_layer.iter().enumerate().find_map(|(idx, (id, _))| {
-                if *id == block_id {
-                    Some(idx)
+        if let Some(old_layer_idx) = cblock.layer {
+            if let Some(old_layer) = layers.get_mut(&old_layer_idx) {
+                if let Some(old_block_idx) =
+                    old_layer.iter().enumerate().find_map(|(idx, (id, _))| {
+                        if *id == block_id {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    old_layer.swap_remove(old_block_idx);
                 } else {
-                    None
+                    log::debug!(
+                        "Tried to remove {:?} from layer {}, but could not find it",
+                        block_id,
+                        old_layer_idx
+                    );
                 }
-            }) {
-                old_layer.swap_remove(old_block_idx);
-            } else {
-                log::debug!(
-                    "Tried to remove {:?} from layer {}, but could not find it",
-                    block_id,
-                    cblock.layer
-                );
             }
         }
     }
@@ -151,14 +161,14 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
             return;
         };
         log::debug!(
-            "Updated location on a block container: {:?} <- update: {:?} Layer: {} -> {}",
+            "Updated location on a block container: {:?} <- update: {:?} Layer: {:?} -> {:?}",
             path,
             new_location.id,
             cblock.layer,
             new_location.layer
         );
 
-        if cblock.layer != new_location.layer {
+        if cblock.layer != Some(new_location.layer) {
             /* Remove from old layer */
             Self::remove_from_layer(&mut self.layers, cblock, new_location.id);
             /* Add to new layer */
@@ -168,7 +178,7 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
                 .push((new_location.id, new_location.location));
         } else {
             /* Change the location in the layer in place, if it exists */
-            if let Some(current_layer) = self.layers.get_mut(&cblock.layer) {
+            if let Some(current_layer) = self.layers.get_mut(&cblock.layer.unwrap()) {
                 if let Some(current_block_idx) =
                     current_layer.iter().enumerate().find_map(|(idx, (id, _))| {
                         if *id == new_location.id {
@@ -182,7 +192,7 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
                 }
             }
         }
-        cblock.layer = new_location.layer;
+        cblock.layer = Some(new_location.layer);
         //        cblock.location = new_location.location;
     }
     fn container_block_mut(&mut self, id: RenderBlockId) -> Option<&mut ContainerBlock<G>> {
@@ -238,41 +248,59 @@ impl<BG: BlockGfx> Manager<BG> {
             /* If the block update is for a top level block */
             for block in update.new_render_blocks.iter() {
                 log::trace!("Update new render block: {:?}", block.id);
-                //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
-                let container = match block.contents {
-                    RenderBlockDescription::ShapedTextBlock(_) => None,
-                    RenderBlockDescription::SimpleDraw(_) => None,
-                    RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
-                        RenderBlockPath::child(&update.parent, block.id),
-                    )),
-                };
-                let new_rendered_block = Block::new(
-                    Some(block.contents.clone()),
-                    gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
-                    block.id,
-                    update.parent.clone(),
-                    container,
-                );
-                log::trace!("Render block to add: {:?}", new_rendered_block);
-                mgr_entry
-                    .meta
-                    .container
-                    .as_mut()
-                    .unwrap()
-                    .add_block(block.id, new_rendered_block)
-                    .unwrap();
-                /*                if let Some(render_block) =
-                    mgr_entry.meta.container.unwrap().blocks.get_mut(&block.id)
-                {
-                    //                *render_block = new_rendered_block;
-                    *render_block = new_rendered_block; //.handle_block_update(update, gfx_manager);
+                let add_new = if block.update {
+                    /* This needs to check if the block is present, and if so replace the wire only,
+                    otherwise add_new below */
+                    !mgr_entry
+                        .meta
+                        .container
+                        .as_mut()
+                        .unwrap()
+                        .update_block(block.id, &block.contents)
                 } else {
-                    /* TODO: Replace unwrap with proper error handling */
-                    /*                    assert!(self
-                    .containers
-                    .insert(block.id, new_rendered_block)
-                    .is_none());*/
-                }*/
+                    true
+                };
+                if add_new {
+                    //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
+                    let container = match block.contents {
+                        RenderBlockDescription::ShapedTextBlock(_) => None,
+                        RenderBlockDescription::SimpleDraw(_) => None,
+                        RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
+                            RenderBlockPath::child(&update.parent, block.id),
+                        )),
+                    };
+                    let new_rendered_block = Block::new(
+                        Some(block.contents.clone()),
+                        gfx_manager.create_gfx_block(
+                            &block.contents,
+                            update.parent.clone(),
+                            block.id,
+                        ),
+                        block.id,
+                        update.parent.clone(),
+                        container,
+                    );
+                    log::trace!("Render block to add: {:?}", new_rendered_block);
+                    mgr_entry
+                        .meta
+                        .container
+                        .as_mut()
+                        .unwrap()
+                        .add_block(block.id, new_rendered_block)
+                        .unwrap();
+                }
+                /*                if let Some(render_block) =
+                                    mgr_entry.meta.container.unwrap().blocks.get_mut(&block.id)
+                                {
+                                    //                *render_block = new_rendered_block;
+                                    *render_block = new_rendered_block; //.handle_block_update(update, gfx_manager);
+                                } else {
+                                    /* TODO: Replace unwrap with proper error handling */
+                                    /*                    assert!(self
+                                    .containers
+                                    .insert(block.id, new_rendered_block)
+                                    .is_none());*/
+                , {:}                }*/
             }
 
             for new_location in update.move_block_locations.iter() {
@@ -336,13 +364,18 @@ impl<BG: BlockGfx> Manager<BG> {
 }
 
 impl<BG: BlockGfx> ContainerBlock<BG> {
-    pub fn new(block: Block<BG>, layer: BlockLayer) -> Self {
+    pub fn new(block: Block<BG>, layer: Option<BlockLayer>) -> Self {
         Self {
             layer,
             //location,
             block: Some(block),
             hash: 0,
             last_changed: 0,
+        }
+    }
+    pub fn update_wire(&mut self, wire: &RenderBlockDescription) {
+        if let Some(block) = self.block.as_mut() {
+            block.meta.wire_description = Some(wire.clone());
         }
     }
 }
@@ -403,22 +436,31 @@ impl<BG: BlockGfx> Block<BG> {
             container.remove_blocks(instruction.mask, instruction.offset);
         }
         for block in update.new_render_blocks.iter() {
-            let new_block_container = match block.contents {
-                RenderBlockDescription::ShapedTextBlock(_) => None,
-                RenderBlockDescription::SimpleDraw(_) => None,
-                RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
-                    RenderBlockPath::child(&update.parent, block.id),
-                )),
+            let add_new = if block.update {
+                /* This needs to check if the block is present, and if so replace the wire only,
+                otherwise add_new below */
+                !container.update_block(block.id, &block.contents)
+            } else {
+                true
             };
-            let new_rendered_block = Block::new(
-                Some(block.contents.clone()),
-                gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
-                block.id,
-                update.parent.clone(),
-                new_block_container,
-            );
-            /* TODO: Replace unwrap with proper error handling */
-            container.add_block(block.id, new_rendered_block).unwrap();
+            if add_new {
+                let new_block_container = match block.contents {
+                    RenderBlockDescription::ShapedTextBlock(_) => None,
+                    RenderBlockDescription::SimpleDraw(_) => None,
+                    RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
+                        RenderBlockPath::child(&update.parent, block.id),
+                    )),
+                };
+                let new_rendered_block = Block::new(
+                    Some(block.contents.clone()),
+                    gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
+                    block.id,
+                    update.parent.clone(),
+                    new_block_container,
+                );
+                /* TODO: Replace unwrap with proper error handling */
+                container.add_block(block.id, new_rendered_block).unwrap();
+            }
         }
         for new_location in update.move_block_locations.iter() {
             container.update_location(new_location);
@@ -519,7 +561,7 @@ impl<BG: BlockGfx> MetaBlock<BG> {
                     let location = RenderBlockLocation {
                         id: block_id,
                         location: location.clone(),
-                        layer: container_block.layer,
+                        layer: container_block.layer.unwrap_or(0),
                     };
                     if cfg!(debug_assertions) {
                         if let Some(layer_dup_check) = layer_dup_check.as_mut() {
@@ -535,12 +577,15 @@ impl<BG: BlockGfx> MetaBlock<BG> {
         if cfg!(debug_assertions) {
             if let Some(layer_dup_check) = layer_dup_check.as_mut() {
                 let preduplen = layer_dup_check.len();
+                let layer_dup_check_ref = layer_dup_check.clone();
                 layer_dup_check.sort();
                 layer_dup_check.dedup();
                 debug_assert_eq!(
                     preduplen,
                     layer_dup_check.len(),
-                    "Duplicates in layers while rendering"
+                    "Duplicates in layers while rendering: {:?}, {:?}",
+                    layer_dup_check_ref,
+                    container.layers
                 );
             }
         }
@@ -578,31 +623,45 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     fn path(&self) -> &RenderBlockPath {
         &self.path
     }
+    fn update_block(
+        &mut self,
+        id: RenderBlockId,
+        block_description: &RenderBlockDescription,
+    ) -> bool {
+        if let Some(block) = self.blocks.get_mut(&id) {
+            block.update_wire(block_description);
+            true
+        } else {
+            false
+        }
+    }
 
     fn add_block(&mut self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
         log::trace!("Adding block {:?} <- {:?}", self.path, id);
-        let container_block = ContainerBlock::new(block, 0);
-        if self.blocks.contains_key(&id) {
-            log::trace!("Readd block, removing first: {:?} {:?}", self.path, id);
+        let container_block = ContainerBlock::new(block, None);
+        /*        if self.blocks.contains_key(&id) {
+            log::trace!("Re-add block, removing first: {:?} {:?}", self.path, id);
             self.remove_blocks(RenderBlockId(0), id);
-        }
-        if self.blocks.insert(id, container_block).is_none() {
-            log::trace!("Adding to layer");
+        }*/
+        match self.blocks.insert(id, container_block) {
+            Some(old_block) => {
+                log::trace!(
+                    "Trying to add block when it already is present: {:?} {:?}",
+                    self.path,
+                    id
+                );
+                /* Bring the layer of the old block over */
+                self.blocks.get_mut(&id).unwrap().layer = old_block.layer;
+                Ok(())
+            }
+            None => Ok(()),
+            //log::trace!("Adding to layer");
             /* TODO: Consider remove: Should we require a new location before displaying or display
             items at a default location by this (which is slightly inefficent in the most likely case)*/
-            self.layers
-                .entry(0)
-                .or_insert(Default::default())
-                .push((id, PointF16::new(0f32, 0f32)));
-            Ok(())
-        } else {
-            /* TODO: Make a better, more structured error return */
-            log::trace!(
-                "Trying to add block when it already is present: {:?} {:?}",
-                self.path,
-                id
-            );
-            Ok(())
+            /*            self.layers
+            .entry(0)
+            .or_insert(Default::default())
+            .push((id, PointF16::new(0f32, 0f32)));*/
         }
     }
 
@@ -666,6 +725,13 @@ impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
 
     fn add_block(&mut self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
         todo!()
+    }
+    fn update_block(
+        &mut self,
+        id: RenderBlockId,
+        block_description: &RenderBlockDescription,
+    ) -> bool {
+        false
     }
 
     fn block(&self, id: RenderBlockId) -> Option<&Block<BG>> {

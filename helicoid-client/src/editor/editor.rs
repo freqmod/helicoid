@@ -528,7 +528,7 @@ impl HeliconeEditor {
         }
         log::trace!("Editor: got request to draw frame");
         let client_id = RenderBlockId::normal(0).unwrap();
-        //self.renderer.log_block_tree(client_id);
+        self.renderer.log_block_tree(client_id);
         self.peek_and_process_events();
         let location = RenderBlockLocation {
             id: RenderBlockId::normal(0).unwrap(),
