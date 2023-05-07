@@ -308,7 +308,7 @@ impl EditorModel {
             if let Some(mut center_block) = block.child_mut(RenderBlockId(EDITOR_CHILD_CENTER)) {
                 let center_extent = center_block.block().extent_mut();
                 *center_extent =
-                    PointF16::new(horizontal_remaining.max(0f32), vertical_remaining.max(0f32));
+                    PointF16::new(vertical_remaining.max(0f32), horizontal_remaining.max(0f32));
             } else {
                 log::info!("No center block when laying out editor");
             }
