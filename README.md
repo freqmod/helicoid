@@ -1,6 +1,6 @@
 # Helicoid
 ![Logo](./assets/helicoid_logo.svg)
-![Screenshot](./assets/screenshot20230416.webp)
+![Screenshot](./assets/screenshot20230507.webp)
 
 Work in progress attempt at making a remote client for the Helix code editor. 
 The code editor code is at the moment not used in the project as the focus is to get a client and the client 
