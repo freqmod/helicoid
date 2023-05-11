@@ -788,10 +788,15 @@ impl ContainerBlockLogic for CenterModel {
         log::warn!("Center viewport extent: {:?}", block.extent());
         model.viewport = block.extent().clone();
         /* This will update offline layout according to the current document */
+        let view_pos = doc_container
+            .view()
+            .offset_coords_to_in_view(document, 0)
+            .unwrap_or(doc_container.view().offset);
         model.render_document(
             document,
             document.text().slice(..),
-            doc_container.view().offset,
+            //            doc_container.view().offset,
+            view_pos,
             &document.text_format(width_chars, Some(&doc_container.editor().editor().theme)),
             &Default::default(),
             std::iter::empty(),

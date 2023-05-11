@@ -153,7 +153,7 @@ impl HelicoidServer {
                 let heditor = editor.editor_mut();
                 //                let doc_id = Some(heditor.new_file(Action::VerticalSplit));
                 let doc_id = heditor.open(
-                    &std::env::current_dir().unwrap().join("src/main.rs"),
+                    &std::env::current_dir().unwrap().join("src/center.rs"),
                     helix_view::editor::Action::VerticalSplit,
                 );
                 let view_id = heditor.tree.focus;
