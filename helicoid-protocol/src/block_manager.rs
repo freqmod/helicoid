@@ -708,7 +708,12 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     }
     fn log_block_tree(&self, depth: usize) {
         for (id, block) in self.blocks.iter() {
-            log::debug!("{}{:4x}", "  ".repeat(depth), id.0);
+            log::debug!(
+                "{empty: >width$}{id:04x}",
+                empty = " ",
+                width = depth,
+                id = id.0
+            );
             if let Some(ref block) = block.block {
                 if let Some(ref container) = block.meta().container {
                     container.log_block_tree(depth + 1);

@@ -636,6 +636,13 @@ where
         location: &mut RenderBlockLocation,
         messages_vec: &mut Vec<RemoteBoxUpdate>,
     ) {
+        log::trace!(
+            "CTM: P:{:?} I: {:?} #CL: {:?} #WL:{:?}",
+            parent,
+            self.id,
+            self.child_blocks.len(),
+            self.wire.sub_blocks.len(),
+        );
         /* Make messages that transfers all outstanding state to client */
         if self.hash.is_none() {
             self.rehash();

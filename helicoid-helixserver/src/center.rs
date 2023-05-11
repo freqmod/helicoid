@@ -755,7 +755,7 @@ impl CenterModel {
                 },
                 ShadowMetaBlock::Text(text_block),
             );
-            log::trace!("Added child: {:?}", block_id);
+            log::trace!("Added child: {:?} {:?}", block_id, block.id());
         }
         /* TODO: Act on the updated locations */
         for location in updated_locations.drain(..) {
