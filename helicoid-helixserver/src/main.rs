@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use futures::StreamExt;
@@ -18,6 +21,9 @@ mod editor;
 mod editor_view;
 mod server;
 mod statusline;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

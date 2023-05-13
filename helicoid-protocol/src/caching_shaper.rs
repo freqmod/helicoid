@@ -659,13 +659,17 @@ impl KeyedSwashFont {
                 .join(format!("{}.ttf", family_name));
             //            let typeface = font_manager.match_family_style(family_name, font_style)?;
             let res = SwashFont::from_path(&font_file_path, 0)
-                .map(|font| KeyedSwashFont::new_string(name, font));
+                .map(|font| KeyedSwashFont::new_string(name.clone(), font));
             if res.is_none() {
                 trace!("KSFLoading font failed: {:?}", font_file_path);
+                let res_def = SwashFont::from_data(DEFAULT_FONT.to_vec(), 0)
+                    .map(|font| KeyedSwashFont::new_string(name, font));
+                trace!("Loaded default instead: {:?}", res_def);
+                res_def
             } else {
                 trace!("KSFLoading font succeeded: {:?}", font_file_path);
+                res
             }
-            res
         } else {
             trace!("KSFLoading default font {:?}", name);
             SwashFont::from_data(DEFAULT_FONT.to_vec(), 0)

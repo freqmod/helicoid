@@ -22,6 +22,8 @@ async-trait = { version = "0.1.60" }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}
 swash = "0.1.6"
+lazy_static={version="1.4.0"}
+test-env-log = "0.2.8"
 
 arc-swap = { version = "1.5.0" }
 toml = "0.5"

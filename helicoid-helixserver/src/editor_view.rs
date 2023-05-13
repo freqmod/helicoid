@@ -157,6 +157,11 @@ impl ContentVisitor {
     pub fn active_view_id(&self) -> Option<ViewId> {
         self.active_view_id
     }
+
+    #[cfg(test)]
+    pub fn set_active_view_id(&mut self, view_id: Option<ViewId>) {
+        self.active_view_id = view_id
+    }
 }
 
 impl VisitingContext for ContentVisitor {
