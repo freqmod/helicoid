@@ -5,8 +5,11 @@ use helicoid_protocol::{
     dataflow::{ShadowMetaBlock, ShadowMetaContainerBlock},
     gfx::{PointF16, RemoteBoxUpdate, RenderBlockId, RenderBlockLocation, RenderBlockPath},
 };
-use helix_core::{SmartString, Transaction};
-use helix_view::{Document, ViewId};
+use helix_core::{
+    movement::{move_vertically, Direction},
+    SmartString, Transaction,
+};
+use helix_view::{Document, Editor as VEditor, ViewId};
 use ordered_float::OrderedFloat;
 use tokio::sync::Mutex as TMutex;
 
@@ -51,6 +54,54 @@ async fn load_dummy_view(
     visitor.set_active_view_id(Some(view_id));
     Some(view_id)
 }
+fn move_selection(
+    dy: Direction,
+    count: usize,
+    editor: &mut VEditor,
+    view_id: ViewId,
+    viewport_width: u16,
+) {
+    let view = editor.tree.get(view_id);
+    let doc_id = view.doc.clone();
+    let doc = editor.documents.get(&doc_id).unwrap();
+    let text = doc.text().slice(..);
+    let text_fmt = doc.text_format(viewport_width, None);
+    let mut selection = doc.selection(view.id).clone();
+    let old_selection = selection.clone();
+    let mut annotations = view.text_annotations(doc, None);
+    selection = selection.transform(|range| {
+        move_vertically(
+            text,
+            range,
+            dy,
+            count,
+            helix_core::movement::Movement::Move,
+            &text_fmt,
+            &mut annotations,
+        )
+    });
+    let doc_mut = editor.documents.get_mut(&doc_id).unwrap();
+    log::debug!(
+        "Moving section: x: {:?} y: {:?} {:?} -> {:?}",
+        0,
+        dy,
+        old_selection,
+        selection
+    );
+    doc_mut.set_selection(view_id, selection);
+}
+
+async fn update_blocked(
+    mut block: ShadowMetaBlock<ContentVisitor>,
+    mut visitor: ContentVisitor,
+) -> (ShadowMetaBlock<ContentVisitor>, ContentVisitor) {
+    tokio::task::spawn_blocking(move || {
+        block.container_mut().unwrap().update(&mut visitor);
+        (block, visitor)
+    })
+    .await
+    .unwrap()
+}
 
 #[test_env_log::test(tokio::test)]
 async fn center_scoll() {
@@ -67,11 +118,11 @@ async fn center_scoll() {
     block.set_extent(PointF16::new(100f32, 100f32));
 
     let mut content_visitor = prepare_content_visitor();
-    let _view_id = load_dummy_view(&mut content_visitor, Some(&"Some dummy text"))
+    let view_id = load_dummy_view(&mut content_visitor, Some(&"Some dummy text"))
         .await
         .unwrap();
 
-    let (block, _content_visitor) = tokio::task::spawn_blocking(move || {
+    let (mut block, mut content_visitor) = tokio::task::spawn_blocking(move || {
         block.initialize(&mut content_visitor);
         block.update(&mut content_visitor);
         (block, content_visitor)
@@ -88,7 +139,34 @@ async fn center_scoll() {
     let mut wrapped_block = ShadowMetaBlock::WrappedContainer(Box::new(block));
     wrapped_block.client_transfer_messages(&CENTER_BLOCK_PARENT_PATH, &mut loc, &mut out_messages);
 
+    log::debug!(
+        "Messages to transfer to client pre move: {:?}",
+        out_messages
+    );
+
     // TODO: Examine out_messages
+
+    {
+        let mut editor = content_visitor.editor().lock().await;
+        let heditor = editor.editor_mut();
+        move_selection(
+            Direction::Forward,
+            10,
+            heditor,
+            view_id,
+            wrapped_block.extent().x() as u16,
+        );
+    }
+
+    let (mut wrapped_block, _content_visitor) =
+        update_blocked(wrapped_block, content_visitor).await;
+
+    out_messages.clear();
+    wrapped_block.client_transfer_messages(&CENTER_BLOCK_PARENT_PATH, &mut loc, &mut out_messages);
+    log::debug!(
+        "Messages to transfer to client post move: {:?}",
+        out_messages
+    );
     let result = 2 + 2;
     assert_eq!(result, 4);
 }
