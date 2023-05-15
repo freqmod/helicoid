@@ -118,9 +118,15 @@ async fn center_scoll() {
     block.set_extent(PointF16::new(100f32, 100f32));
 
     let mut content_visitor = prepare_content_visitor();
-    let view_id = load_dummy_view(&mut content_visitor, Some(&"Some dummy text"))
-        .await
-        .unwrap();
+    let view_id = load_dummy_view(
+        &mut content_visitor,
+        Some(
+            &"Some dummy text
+        \n\n\n\n\nLine\n\n\nText\nLorem\nIpsum\nEst\nDisputandum\nconst\nmut\nlet",
+        ),
+    )
+    .await
+    .unwrap();
 
     let (mut block, mut content_visitor) = tokio::task::spawn_blocking(move || {
         block.initialize(&mut content_visitor);
@@ -143,6 +149,7 @@ async fn center_scoll() {
         "Messages to transfer to client pre move: {:?}",
         out_messages
     );
+    log::debug!("---------------------------------------------------------");
 
     // TODO: Examine out_messages
 
@@ -166,6 +173,21 @@ async fn center_scoll() {
     log::debug!(
         "Messages to transfer to client post move: {:?}",
         out_messages
+            .iter()
+            .map(|upd| {
+                format!(
+                    "New: {:x?} Move: {:x?}",
+                    upd.new_render_blocks
+                        .iter()
+                        .map(|nb| nb.id.0)
+                        .collect::<Vec<_>>(),
+                    upd.move_block_locations
+                        .iter()
+                        .map(|loc| loc.id.0)
+                        .collect::<Vec<_>>()
+                )
+            })
+            .collect::<Vec<_>>()
     );
     let result = 2 + 2;
     assert_eq!(result, 4);

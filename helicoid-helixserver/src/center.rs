@@ -183,6 +183,14 @@ impl LayoutParagraphEntry {
         self.layout.hash(&mut hasher);
         self.location.hash(&mut hasher);
         self.layout_hash = hasher.finish();
+        //        self.lash_modified
+
+        /*log::trace!(
+            "Hashed: H: {:?} Loc: {:?} Lay: {:?}",
+            self.layout_hash,
+            self.location,
+            self.layout
+        );*/
     }
 
     /* Returns a render block location to send to the client, unless the block
@@ -652,6 +660,8 @@ impl CenterModel {
                 .iter()
                 .enumerate()
                 .find(|(_, (_, h))| *h == entry_hash);
+            log::trace!("Slot hash: H: {:?}", entry_hash);
+
             if let Some((client_idx, (client_id, _client_hash))) = client_entry {
                 /* If this entry is found, it is up to date, so there is no reason to update the contents,
                 however it is removed and added back to the client layout list to be able to move it and
