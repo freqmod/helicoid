@@ -105,7 +105,7 @@ async fn update_blocked(
 
 #[test_env_log::test(tokio::test)]
 async fn center_scoll() {
-    env::set_var("RUST_LOG", "trace");
+    //    env::set_var("RUST_LOG", "trace");
     let mut center_model = CenterModel::default();
     center_model.scaled_font_size = OrderedFloat::<f32>(16f32);
     let mut block = ShadowMetaContainerBlock::new(

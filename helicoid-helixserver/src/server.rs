@@ -322,7 +322,7 @@ impl ServerState {
         let doc = editor.editor().documents.get(&doc_id);
         let doc = doc.unwrap();
         let viewport_width = view.inner_area(doc).width;
-        let count = 10;
+        let count = 1;
         let text = doc.text().slice(..);
         let text_fmt = doc.text_format(viewport_width, None);
         let mut annotations = view.text_annotations(doc, None);

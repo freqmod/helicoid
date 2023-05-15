@@ -181,9 +181,7 @@ impl LayoutParagraphEntry {
     fn recalculate_layout_hash(&mut self) {
         let mut hasher = AHasher::default();
         self.layout.hash(&mut hasher);
-        self.location.hash(&mut hasher);
         self.layout_hash = hasher.finish();
-        //        self.lash_modified
 
         /*log::trace!(
             "Hashed: H: {:?} Loc: {:?} Lay: {:?}",
@@ -280,7 +278,6 @@ impl RenderParagraph {
     fn hash_contents(&self) -> u64 {
         let mut hasher = AHasher::default();
         self.contents.hash(&mut hasher);
-        self.location.hash(&mut hasher);
         hasher.finish()
     }
     fn ensure_rendered(&mut self, shaper: &mut CachingShaper) {
@@ -660,7 +657,7 @@ impl CenterModel {
                 .iter()
                 .enumerate()
                 .find(|(_, (_, h))| *h == entry_hash);
-            log::trace!("Slot hash: H: {:?}", entry_hash);
+            //            log::trace!("Slot hash: H: {:?}", entry_hash);
 
             if let Some((client_idx, (client_id, _client_hash))) = client_entry {
                 /* If this entry is found, it is up to date, so there is no reason to update the contents,
@@ -724,6 +721,12 @@ impl CenterModel {
         TODO: Consider leaving them in here to be aged out to avoid having to resend them if scrolling short distances */
         for entry in self.client_layout.drain(..) {
             if let Some(rendered_id) = entry.rendered_id {
+                log::trace!(
+                    "Drainloc ({:?}): {:?} oldloc: {:?}",
+                    entry.rendered_id,
+                    entry.location,
+                    entry.client_location
+                );
                 block.remove_child(rendered_id);
             }
         }

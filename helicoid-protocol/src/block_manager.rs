@@ -236,14 +236,20 @@ impl<BG: BlockGfx> Manager<BG> {
                 )
             });
 
-            for update in update.remove_render_blocks.iter() {
+            for update_remove in update.remove_render_blocks.iter() {
+                log::debug!(
+                    "Remove render block: P: {:?} M: {:?} O: {:?}",
+                    update.parent,
+                    update_remove.mask,
+                    update_remove.offset
+                );
                 //                if let Some(render_block) = self.containers.get_mut(&block.id) {
                 mgr_entry
                     .meta
                     .container
                     .as_mut()
                     .unwrap()
-                    .remove_blocks(update.mask, update.offset);
+                    .remove_blocks(update_remove.mask, update_remove.offset);
             }
             /* If the block update is for a top level block */
             for block in update.new_render_blocks.iter() {
@@ -433,6 +439,13 @@ impl<BG: BlockGfx> Block<BG> {
             return;
         };
         for instruction in update.remove_render_blocks.iter() {
+            log::debug!(
+                "Remove render block: P: {:?} M: {:?} O: {:?} (#blocks: {})",
+                update.parent,
+                instruction.mask,
+                instruction.offset,
+                container.blocks.len()
+            );
             container.remove_blocks(instruction.mask, instruction.offset);
         }
         for block in update.new_render_blocks.iter() {
@@ -689,9 +702,10 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
 
     fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {
         if mask_id.0 == 0 {
-            let removed = self.blocks.remove(&mask_id);
+            let removed = self.blocks.remove(&base_id);
             if let Some(removed) = removed {
                 Self::remove_from_layer(&mut self.layers, &removed, base_id);
+            } else {
             }
         } else {
             todo!("Removing multiple blocks at a time is not implemented yet")
@@ -708,7 +722,7 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
     }
     fn log_block_tree(&self, depth: usize) {
         for (id, block) in self.blocks.iter() {
-            log::debug!(
+            log::trace!(
                 "{empty: >width$}{id:04x}",
                 empty = " ",
                 width = depth,

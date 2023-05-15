@@ -557,6 +557,7 @@ where
                 self.wire.sub_blocks.remove(block_idx),
             ));
             /* Notify client about the removal next time it is synced */
+            //log::trace!("Add pending removal: {}", id.0);
             self.pending_removal.push(id);
             removed
         } else {
@@ -637,11 +638,12 @@ where
         messages_vec: &mut Vec<RemoteBoxUpdate>,
     ) {
         log::trace!(
-            "CTM: P:{:?} I: {:?} #CL: {:?} #WL:{:?}",
+            "CTM: P:{:?} I: {:?} #CL: {:?} #WL:{:?} PR: {:?}",
             parent,
             self.id,
             self.child_blocks.len(),
             self.wire.sub_blocks.len(),
+            self.pending_removal,
         );
         /* Make messages that transfers all outstanding state to client */
         if self.hash.is_none() {
@@ -660,6 +662,20 @@ where
         self.location = Some(location.clone());
         let child_path = RenderBlockPath::child(parent, self.id);
         if Some(self.meta_hash) != self.client_meta_hash {
+            if !self.pending_removal.is_empty() {
+                messages_vec.push(RemoteBoxUpdate {
+                    //parent: parent.clone(),
+                    parent: child_path.clone(),
+                    new_render_blocks: smallvec![],
+                    remove_render_blocks: SmallVec::from_iter(self.pending_removal.drain(..).map(
+                        |id| RenderBlockRemoveInstruction {
+                            offset: id,
+                            mask: RenderBlockId(0),
+                        },
+                    )),
+                    move_block_locations: smallvec![],
+                })
+            }
             /* Transfer location metadata for this metablock to the client */
             messages_vec.push(RemoteBoxUpdate {
                 parent: parent.clone(),
@@ -668,12 +684,7 @@ where
                     contents: RenderBlockDescription::MetaBox(self.wire.clone()),
                     update: true,
                 }],
-                remove_render_blocks: SmallVec::from_iter(self.pending_removal.drain(..).map(
-                    |id| RenderBlockRemoveInstruction {
-                        offset: id,
-                        mask: RenderBlockId(0),
-                    },
-                )),
+                remove_render_blocks: smallvec![],
                 move_block_locations: smallvec![self.location.clone().unwrap()],
             })
         }
