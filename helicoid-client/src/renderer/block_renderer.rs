@@ -7,8 +7,8 @@ use helicoid_protocol::block_manager::{
     RenderBlockFullId,
 };
 use helicoid_protocol::gfx::{
-    FontPaint, PathVerb, PointF16, RemoteBoxUpdate, RenderBlockLocation, SimpleDrawElement,
-    SimplePaint, SVG_RESOURCE_NAME_LEN,
+    FontPaint, PathVerb, PointF16, PointF32, RemoteBoxUpdate, RenderBlockLocation,
+    SimpleDrawElement, SimplePaint, SVG_RESOURCE_NAME_LEN,
 };
 use helicoid_protocol::{
     gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
@@ -51,7 +51,7 @@ impl SvgResourcePixmapCache {
     pub fn fetch_resource<F: FnOnce(&Vec<u8>, u32, u32) -> V, V>(
         &self,
         name: &SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>,
-        size: &PointF16,
+        size: &PointF32,
         handle: F,
     ) -> Option<V> {
         let mut res = self.resources.lock();
@@ -690,7 +690,7 @@ impl SkiaClientRenderBlock {
             );
             let adjusted_location = RenderBlockLocation {
                 id: location.id,
-                location: PointF16::default(),
+                location: PointF32::default(),
                 layer: location.layer,
             };
             let extent = mb.extent;
@@ -868,7 +868,7 @@ fn build_sub_surface(context: &mut DirectContext, image_info: ImageInfo) -> Surf
     .expect(format!("Could not create surface: {:?}", image_info).as_str())
 }
 
-fn as_skpoint(p: &PointF16) -> Point {
+fn as_skpoint(p: &PointF32) -> Point {
     Point { x: p.x(), y: p.y() }
 }
 /*

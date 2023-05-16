@@ -1,5 +1,5 @@
 use crate::font_options::FontOptions;
-use crate::gfx::{FontPaint, PointF16, SimplePaint};
+use crate::gfx::{FontPaint, PointF16, PointF32, SimplePaint};
 use crate::swash_font::SwashFont;
 use crate::text::{
     FontParameters, ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph,
@@ -608,7 +608,7 @@ impl CachingShaper {
             }
             current_text_offset += run.substring_length as usize;
         }
-        resulting_block.extent = PointF16::new(current_pixel_offset, max_y_advance);
+        resulting_block.extent = PointF32::new(current_pixel_offset, max_y_advance);
         trace!("Shaped text: {:?}", resulting_block);
 
         resulting_block

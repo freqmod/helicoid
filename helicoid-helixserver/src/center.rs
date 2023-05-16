@@ -14,7 +14,7 @@ use helicoid_protocol::{
     font_options::FontOptions,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
+        PointF32, PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
         RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction, SimpleDrawBlock,
         SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect,
         SimpleSvg,
@@ -108,8 +108,8 @@ struct LayoutParagraph {
 #[derive(Hash, PartialEq, Default)]
 struct LayoutParagraphEntry {
     layout: LayoutParagraph,
-    location: PointF16,
-    client_location: Option<PointF16>,
+    location: PointF32,
+    client_location: Option<PointF32>,
     client_hash: Option<u64>,
     layout_hash: u64,
     rendered_id: Option<RenderBlockId>,
@@ -133,7 +133,7 @@ pub struct CenterModel {
     client_layout: Vec<LayoutParagraphEntry>,
     offline_layout: Vec<LayoutParagraphEntry>,
     rendered_paragraphs: Vec<Option<RenderParagraph>>,
-    viewport: PointF16,
+    viewport: PointF32,
     current_generation: u16,
     col_offset: u32,
     tab: String,
@@ -442,7 +442,7 @@ impl CenterModel {
                 /* TODO: It should probably be width of space, and not avg char here? */
                 //                last_line_pos.start_char_idx * shaper.current_size()
 
-                let line_loc = PointF16::new(0f32, line_y);
+                let line_loc = PointF32::new(0f32, line_y);
                 //                    PointF16::new(avg_char_width * last_line_pos.start_char_idx as f32, line_y);
 
                 self.flush_line(&mut paragraph, shaper, line_loc);
@@ -583,7 +583,7 @@ impl CenterModel {
         &mut self,
         layout_paragraph: &mut LayoutParagraph,
         shaper: &CachingShaper,
-        location: PointF16,
+        location: PointF32,
     ) {
         log::trace!("Flush line:{:?}", layout_paragraph);
         if !layout_paragraph.text.is_empty() {
@@ -694,7 +694,7 @@ impl CenterModel {
                     contents: MaybeRenderedParagraph::Source(rendered),
                     location: RenderBlockLocation {
                         id: block_id,
-                        location: PointF16::default(),
+                        location: PointF32::default(),
                         layer: 0,
                     },
                     data_hash: 0, // TODO: Is hash needed here, or just set it as 0 and fill it further down this function
@@ -763,7 +763,7 @@ impl CenterModel {
             block.set_child(
                 RenderBlockLocation {
                     id: block_id,
-                    location: PointF16::default(),
+                    location: PointF32::default(),
                     layer: 0,
                 },
                 ShadowMetaBlock::Text(text_block),

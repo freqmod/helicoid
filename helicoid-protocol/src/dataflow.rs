@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     gfx::{
-        MetaDrawBlock, NewRenderBlock, PointF16, RemoteBoxUpdate, RenderBlockDescription,
+        MetaDrawBlock, NewRenderBlock, PointF16, PointF32, RemoteBoxUpdate, RenderBlockDescription,
         RenderBlockId, RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction,
         SimpleDrawBlock,
     },
@@ -388,7 +388,7 @@ where
 {
     pub fn new(
         id: RenderBlockId,
-        extent: PointF16,
+        extent: PointF32,
         buffered: bool,
         alpha: Option<u8>,
         logic: L,
@@ -433,10 +433,10 @@ where
         let Self { inner, logic } = self;
         (inner, logic)
     }
-    pub fn extent(&self) -> PointF16 {
+    pub fn extent(&self) -> PointF32 {
         self.inner.wire.extent
     }
-    pub fn set_extent(&mut self, extent: PointF16) {
+    pub fn set_extent(&mut self, extent: PointF32) {
         self.inner.wire.extent = extent;
     }
     pub fn alpha(&mut self) -> Option<u8> {
@@ -510,10 +510,10 @@ where
             }
         }
     }
-    pub fn extent(&self) -> PointF16 {
+    pub fn extent(&self) -> PointF32 {
         self.wire.extent
     }
-    pub fn set_extent(&mut self, extent: PointF16) {
+    pub fn set_extent(&mut self, extent: PointF32) {
         self.wire.extent = extent;
     }
     pub fn alpha(&mut self) -> Option<u8> {
@@ -775,7 +775,7 @@ where
             ShadowMetaBlock::Text(t) => t.client_transfer_messages(parent, location, messages_vec),
         }
     }
-    pub fn extent_mut(&mut self) -> &mut PointF16 {
+    pub fn extent_mut(&mut self) -> &mut PointF32 {
         match self {
             ShadowMetaBlock::WrappedContainer(wc) => &mut wc.inner_mut().wire.extent,
             ShadowMetaBlock::Container(c) => &mut c.inner.wire.extent,
@@ -783,7 +783,7 @@ where
             ShadowMetaBlock::Text(t) => &mut t.wire.extent,
         }
     }
-    pub fn extent(&self) -> &PointF16 {
+    pub fn extent(&self) -> &PointF32 {
         match self {
             ShadowMetaBlock::WrappedContainer(wc) => &wc.inner().wire.extent,
             ShadowMetaBlock::Container(c) => &c.inner.wire.extent,

@@ -9,7 +9,7 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
+        PointF32, PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
         RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath,
         SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
     },
@@ -167,7 +167,7 @@ impl HelicoidServer {
                 1.0f32, /* Scale factor is determined when a resize event occurs */
                 font_metrics,
                 view_id,
-                PointF16::default(),
+                PointF32::default(),
             );
             let initial_container = {
                 let mut compositor = state_data.compositor.take();
@@ -369,7 +369,7 @@ impl ServerState {
     async fn maintain_enclosure(&mut self) -> Result<()> {
         let view_size = self.viewport_size.as_ref().unwrap().physical_size;
         let scale_factor = self.viewport_size.as_ref().unwrap().scale_factor;
-        let enclosure_extent = PointF16::from(PointU32::new(view_size.0, view_size.1));
+        let enclosure_extent = PointF32::new(view_size.0 as f32, view_size.1 as f32);
         let mut content_list_hasher = AHasher::default();
         enclosure_extent.hash(&mut content_list_hasher);
         {
@@ -403,7 +403,7 @@ impl ServerState {
                 //                let MetaDrawBlock { extent, buffered, alpha, sub_blocks }
                 let block_loc = RenderBlockLocation {
                     id: container.top_container_id(),
-                    location: PointF16::default(),
+                    location: PointF32::default(),
                     layer: 0x40,
                 };
                 sub_blocks.push(block_loc);
@@ -412,7 +412,7 @@ impl ServerState {
             self.state_data.enclosure = Some(EditorEnclosure {
                 enclosure_location: RenderBlockLocation {
                     id: RenderBlockId(ENCLOSURE_ID),
-                    location: PointF16::default(),
+                    location: PointF32::default(),
                     layer: 0x10,
                 },
                 enclosure_meta: MetaDrawBlock {
@@ -565,7 +565,7 @@ impl Compositor {
             if multiple enclosures in the same client / changing the location live is required */
             let mut loc = RenderBlockLocation {
                 id: tree.top_container_id(),
-                location: PointF16::default(),
+                location: PointF32::default(),
                 layer: 0,
             };
             tree.transfer_changes(
@@ -580,6 +580,8 @@ impl Compositor {
         &mut self,
         channel_tx: &mut Sender<TcpBridgeToClientMessage>,
     ) -> anyhow::Result<()> {
+        let scratch_len = self.client_messages_scratch.len();
+        /* TOTO: Make channel accept more messages in one go to improve performance */
         for message in self.client_messages_scratch.drain(..) {
             log::trace!("Send message to client: {:?}", message);
             channel_tx
@@ -588,6 +590,8 @@ impl Compositor {
                 })
                 .await?;
         }
+        /* Avoid having to incrementally grow the scratch vector again */
+        self.client_messages_scratch.reserve(scratch_len);
         Ok(())
     }
     pub fn containers(&self) -> &HashMap<RenderBlockId, EditorTree> {

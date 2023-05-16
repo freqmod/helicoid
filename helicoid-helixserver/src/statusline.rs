@@ -12,9 +12,9 @@ use helicoid_protocol::{
     },
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
-        SimplePaint, SimpleRoundRect, SimpleSvg,
+        PointF32, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
+        RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath,
+        SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -244,16 +244,16 @@ impl StatusLineModel {
 
         match target_block_id.0 {
             STATUSLINE_CHILD_ID_LEFT => {
-                cloc.location = PointF16::new(2f32 * char_width, line_y);
+                cloc.location = PointF32::new(2f32 * char_width, line_y);
             }
             STATUSLINE_CHILD_ID_CENTER => {
                 let block_center = container_width / 2.0;
                 let string_center = string_width / 2.0;
-                cloc.location = PointF16::new(block_center - string_center, line_y);
+                cloc.location = PointF32::new(block_center - string_center, line_y);
             }
             STATUSLINE_CHILD_ID_RIGHT => {
                 cloc.location =
-                    PointF16::new(container_width - (2f32 * char_width) - string_width, line_y);
+                    PointF32::new(container_width - (2f32 * char_width) - string_width, line_y);
             }
             _ => {}
         }
@@ -329,7 +329,7 @@ impl ContainerBlockLogic for StatusLineModel {
         block.set_child(
             RenderBlockLocation {
                 id: RenderBlockId(STATUSLINE_CHILD_ID_LEFT),
-                location: PointF16::default(),
+                location: PointF32::default(),
                 layer: 0,
             },
             ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(
@@ -339,7 +339,7 @@ impl ContainerBlockLogic for StatusLineModel {
         block.set_child(
             RenderBlockLocation {
                 id: RenderBlockId(STATUSLINE_CHILD_ID_CENTER),
-                location: PointF16::default(),
+                location: PointF32::default(),
                 layer: 0,
             },
             ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(
@@ -349,7 +349,7 @@ impl ContainerBlockLogic for StatusLineModel {
         block.set_child(
             RenderBlockLocation {
                 id: RenderBlockId(STATUSLINE_CHILD_ID_RIGHT),
-                location: PointF16::default(),
+                location: PointF32::default(),
                 layer: 0,
             },
             ShadowMetaBlock::Text(ShadowMetaTextBlock::new(RenderBlockId(

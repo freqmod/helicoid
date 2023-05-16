@@ -13,7 +13,7 @@ use num_enum::IntoPrimitive;
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
 
-use crate::gfx::{FontPaint, PointF16};
+use crate::gfx::{FontPaint, PointF16, PointF32};
 
 pub const SHAPABLE_STRING_ALLOC_LEN: usize = 128;
 pub const SHAPABLE_STRING_ALLOC_RUNS: usize = 16;
@@ -95,7 +95,7 @@ pub struct ShapableString {
 pub struct ShapedTextBlock {
     pub glyphs: SmallVec<[ShapedTextGlyph; SHAPABLE_STRING_ALLOC_LEN]>,
     pub metadata_runs: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
-    pub extent: PointF16,
+    pub extent: PointF32,
 }
 
 impl ShapedTextGlyph {

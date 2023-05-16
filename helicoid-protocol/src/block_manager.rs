@@ -2,6 +2,7 @@ use smallvec::SmallVec;
 
 use crate::gfx::BlockLayer;
 use crate::gfx::PointF16;
+use crate::gfx::PointF32;
 use crate::gfx::RemoteBoxUpdate;
 use crate::gfx::RenderBlockDescription;
 use crate::gfx::RenderBlockId;
@@ -85,7 +86,7 @@ struct ContainerBlock<G: BlockGfx> {
 pub struct InteriorBlockContainer<G: BlockGfx> {
     path: RenderBlockPath,
     blocks: HashMap<RenderBlockId, ContainerBlock<G>>,
-    layers: HashMap<BlockLayer, Vec<(RenderBlockId, PointF16)>>,
+    layers: HashMap<BlockLayer, Vec<(RenderBlockId, PointF32)>>,
     /* Used when iterating trough sublayers. Declare it here to avoid repeated heap allications */
     sorted_layers_tmp: SmallVec<[BlockLayer; 16]>,
 }
@@ -128,7 +129,7 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
         }
     }
     fn remove_from_layer(
-        layers: &mut HashMap<BlockLayer, Vec<(RenderBlockId, PointF16)>>,
+        layers: &mut HashMap<BlockLayer, Vec<(RenderBlockId, PointF32)>>,
         cblock: &ContainerBlock<G>,
         block_id: RenderBlockId,
     ) {

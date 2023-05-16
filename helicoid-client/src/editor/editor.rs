@@ -11,7 +11,7 @@ use crate::{
 };
 use helicoid_protocol::{
     block_manager::Manager,
-    gfx::{PointF16, RenderBlockDescription, RenderBlockId, RenderBlockLocation},
+    gfx::{PointF16, PointF32, RenderBlockDescription, RenderBlockId, RenderBlockLocation},
     input::{
         ComplexKeyEvent, HelicoidToServerMessage, KeyModifierStateUpdateEvent, ViewportInfo,
         VirtualKeycode,
@@ -532,7 +532,7 @@ impl HeliconeEditor {
         self.peek_and_process_events();
         let location = RenderBlockLocation {
             id: RenderBlockId::normal(0).unwrap(),
-            location: PointF16::new(0.0, 0.0),
+            location: PointF32::new(0.0, 0.0),
             layer: 0,
         };
         let mut target = SkiaClientRenderTarget {

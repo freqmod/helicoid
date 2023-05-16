@@ -129,7 +129,7 @@ pub struct PointF16 {
 }
 
 #[derive(
-    Hash, Copy, Clone, PartialEq, Default, Debug, Archive, Serialize, Deserialize, CheckBytes,
+    Hash, Copy, Clone, PartialEq, Eq, Default, Debug, Archive, Serialize, Deserialize, CheckBytes,
 )]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
@@ -208,8 +208,8 @@ pub struct SimpleRoundRect {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleSvg {
     pub resource_name: SmallVec<[u8; SVG_RESOURCE_NAME_LEN]>,
-    pub location: PointF16,
-    pub extent: PointF16,
+    pub location: PointF32,
+    pub extent: PointF32,
     pub paint: SimplePaint,
 }
 
@@ -226,13 +226,13 @@ pub enum SimpleDrawElement {
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleDrawBlock {
-    pub extent: PointF16,
+    pub extent: PointF32,
     pub draw_elements: SmallVec<[SimpleDrawElement; 32]>,
 }
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct MetaDrawBlock {
-    pub extent: PointF16,
+    pub extent: PointF32,
     pub buffered: bool,
     pub alpha: Option<u8>, // If alpha is 0, the block is skipped, otherwise only applies to buffered blocks
     pub sub_blocks: SmallVec<[RenderBlockLocation; 32]>,
@@ -258,7 +258,7 @@ pub struct RenderBlockLocation {
     //    pub path: RenderBlockPath,
     pub id: RenderBlockId,
     /* Location refers to top left corner of the render block */
-    pub location: PointF16,
+    pub location: PointF32,
     pub layer: u8, /* Render order/layer, 0 is rendered first (bottommost).
                    Blocks with same number can be rendered in any order */
 }
