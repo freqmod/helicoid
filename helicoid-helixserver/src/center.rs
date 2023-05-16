@@ -7,10 +7,6 @@ use ahash::AHasher;
 use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    dataflow::{
-        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
-    },
     font_options::FontOptions,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
@@ -22,6 +18,10 @@ use helicoid_protocol::{
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
         MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+    },
+    shadowblocks::{
+        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
+        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
     },
     tcp_bridge::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,

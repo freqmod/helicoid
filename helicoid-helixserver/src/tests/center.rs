@@ -2,8 +2,8 @@ use std::{env, iter::once, sync::Arc};
 
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    dataflow::{ShadowMetaBlock, ShadowMetaContainerBlock},
     gfx::{PointF16, RemoteBoxUpdate, RenderBlockId, RenderBlockLocation, RenderBlockPath},
+    shadowblocks::{ShadowMetaBlock, ShadowMetaContainerBlock},
 };
 use helix_core::{
     movement::{move_vertically, Direction},

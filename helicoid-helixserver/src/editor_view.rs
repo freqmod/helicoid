@@ -2,10 +2,6 @@ use crate::{center::CenterModel, editor::Editor as HcEditor, statusline::StatusL
 use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    dataflow::{
-        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
-    },
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
         PointF32, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
@@ -15,6 +11,10 @@ use helicoid_protocol::{
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
         MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+    },
+    shadowblocks::{
+        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
+        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
     },
     tcp_bridge::{
         TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
