@@ -4,9 +4,9 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
-        RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath,
-        SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
+        PointF32, PointU32, RemoteBoxUpdate, RemoteSingleChange, RenderBlockDescription,
+        RenderBlockId, RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement,
+        SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -511,7 +511,7 @@ impl EditorTree {
         &mut self,
         parent_path: &RenderBlockPath,
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteBoxUpdate>,
+        messages_vec: &mut Vec<RemoteSingleChange>,
     ) {
         self.root
             .inner_mut()

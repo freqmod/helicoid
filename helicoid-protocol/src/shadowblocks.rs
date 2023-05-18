@@ -10,9 +10,9 @@ use std::{
 
 use crate::{
     gfx::{
-        MetaDrawBlock, NewRenderBlock, PointF16, PointF32, RemoteBoxUpdate, RenderBlockDescription,
-        RenderBlockId, RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction,
-        SimpleDrawBlock,
+        MetaDrawBlock, NewRenderBlock, PointF16, PointF32, RemoteBoxUpdate, RemoteSingleChange,
+        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
+        RenderBlockRemoveInstruction, SimpleDrawBlock,
     },
     text::ShapedTextBlock,
 };
@@ -635,7 +635,7 @@ where
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteBoxUpdate>,
+        messages_vec: &mut Vec<RemoteSingleChange>,
     ) {
         log::trace!(
             "CTM: P:{:?} I: {:?} #CL: {:?} #WL:{:?} PR: {:?}",
@@ -663,30 +663,37 @@ where
         let child_path = RenderBlockPath::child(parent, self.id);
         if Some(self.meta_hash) != self.client_meta_hash {
             if !self.pending_removal.is_empty() {
-                messages_vec.push(RemoteBoxUpdate {
+                messages_vec.push(RemoteSingleChange {
                     //parent: parent.clone(),
                     parent: child_path.clone(),
-                    new_render_blocks: smallvec![],
-                    remove_render_blocks: SmallVec::from_iter(self.pending_removal.drain(..).map(
-                        |id| RenderBlockRemoveInstruction {
-                            offset: id,
-                            mask: RenderBlockId(0),
-                        },
-                    )),
-                    move_block_locations: smallvec![],
-                })
+                    change: crate::gfx::RemoteSingleChangeElement::RemoveRenderBlocks(
+                        SmallVec::from_iter(self.pending_removal.drain(..).map(|id| {
+                            RenderBlockRemoveInstruction {
+                                offset: id,
+                                mask: RenderBlockId(0),
+                            }
+                        })),
+                    ),
+                });
             }
             /* Transfer location metadata for this metablock to the client */
-            messages_vec.push(RemoteBoxUpdate {
+            messages_vec.push(RemoteSingleChange {
                 parent: parent.clone(),
-                new_render_blocks: smallvec![NewRenderBlock {
-                    id: self.id,
-                    contents: RenderBlockDescription::MetaBox(self.wire.clone()),
-                    update: true,
-                }],
-                remove_render_blocks: smallvec![],
-                move_block_locations: smallvec![self.location.clone().unwrap()],
-            })
+                change: crate::gfx::RemoteSingleChangeElement::NewRenderBlocks(smallvec![
+                    NewRenderBlock {
+                        id: self.id,
+                        contents: RenderBlockDescription::MetaBox(self.wire.clone()),
+                        update: true,
+                    }
+                ]),
+            });
+            messages_vec.push(RemoteSingleChange {
+                parent: parent.clone(),
+                change: crate::gfx::RemoteSingleChangeElement::MoveBlockLocations(smallvec![self
+                    .location
+                    .clone()
+                    .unwrap()]),
+            });
         }
         /* Push contents after the outside block, to ensure that the client knows about them */
         for (idx, element) in self.child_blocks.iter_mut().enumerate() {
@@ -760,7 +767,7 @@ where
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteBoxUpdate>,
+        messages_vec: &mut Vec<RemoteSingleChange>,
     ) {
         match self {
             ShadowMetaBlock::WrappedContainer(wc) => {
@@ -853,7 +860,7 @@ impl ShadowMetaTextBlock {
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteBoxUpdate>,
+        messages_vec: &mut Vec<RemoteSingleChange>,
     ) {
         /* Make messages that transfers all outstanding state to client */
         if self.hash.is_none() {
@@ -873,15 +880,22 @@ impl ShadowMetaTextBlock {
         self.location = Some(location.clone());
         self.client_hash = self.hash; // This doesn't work, probably a parent is removed
                                       /* Transfer location metadata for this metablock to the client */
-        messages_vec.push(RemoteBoxUpdate {
+        messages_vec.push(RemoteSingleChange {
             parent: parent.clone(),
-            new_render_blocks: smallvec![NewRenderBlock {
-                id: self.id,
-                contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone()),
-                update: true,
-            }],
-            remove_render_blocks: Default::default(),
-            move_block_locations: smallvec![self.location.clone().unwrap()],
-        })
+            change: crate::gfx::RemoteSingleChangeElement::NewRenderBlocks(smallvec![
+                NewRenderBlock {
+                    id: self.id,
+                    contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone()),
+                    update: true,
+                }
+            ]),
+        });
+        messages_vec.push(RemoteSingleChange {
+            parent: parent.clone(),
+            change: crate::gfx::RemoteSingleChangeElement::MoveBlockLocations(smallvec![self
+                .location
+                .clone()
+                .unwrap()]),
+        });
     }
 }

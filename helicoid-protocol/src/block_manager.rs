@@ -4,6 +4,7 @@ use crate::gfx::BlockLayer;
 use crate::gfx::PointF16;
 use crate::gfx::PointF32;
 use crate::gfx::RemoteBoxUpdate;
+use crate::gfx::RemoteSingleChange;
 use crate::gfx::RenderBlockDescription;
 use crate::gfx::RenderBlockId;
 use crate::gfx::RenderBlockLocation;
@@ -222,112 +223,123 @@ impl<BG: BlockGfx> Manager<BG> {
     pub fn handle_block_update<MG: ManagerGfx<BG>>(
         &mut self,
         client_id: RenderBlockId,
-        update: &RemoteBoxUpdate,
+        updates: &Vec<RemoteSingleChange>,
         gfx_manager: &mut MG,
     ) {
-        if update.parent.path().is_empty() {
-            let mgr_entry = self.containers.entry(client_id).or_insert_with(|| {
-                log::trace!("Make container entry for: {:?}", client_id);
-                Block::new(
-                    None,
-                    gfx_manager.create_top_block(client_id),
-                    client_id,
-                    RenderBlockPath::top(),
-                    Some(InteriorBlockContainer::new(RenderBlockPath::top())),
-                )
-            });
-
-            for update_remove in update.remove_render_blocks.iter() {
-                log::debug!(
-                    "Remove render block: P: {:?} M: {:?} O: {:?}",
-                    update.parent,
-                    update_remove.mask,
-                    update_remove.offset
-                );
-                //                if let Some(render_block) = self.containers.get_mut(&block.id) {
-                mgr_entry
-                    .meta
-                    .container
-                    .as_mut()
-                    .unwrap()
-                    .remove_blocks(update_remove.mask, update_remove.offset);
-            }
-            /* If the block update is for a top level block */
-            for block in update.new_render_blocks.iter() {
-                log::trace!("Update new render block: {:?}", block.id);
-                let add_new = if block.update {
-                    /* This needs to check if the block is present, and if so replace the wire only,
-                    otherwise add_new below */
-                    !mgr_entry
-                        .meta
-                        .container
-                        .as_mut()
-                        .unwrap()
-                        .update_block(block.id, &block.contents)
-                } else {
-                    true
-                };
-                if add_new {
-                    //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
-                    let container = match block.contents {
-                        RenderBlockDescription::ShapedTextBlock(_) => None,
-                        RenderBlockDescription::SimpleDraw(_) => None,
-                        RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
-                            RenderBlockPath::child(&update.parent, block.id),
-                        )),
-                    };
-                    let new_rendered_block = Block::new(
-                        Some(block.contents.clone()),
-                        gfx_manager.create_gfx_block(
-                            &block.contents,
-                            update.parent.clone(),
-                            block.id,
-                        ),
-                        block.id,
-                        update.parent.clone(),
-                        container,
-                    );
-                    log::trace!("Render block to add: {:?}", new_rendered_block);
-                    mgr_entry
-                        .meta
-                        .container
-                        .as_mut()
-                        .unwrap()
-                        .add_block(block.id, new_rendered_block)
-                        .unwrap();
+        for update in updates.iter() {
+            if update.parent.path().is_empty() {
+                let mgr_entry = self.containers.entry(client_id).or_insert_with(|| {
+                    log::trace!("Make container entry for: {:?}", client_id);
+                    Block::new(
+                        None,
+                        gfx_manager.create_top_block(client_id),
+                        client_id,
+                        RenderBlockPath::top(),
+                        Some(InteriorBlockContainer::new(RenderBlockPath::top())),
+                    )
+                });
+                /* If the block update is for a top level block */
+                match update.change {
+                    crate::gfx::RemoteSingleChangeElement::NewRenderBlocks(ref new) => {
+                        for block in new.iter() {
+                            log::trace!("Update new render block: {:?}", block.id);
+                            let add_new = if block.update {
+                                /* This needs to check if the block is present, and if so replace the wire only,
+                                otherwise add_new below */
+                                !mgr_entry
+                                    .meta
+                                    .container
+                                    .as_mut()
+                                    .unwrap()
+                                    .update_block(block.id, &block.contents)
+                            } else {
+                                true
+                            };
+                            if add_new {
+                                //let parent = 0; /* Set parent to 0 as this is sent as a top level block? */
+                                let container = match block.contents {
+                                    RenderBlockDescription::ShapedTextBlock(_) => None,
+                                    RenderBlockDescription::SimpleDraw(_) => None,
+                                    RenderBlockDescription::MetaBox(_) => {
+                                        Some(InteriorBlockContainer::new(RenderBlockPath::child(
+                                            &update.parent,
+                                            block.id,
+                                        )))
+                                    }
+                                };
+                                let new_rendered_block = Block::new(
+                                    Some(block.contents.clone()),
+                                    gfx_manager.create_gfx_block(
+                                        &block.contents,
+                                        update.parent.clone(),
+                                        block.id,
+                                    ),
+                                    block.id,
+                                    update.parent.clone(),
+                                    container,
+                                );
+                                log::trace!("Render block to add: {:?}", new_rendered_block);
+                                mgr_entry
+                                    .meta
+                                    .container
+                                    .as_mut()
+                                    .unwrap()
+                                    .add_block(block.id, new_rendered_block)
+                                    .unwrap();
+                            }
+                            /*                if let Some(render_block) =
+                                                mgr_entry.meta.container.unwrap().blocks.get_mut(&block.id)
+                                            {
+                                                //                *render_block = new_rendered_block;
+                                                *render_block = new_rendered_block; //.handle_block_update(update, gfx_manager);
+                                            } else {
+                                                /* TODO: Replace unwrap with proper error handling */
+                                                /*                    assert!(self
+                                                .containers
+                                                .insert(block.id, new_rendered_block)
+                                                .is_none());*/
+                            , {:}                }*/
+                        }
+                    }
+                    crate::gfx::RemoteSingleChangeElement::RemoveRenderBlocks(ref removal) => {
+                        for update_remove in removal.iter() {
+                            log::debug!(
+                                "Remove render block: P: {:?} M: {:?} O: {:?}",
+                                update.parent,
+                                update_remove.mask,
+                                update_remove.offset
+                            );
+                            //                if let Some(render_block) = self.containers.get_mut(&block.id) {
+                            mgr_entry
+                                .meta
+                                .container
+                                .as_mut()
+                                .unwrap()
+                                .remove_blocks(update_remove.mask, update_remove.offset);
+                        }
+                    }
+                    crate::gfx::RemoteSingleChangeElement::MoveBlockLocations(ref move_blocks) => {
+                        for new_location in move_blocks.iter() {
+                            mgr_entry
+                                .meta
+                                .container
+                                .as_mut()
+                                .unwrap()
+                                .update_location(new_location);
+                        }
+                    }
                 }
-                /*                if let Some(render_block) =
-                                    mgr_entry.meta.container.unwrap().blocks.get_mut(&block.id)
-                                {
-                                    //                *render_block = new_rendered_block;
-                                    *render_block = new_rendered_block; //.handle_block_update(update, gfx_manager);
-                                } else {
-                                    /* TODO: Replace unwrap with proper error handling */
-                                    /*                    assert!(self
-                                    .containers
-                                    .insert(block.id, new_rendered_block)
-                                    .is_none());*/
-                , {:}                }*/
-            }
-
-            for new_location in update.move_block_locations.iter() {
-                mgr_entry
-                    .meta
-                    .container
-                    .as_mut()
-                    .unwrap()
-                    .update_location(new_location);
-            }
-        } else {
-            /* If the block update has a parent, find the parent and forward the update */
-            if let Some(child_block) = self.block_for_path_mut(client_id, &update.parent) {
-                child_block.handle_block_update(update, gfx_manager);
             } else {
-                log::debug!(
-                    "Could not get block for path: {:?} {:?}",
-                    client_id,
-                    update.parent
-                )
+                /* If the block update has a parent, find the parent and forward the update */
+                if let Some(child_block) = self.block_for_path_mut(client_id, &update.parent) {
+                    child_block.handle_block_update(update, gfx_manager);
+                } else {
+                    log::debug!(
+                        "Could not get block for path: {:?} {:?}",
+                        client_id,
+                        update.parent
+                    )
+                }
             }
         }
     }
@@ -427,7 +439,7 @@ impl<BG: BlockGfx> Block<BG> {
     }
     pub fn handle_block_update<MG: ManagerGfx<BG>>(
         &mut self,
-        update: &RemoteBoxUpdate,
+        update: &RemoteSingleChange,
         gfx_manager: &mut MG,
     ) {
         log::trace!(
@@ -439,45 +451,60 @@ impl<BG: BlockGfx> Block<BG> {
             log::debug!("Trying to send RemoteBoxUpdate to a block that isn't a container");
             return;
         };
-        for instruction in update.remove_render_blocks.iter() {
-            log::debug!(
-                "Remove render block: P: {:?} M: {:?} O: {:?} (#blocks: {})",
-                update.parent,
-                instruction.mask,
-                instruction.offset,
-                container.blocks.len()
-            );
-            container.remove_blocks(instruction.mask, instruction.offset);
-        }
-        for block in update.new_render_blocks.iter() {
-            let add_new = if block.update {
-                /* This needs to check if the block is present, and if so replace the wire only,
-                otherwise add_new below */
-                !container.update_block(block.id, &block.contents)
-            } else {
-                true
-            };
-            if add_new {
-                let new_block_container = match block.contents {
-                    RenderBlockDescription::ShapedTextBlock(_) => None,
-                    RenderBlockDescription::SimpleDraw(_) => None,
-                    RenderBlockDescription::MetaBox(_) => Some(InteriorBlockContainer::new(
-                        RenderBlockPath::child(&update.parent, block.id),
-                    )),
-                };
-                let new_rendered_block = Block::new(
-                    Some(block.contents.clone()),
-                    gfx_manager.create_gfx_block(&block.contents, update.parent.clone(), block.id),
-                    block.id,
-                    update.parent.clone(),
-                    new_block_container,
-                );
-                /* TODO: Replace unwrap with proper error handling */
-                container.add_block(block.id, new_rendered_block).unwrap();
+        match update.change {
+            crate::gfx::RemoteSingleChangeElement::NewRenderBlocks(ref new_blocks) => {
+                for block in new_blocks.iter() {
+                    let add_new = if block.update {
+                        /* This needs to check if the block is present, and if so replace the wire only,
+                        otherwise add_new below */
+                        !container.update_block(block.id, &block.contents)
+                    } else {
+                        true
+                    };
+                    if add_new {
+                        let new_block_container = match block.contents {
+                            RenderBlockDescription::ShapedTextBlock(_) => None,
+                            RenderBlockDescription::SimpleDraw(_) => None,
+                            RenderBlockDescription::MetaBox(_) => {
+                                Some(InteriorBlockContainer::new(RenderBlockPath::child(
+                                    &update.parent,
+                                    block.id,
+                                )))
+                            }
+                        };
+                        let new_rendered_block = Block::new(
+                            Some(block.contents.clone()),
+                            gfx_manager.create_gfx_block(
+                                &block.contents,
+                                update.parent.clone(),
+                                block.id,
+                            ),
+                            block.id,
+                            update.parent.clone(),
+                            new_block_container,
+                        );
+                        /* TODO: Replace unwrap with proper error handling */
+                        container.add_block(block.id, new_rendered_block).unwrap();
+                    }
+                }
             }
-        }
-        for new_location in update.move_block_locations.iter() {
-            container.update_location(new_location);
+            crate::gfx::RemoteSingleChangeElement::RemoveRenderBlocks(ref remove_blocks) => {
+                for instruction in remove_blocks.iter() {
+                    log::debug!(
+                        "Remove render block: P: {:?} M: {:?} O: {:?} (#blocks: {})",
+                        update.parent,
+                        instruction.mask,
+                        instruction.offset,
+                        container.blocks.len()
+                    );
+                    container.remove_blocks(instruction.mask, instruction.offset);
+                }
+            }
+            crate::gfx::RemoteSingleChangeElement::MoveBlockLocations(ref move_blocks) => {
+                for new_location in move_blocks.iter() {
+                    container.update_location(new_location);
+                }
+            }
         }
     }
 }

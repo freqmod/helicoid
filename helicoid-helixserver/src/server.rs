@@ -9,9 +9,10 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
-        RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath,
-        SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
+        PointF32, PointU16, PointU32, RemoteBoxUpdate, RemoteSingleChange,
+        RemoteSingleChangeElement, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
+        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
+        SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -56,7 +57,7 @@ const UNSCALED_FONT_SIZE: f32 = 12f32;
 struct Compositor {
     containers: HashMap<RenderBlockId, EditorTree>,
     content_visitor: ContentVisitor,
-    client_messages_scratch: Vec<RemoteBoxUpdate>,
+    client_messages_scratch: Vec<RemoteSingleChange>,
 }
 
 #[derive(Debug)]
@@ -486,12 +487,18 @@ impl EditorEnclosure {
         };
         let send_msg = TcpBridgeToClientMessage {
             message: HelicoidToClientMessage {
-                update: RemoteBoxUpdate {
-                    parent: RenderBlockPath::top(),
-                    new_render_blocks: smallvec![newblock],
-                    remove_render_blocks: Default::default(),
-                    move_block_locations: smallvec![self.enclosure_location.clone()],
-                },
+                updates: vec![
+                    RemoteSingleChange {
+                        parent: RenderBlockPath::top(),
+                        change: RemoteSingleChangeElement::NewRenderBlocks(smallvec![newblock]),
+                    },
+                    RemoteSingleChange {
+                        parent: RenderBlockPath::top(),
+                        change: RemoteSingleChangeElement::MoveBlockLocations(smallvec![self
+                            .enclosure_location
+                            .clone()]),
+                    },
+                ],
             },
         };
         log::trace!("Enclosure msg: {:?}", send_msg);
@@ -586,7 +593,9 @@ impl Compositor {
             log::trace!("Send message to client: {:?}", message);
             channel_tx
                 .send(TcpBridgeToClientMessage {
-                    message: HelicoidToClientMessage { update: message },
+                    message: HelicoidToClientMessage {
+                        updates: vec![message],
+                    },
                 })
                 .await?;
         }

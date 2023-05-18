@@ -279,10 +279,25 @@ pub struct RemoteBoxUpdate {
     pub move_block_locations: SmallVec<[RenderBlockLocation; 128]>,
 }
 
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(Debug))]
+pub enum RemoteSingleChangeElement {
+    NewRenderBlocks(SmallVec<[NewRenderBlock; 4]>),
+    RemoveRenderBlocks(SmallVec<[RenderBlockRemoveInstruction; 4]>),
+    MoveBlockLocations(SmallVec<[RenderBlockLocation; 32]>),
+}
+
+#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[archive_attr(derive(CheckBytes, Debug))]
+pub struct RemoteSingleChange {
+    pub parent: RenderBlockPath,
+    pub change: RemoteSingleChangeElement,
+}
+
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct HelicoidToClientMessage {
-    pub update: RemoteBoxUpdate,
+    pub updates: Vec<RemoteSingleChange>,
 }
 
 impl SimplePaint {

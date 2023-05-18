@@ -492,12 +492,12 @@ impl HeliconeEditor {
                 match receiver.try_recv() {
                     Ok(event) => {
                         log::trace!("Got event from server: {:?}", event);
-                        let update = &event.message.update;
+                        let updates = &event.message.updates;
                         let client_id = RenderBlockId::normal(0).unwrap();
                         //todo!("Instantiate GFX manager, and call handle block update")
                         self.renderer.handle_block_update(
                             client_id,
-                            update,
+                            updates,
                             &mut self.graphics_manager,
                         );
                         REDRAW_SCHEDULER.queue_next_frame();
