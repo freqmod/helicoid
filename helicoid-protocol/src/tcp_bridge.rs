@@ -2,6 +2,7 @@
 managed by Tokio, and connected to the user interface by channels */
 
 use async_trait::async_trait;
+use rkyv::ser::serializers::AlignedSerializer;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
 use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,6 +42,7 @@ pub struct TcpBridgeToServerMessage {
 }
 pub struct TcpBridgeSend<M> {
     tcp_conn: OwnedWriteHalf,
+    serializer: Option<TBSSerializer>,
     chan: Receiver<M>,
     close_chan: OReceiver<()>,
 }
@@ -219,9 +221,12 @@ where
 {
     fn new(writer: OwnedWriteHalf, close_chan: OReceiver<()>) -> Result<(Self, Sender<M>)> {
         let (tx, rx) = mpsc::channel(32);
+        let serializer = Some(TBSSerializer::default());
+
         Ok((
             Self {
                 tcp_conn: writer,
+                serializer,
                 chan: rx,
                 close_chan,
             },
@@ -234,13 +239,16 @@ where
                 received = self.chan.recv() => {
                     match received {
                         Some(message) => {
-                            let mut serializer = TBSSerializer::default();
+                            let mut serializer = self.serializer.take().unwrap();
                             serializer.serialize_value(&message).unwrap();
-                            let bytes = serializer.into_serializer().into_inner();
+                            let (inner_serializer, scratch, shared) = serializer.into_components();
+                            let mut bytes = inner_serializer.into_inner();
                             log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);
                             let header = (bytes.len() as u16).to_le_bytes();
                             let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
                             self.tcp_conn.write_vectored(&bufs).await?;
+                            bytes.clear();
+                            self.serializer = Some(TBSSerializer::new(AlignedSerializer::new(bytes), scratch, shared));
                         }
                         None => {
                             break;
