@@ -500,6 +500,7 @@ impl HeliconeEditor {
                             updates,
                             &mut self.graphics_manager,
                         );
+                        log::debug!("Redraw scheduled in event processing");
                         REDRAW_SCHEDULER.queue_next_frame();
                     }
                     Err(e) => match e {

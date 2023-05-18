@@ -268,7 +268,8 @@ impl GlutinWindowWrapper {
                     self.handle_focus_lost();
                 }*/
             }
-            Event::RedrawRequested(..) | Event::WindowEvent { .. } => {
+            Event::RedrawRequested(..) => {
+                log::trace!("Window redraw requested");
                 REDRAW_SCHEDULER.queue_next_frame()
             }
             _ => {}

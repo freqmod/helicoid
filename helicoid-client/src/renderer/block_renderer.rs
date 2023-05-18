@@ -292,6 +292,20 @@ impl SkiaClientRenderBlock {
         target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
+        self.render_cached(location, target, meta, &Self::render_text_box_contents)
+    }
+    fn render_text_box_contents(
+        &mut self,
+        location: &RenderBlockLocation,
+        target: &mut Surface,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
+    ) {
+        /*    fn render_text_box_contents(
+            &mut self,
+            location: &RenderBlockLocation,
+            target: &mut SkiaClientRenderTarget<'_>,
+            meta: &mut MetaBlock<SkiaClientRenderBlock>,
+        ) {*/
         let Some(RenderBlockDescription::ShapedTextBlock(stb)) = &meta.wire_description() else {
             panic!("Render text box should not be called with a description that is not a ShapedTextBlock")
         };
@@ -319,7 +333,7 @@ impl SkiaClientRenderBlock {
         let mut paint = Paint::default();
         paint.set_blend_mode(BlendMode::SrcOver);
         paint.set_anti_alias(true);
-        let canvas = target.target_surface.canvas();
+        let canvas = target.canvas();
         canvas.save();
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
@@ -599,19 +613,42 @@ impl SkiaClientRenderBlock {
             _ => self.wire_description().hash(hasher),
         }
     }*/
-
-    /* This function renders a box containing other boxes, using a cached texture if it exists
-    and the hash of the description matches the previously rendered contents */
     pub fn render_meta_box(
         &mut self,
         location: &RenderBlockLocation,
         target: &mut SkiaClientRenderTarget<'_>,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
-        //        parents: &mut BlockRenderParents<Self>,
     ) {
-        let Some(RenderBlockDescription::MetaBox(mb)) = &meta.wire_description() else {
-            panic!("Render simple draw should not be called with a description that is not a simple draw")
-        };
+        /* This function renders a box containing other boxes, using a cached texture if it exists
+        and the hash of the description matches the previously rendered contents */
+        self.render_cached(location, target, meta, &Self::render_meta_box_contents);
+    }
+    /* This function renders a box containing other boxes, using a cached texture if it exists
+    and the hash of the description matches the previously rendered contents */
+    fn render_cached<C>(
+        &mut self,
+        location: &RenderBlockLocation,
+        target: &mut SkiaClientRenderTarget<'_>,
+        meta: &mut MetaBlock<SkiaClientRenderBlock>,
+        contents_render_function: &C,
+    ) where
+        C: Fn(&mut Self, &RenderBlockLocation, &mut Surface, &mut MetaBlock<SkiaClientRenderBlock>),
+    {
+        let extent;
+        let buffered;
+        match meta.wire_description().as_ref().unwrap() {
+            RenderBlockDescription::ShapedTextBlock(tb) => {
+                extent = tb.extent;
+                buffered = true; /* TODO: Get text buffered state from wire? */
+            }
+            RenderBlockDescription::MetaBox(mb) => {
+                extent = mb.extent;
+                buffered = mb.buffered;
+            }
+            _ => {
+                panic!("Caching for this block description type is not implemented yet")
+            }
+        }
         let target_surface = &mut target.target_surface;
         let mut hasher =
             ahash::random_state::RandomState::with_seeds(S1, S2, S3, S4).build_hasher();
@@ -636,7 +673,6 @@ impl SkiaClientRenderBlock {
                 );*/
                 let src_img = &cached.image;
                 let img_tmp; /* For lifetime reasons */
-                let extent = mb.extent;
                 if (extent.x() as i32 > 0) && (extent.y() as i32 > 0) {
                     let clipped_src_img = if (src_img.width() as f32 > extent.x()
                         || src_img.height() as f32 > extent.y())
@@ -664,7 +700,7 @@ impl SkiaClientRenderBlock {
                 return;
             }
         }
-        if mb.buffered {
+        if buffered {
             let mut context: DirectContext = target_surface
                 .recording_context()
                 .map(|mut c| c.as_direct_context())
@@ -673,8 +709,8 @@ impl SkiaClientRenderBlock {
             let target_image_info = target_surface.image_info();
             let image_info = ImageInfo::new(
                 ISize {
-                    width: (mb.extent.x() as i32).max(1),
-                    height: (mb.extent.y() as i32).max(1),
+                    width: (extent.x() as i32).max(1),
+                    height: (extent.y() as i32).max(1),
                 },
                 target_image_info.color_type(),
                 target_image_info.alpha_type(),
@@ -693,8 +729,7 @@ impl SkiaClientRenderBlock {
                 location: PointF32::default(),
                 layer: location.layer,
             };
-            let extent = mb.extent;
-            self.render_meta_box_contents(&adjusted_location, &mut dest_surface, meta);
+            contents_render_function(self, &adjusted_location, &mut dest_surface, meta);
             self.rendered = Some(RenderedRenderBlock {
                 image: dest_surface.image_snapshot(),
                 description_hash: hashed,
@@ -732,20 +767,20 @@ impl SkiaClientRenderBlock {
                 skia::Rect::new(
                     location.location.x(),
                     location.location.y(),
-                    location.location.x() + mb.extent.x(),
-                    location.location.y() + mb.extent.y(),
+                    location.location.x() + extent.x(),
+                    location.location.y() + extent.y(),
                 ),
                 Some(skia::ClipOp::Intersect),
                 Some(true),
             );
-            self.render_meta_box_contents(&adjusted_location, target_surface, meta);
+            contents_render_function(self, &adjusted_location, target_surface, meta);
             target_surface.canvas().restore();
         }
     }
-    fn render_meta_box_contents<'a, 't, 'p>(
-        &'a mut self,
-        location: &'t RenderBlockLocation,
-        target: &'t mut Surface,
+    fn render_meta_box_contents(
+        &mut self,
+        location: &RenderBlockLocation,
+        target: &mut Surface,
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let (wire_description, container) = meta.destruct_mut();
@@ -764,7 +799,7 @@ impl SkiaClientRenderBlock {
             parent: popt,
             gfx_block: &mut parents.gfx_block,
         };*/
-        let mut skr_target = SkiaClientRenderTarget::<'t> {
+        let mut skr_target = SkiaClientRenderTarget::<'_> {
             location,
             target_surface: target,
         };
