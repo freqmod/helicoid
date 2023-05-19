@@ -15,6 +15,7 @@ use crate::{
         RenderBlockRemoveInstruction, SimpleDrawBlock,
     },
     text::ShapedTextBlock,
+    transferbuffer::TransferBuffer,
 };
 trait Observer<T>
 where
@@ -635,7 +636,7 @@ where
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteSingleChange>,
+        transfer_buffer: &mut TransferBuffer,
     ) {
         log::trace!(
             "CTM: P:{:?} I: {:?} #CL: {:?} #WL:{:?} PR: {:?}",
@@ -663,44 +664,25 @@ where
         let child_path = RenderBlockPath::child(parent, self.id);
         if Some(self.meta_hash) != self.client_meta_hash {
             if !self.pending_removal.is_empty() {
-                messages_vec.push(RemoteSingleChange {
-                    //parent: parent.clone(),
-                    parent: child_path.clone(),
-                    change: crate::gfx::RemoteSingleChangeElement::RemoveRenderBlocks(
-                        SmallVec::from_iter(self.pending_removal.drain(..).map(|id| {
-                            RenderBlockRemoveInstruction {
-                                offset: id,
-                                mask: RenderBlockId(0),
-                            }
-                        })),
-                    ),
-                });
+                transfer_buffer.add_removes(&child_path, &self.pending_removal);
             }
             /* Transfer location metadata for this metablock to the client */
-            messages_vec.push(RemoteSingleChange {
-                parent: parent.clone(),
-                change: crate::gfx::RemoteSingleChangeElement::NewRenderBlocks(smallvec![
-                    NewRenderBlock {
-                        id: self.id,
-                        contents: RenderBlockDescription::MetaBox(self.wire.clone()),
-                        update: true,
-                    }
-                ]),
-            });
-            messages_vec.push(RemoteSingleChange {
-                parent: parent.clone(),
-                change: crate::gfx::RemoteSingleChangeElement::MoveBlockLocations(smallvec![self
-                    .location
-                    .clone()
-                    .unwrap()]),
-            });
+            transfer_buffer.add_news(
+                &parent,
+                &[NewRenderBlock {
+                    id: self.id,
+                    contents: RenderBlockDescription::MetaBox(self.wire.clone()),
+                    update: true,
+                }],
+            );
+            transfer_buffer.add_moves(&parent, &[self.location.clone().unwrap()]);
         }
         /* Push contents after the outside block, to ensure that the client knows about them */
         for (idx, element) in self.child_blocks.iter_mut().enumerate() {
             element.client_transfer_messages(
                 &child_path,
                 self.wire.sub_blocks.get_mut(idx).unwrap(),
-                messages_vec,
+                transfer_buffer,
             );
         }
         /* Make sure to update hash to cover any changes that have been pushed to the client */
@@ -767,19 +749,21 @@ where
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteSingleChange>,
+        transfer_buffer: &mut TransferBuffer,
     ) {
         match self {
             ShadowMetaBlock::WrappedContainer(wc) => {
                 wc.inner_mut()
-                    .client_transfer_messages(parent, location, messages_vec)
+                    .client_transfer_messages(parent, location, transfer_buffer)
             }
             ShadowMetaBlock::Container(c) => {
                 c.inner_mut()
-                    .client_transfer_messages(parent, location, messages_vec)
+                    .client_transfer_messages(parent, location, transfer_buffer)
             }
             ShadowMetaBlock::Draw(_) => todo!(),
-            ShadowMetaBlock::Text(t) => t.client_transfer_messages(parent, location, messages_vec),
+            ShadowMetaBlock::Text(t) => {
+                t.client_transfer_messages(parent, location, transfer_buffer)
+            }
         }
     }
     pub fn extent_mut(&mut self) -> &mut PointF32 {
@@ -860,7 +844,7 @@ impl ShadowMetaTextBlock {
         &mut self,
         parent: &RenderBlockPath, // nb remember to append the id of this box for children
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteSingleChange>,
+        transfer_buffer: &mut TransferBuffer,
     ) {
         /* Make messages that transfers all outstanding state to client */
         if self.hash.is_none() {
@@ -880,22 +864,14 @@ impl ShadowMetaTextBlock {
         self.location = Some(location.clone());
         self.client_hash = self.hash; // This doesn't work, probably a parent is removed
                                       /* Transfer location metadata for this metablock to the client */
-        messages_vec.push(RemoteSingleChange {
-            parent: parent.clone(),
-            change: crate::gfx::RemoteSingleChangeElement::NewRenderBlocks(smallvec![
-                NewRenderBlock {
-                    id: self.id,
-                    contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone()),
-                    update: true,
-                }
-            ]),
-        });
-        messages_vec.push(RemoteSingleChange {
-            parent: parent.clone(),
-            change: crate::gfx::RemoteSingleChangeElement::MoveBlockLocations(smallvec![self
-                .location
-                .clone()
-                .unwrap()]),
-        });
+        transfer_buffer.add_news(
+            &parent,
+            &[NewRenderBlock {
+                id: self.id,
+                contents: RenderBlockDescription::ShapedTextBlock(self.wire.clone()),
+                update: true,
+            }],
+        );
+        transfer_buffer.add_moves(&parent, &[self.location.clone().unwrap()]);
     }
 }

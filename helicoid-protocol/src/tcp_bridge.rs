@@ -3,8 +3,9 @@ managed by Tokio, and connected to the user interface by channels */
 
 use async_trait::async_trait;
 use rkyv::ser::serializers::AlignedSerializer;
+use rkyv::ser::ScratchSpace;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Serialize};
 use std::collections::HashMap;
 use std::io::IoSlice;
 use std::net::SocketAddr;
@@ -40,6 +41,11 @@ pub struct TcpBridgeToClientMessage {
 pub struct TcpBridgeToServerMessage {
     pub message: HelicoidToServerMessage,
 }
+
+pub trait SerializeWith {
+    fn serialize<R: Serializer + ScratchSpace>(&mut self, serializer: &mut R) -> Result<usize, ()>;
+}
+
 pub struct TcpBridgeSend<M> {
     tcp_conn: OwnedWriteHalf,
     serializer: Option<TBSSerializer>,
@@ -138,6 +144,12 @@ impl ServerSingleTcpBridge {
         rec_proc_res?;
         Ok(())
         // Need to call process on send and on receive
+    }
+}
+
+impl SerializeWith for TcpBridgeToClientMessage {
+    fn serialize<R: Serializer + ScratchSpace>(&mut self, serializer: &mut R) -> Result<usize, ()> {
+        serializer.serialize_value(self).map_err(|_e| ())
     }
 }
 

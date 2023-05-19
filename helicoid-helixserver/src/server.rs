@@ -23,6 +23,7 @@ use helicoid_protocol::{
         TcpBridgeToServerMessage,
     },
     text::{FontEdging, FontHinting, ShapableString, SmallFontOptions},
+    transferbuffer::TransferBuffer,
 };
 use helix_core::{
     config::user_syntax_loader,
@@ -57,7 +58,7 @@ const UNSCALED_FONT_SIZE: f32 = 12f32;
 struct Compositor {
     containers: HashMap<RenderBlockId, EditorTree>,
     content_visitor: ContentVisitor,
-    client_messages_scratch: Vec<RemoteSingleChange>,
+    transfer_buffer_scratch: Option<TransferBuffer>,
 }
 
 #[derive(Debug)]
@@ -76,7 +77,7 @@ struct ServerStateData {
 struct ServerState {
     pending_message: Option<TcpBridgeToServerMessage>,
     peer_address: SocketAddr,
-    channel_tx: Sender<TcpBridgeToClientMessage>,
+    channel_tx: Sender<TransferBuffer>,
     channel_rx: Receiver<TcpBridgeToServerMessage>,
     close_rx: BReceiver<()>,
     editor_update_rx: BReceiver<()>,
@@ -146,7 +147,7 @@ impl HelicoidServer {
                 compositor: Some(Box::new(Compositor {
                     containers: HashMap::default(),
                     content_visitor: visitor,
-                    client_messages_scratch: Default::default(),
+                    transfer_buffer_scratch: Default::default(),
                 })),
             };
             let view_id = {
@@ -367,7 +368,7 @@ impl ServerState {
         doc_mut.set_selection(view_id, selection);
     }
 
-    async fn maintain_enclosure(&mut self) -> Result<()> {
+    async fn maintain_enclosure(&mut self, transfer_buffer: &mut TransferBuffer) -> Result<()> {
         let view_size = self.viewport_size.as_ref().unwrap().physical_size;
         let scale_factor = self.viewport_size.as_ref().unwrap().scale_factor;
         let enclosure_extent = PointF32::new(view_size.0 as f32, view_size.1 as f32);
@@ -427,7 +428,7 @@ impl ServerState {
                 .enclosure
                 .as_mut()
                 .unwrap()
-                .send_message(&mut self.channel_tx)
+                .insert_message(transfer_buffer)
                 .await?;
             self.state_data.enclosure_hash = Some(enclosure_content_hash);
             log::trace!(
@@ -440,15 +441,33 @@ impl ServerState {
         Ok(())
     }
     async fn sync_screen(&mut self) -> Result<()> {
-        self.maintain_enclosure().await?;
         //        self.send_simple_test_shaped_string().await?;
         let mut compositor = self.state_data.compositor.take();
-        let compositor = tokio::task::spawn_blocking(move || {
+        {
+            /* TODO: Create transfer buffer if it does not exist */
+
+            let comp = compositor.as_mut().unwrap();
+            if comp.transfer_buffer_scratch.is_none() {
+                comp.transfer_buffer_scratch = Some(Default::default());
+            }
+            self.maintain_enclosure(comp.transfer_buffer_scratch.as_mut().unwrap())
+                .await?;
+        }
+        let mut compositor = tokio::task::spawn_blocking(move || {
             compositor.as_mut().unwrap().sync_screen().unwrap();
             compositor
         })
         .await
         .unwrap();
+        self.maintain_enclosure(
+            compositor
+                .as_mut()
+                .unwrap()
+                .transfer_buffer_scratch
+                .as_mut()
+                .unwrap(),
+        )
+        .await?;
         self.state_data.compositor = compositor;
         self.state_data
             .compositor
@@ -456,7 +475,6 @@ impl ServerState {
             .unwrap()
             .transfer_messages_to_client(&mut self.channel_tx)
             .await?;
-        self.maintain_enclosure().await?;
         Ok(())
     }
 
@@ -476,33 +494,17 @@ impl ServerState {
     }
 }
 impl EditorEnclosure {
-    pub async fn send_message(
-        &mut self,
-        channel_tx: &mut Sender<TcpBridgeToClientMessage>,
-    ) -> Result<()> {
+    pub async fn insert_message(&mut self, transfer_buffer: &mut TransferBuffer) -> Result<()> {
         let newblock = NewRenderBlock {
             id: self.enclosure_location.id,
             contents: RenderBlockDescription::MetaBox(self.enclosure_meta.clone()),
             update: true,
         };
-        let send_msg = TcpBridgeToClientMessage {
-            message: HelicoidToClientMessage {
-                updates: vec![
-                    RemoteSingleChange {
-                        parent: RenderBlockPath::top(),
-                        change: RemoteSingleChangeElement::NewRenderBlocks(smallvec![newblock]),
-                    },
-                    RemoteSingleChange {
-                        parent: RenderBlockPath::top(),
-                        change: RemoteSingleChangeElement::MoveBlockLocations(smallvec![self
-                            .enclosure_location
-                            .clone()]),
-                    },
-                ],
-            },
-        };
-        log::trace!("Enclosure msg: {:?}", send_msg);
-        channel_tx.send(send_msg).await?;
+
+        transfer_buffer.add_news(&RenderBlockPath::top(), &[newblock]);
+        transfer_buffer.add_moves(&RenderBlockPath::top(), &[self.enclosure_location.clone()]);
+
+        log::trace!("Enclosure transfer msg");
         Ok(())
     }
 }
@@ -511,7 +513,7 @@ impl TcpBridgeServerConnectionState for ServerState {
     type StateData = ServerStateData;
     async fn new_state(
         peer_address: SocketAddr,
-        channel_tx: Sender<TcpBridgeToClientMessage>,
+        channel_tx: Sender<TransferBuffer>,
         channel_rx: Receiver<TcpBridgeToServerMessage>,
         close_rx: BReceiver<()>,
         state_data: Self::StateData,
@@ -578,29 +580,19 @@ impl Compositor {
             tree.transfer_changes(
                 &RenderBlockPath::new(smallvec![RenderBlockId(ENCLOSURE_ID)]),
                 &mut loc,
-                &mut self.client_messages_scratch,
+                self.transfer_buffer_scratch.as_mut().unwrap(),
             );
         }
         Ok(())
     }
     async fn transfer_messages_to_client(
         &mut self,
-        channel_tx: &mut Sender<TcpBridgeToClientMessage>,
+        channel_tx: &mut Sender<TransferBuffer>,
     ) -> anyhow::Result<()> {
-        let scratch_len = self.client_messages_scratch.len();
-        /* TOTO: Make channel accept more messages in one go to improve performance */
-        for message in self.client_messages_scratch.drain(..) {
-            log::trace!("Send message to client: {:?}", message);
-            channel_tx
-                .send(TcpBridgeToClientMessage {
-                    message: HelicoidToClientMessage {
-                        updates: vec![message],
-                    },
-                })
-                .await?;
-        }
-        /* Avoid having to incrementally grow the scratch vector again */
-        self.client_messages_scratch.reserve(scratch_len);
+        log::trace!("Send message to client: {:?}", self.transfer_buffer_scratch);
+        channel_tx
+            .send(self.transfer_buffer_scratch.take().unwrap())
+            .await?;
         Ok(())
     }
     pub fn containers(&self) -> &HashMap<RenderBlockId, EditorTree> {

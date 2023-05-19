@@ -21,6 +21,7 @@ use helicoid_protocol::{
         TcpBridgeToServerMessage,
     },
     text::{FontEdging, FontHinting, ShapableString},
+    transferbuffer::TransferBuffer,
 };
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::{
@@ -511,11 +512,11 @@ impl EditorTree {
         &mut self,
         parent_path: &RenderBlockPath,
         location: &mut RenderBlockLocation,
-        messages_vec: &mut Vec<RemoteSingleChange>,
+        transfer_buffer: &mut TransferBuffer,
     ) {
         self.root
             .inner_mut()
-            .client_transfer_messages(&parent_path, location, messages_vec);
+            .client_transfer_messages(&parent_path, location, transfer_buffer);
     }
     pub fn top_container_id(&self) -> RenderBlockId {
         self.root.inner_ref().id()
