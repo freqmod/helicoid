@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ahash::HashMap;
 use anyhow::Result;
 use rkyv::ser::{ScratchSpace, Serializer};
@@ -21,7 +23,12 @@ pub struct TransferBuffer {
 }
 
 impl SerializeWith for TransferBuffer {
-    fn serialize<R: Serializer + ScratchSpace>(&mut self, serializer: &mut R) -> Result<usize, ()> {
+    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
+        TransferBuffer::serialize(self, serializer)
+    }
+}
+impl SerializeWith for Arc<TransferBuffer> {
+    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
         TransferBuffer::serialize(self, serializer)
     }
 }
@@ -83,13 +90,10 @@ impl TransferBuffer {
         path_entry.extend(new);
     }
 
-    pub fn serialize<S: Serializer + ScratchSpace>(
-        &mut self,
-        serializer: &mut S,
-    ) -> Result<usize, ()> {
+    pub fn serialize<S: Serializer + ScratchSpace>(&self, serializer: &mut S) -> Result<usize, ()> {
         let mut size = 0usize;
         /* Removals */
-        for (path, removals) in self.removals.iter_mut() {
+        for (path, removals) in self.removals.iter() {
             let removal = TcpBridgeToClientMessage {
                 message: HelicoidToClientMessage {
                     updates: vec![RemoteSingleChange {
@@ -108,7 +112,7 @@ impl TransferBuffer {
             size += serializer.serialize_value(&removal).map_err(|_e| ())?;
         }
         /* Additions */
-        for (path, additions) in self.additions.iter_mut() {
+        for (path, additions) in self.additions.iter() {
             let removal = TcpBridgeToClientMessage {
                 message: HelicoidToClientMessage {
                     updates: vec![RemoteSingleChange {
@@ -122,7 +126,7 @@ impl TransferBuffer {
             size += serializer.serialize_value(&removal).map_err(|_e| ())?;
         }
         /* Moves */
-        for (path, moves) in self.moves.iter_mut() {
+        for (path, moves) in self.moves.iter() {
             let removal = TcpBridgeToClientMessage {
                 message: HelicoidToClientMessage {
                     updates: vec![RemoteSingleChange {

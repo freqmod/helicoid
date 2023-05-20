@@ -14,6 +14,7 @@ use tokio::task::JoinSet;
 
 use crate::gfx::HelicoidToClientMessage;
 use crate::input::HelicoidToServerMessage;
+use crate::transferbuffer::TransferBuffer;
 use anyhow::{anyhow, Result};
 use bytecheck::CheckBytes;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -43,7 +44,7 @@ pub struct TcpBridgeToServerMessage {
 }
 
 pub trait SerializeWith {
-    fn serialize<R: Serializer + ScratchSpace>(&mut self, serializer: &mut R) -> Result<usize, ()>;
+    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()>;
 }
 
 pub struct TcpBridgeSend<M> {
@@ -74,7 +75,7 @@ pub struct TcpBridgeServerConnection<S> {
 }
 
 pub struct ServerSingleTcpBridge {
-    send: TcpBridgeSend<TcpBridgeToClientMessage>,
+    send: TcpBridgeSend<Arc<TransferBuffer>>,
     receive: TcpBridgeReceive<TcpBridgeToServerMessage>,
 }
 
@@ -83,7 +84,7 @@ pub trait TcpBridgeServerConnectionState: Send {
     type StateData: Send + 'static;
     async fn new_state(
         peer_address: SocketAddr,
-        channel_tx: Sender<TcpBridgeToClientMessage>,
+        channel_tx: Sender<Arc<TransferBuffer>>,
         channel_rx: Receiver<TcpBridgeToServerMessage>,
         close_rx: BReceiver<()>,
         state_data: Self::StateData,
@@ -126,7 +127,7 @@ impl ServerSingleTcpBridge {
         stream: TcpStream,
     ) -> Result<(
         Self,
-        Sender<TcpBridgeToClientMessage>,
+        Sender<Arc<TransferBuffer>>,
         Receiver<TcpBridgeToServerMessage>,
     )> {
         let (r, w) = stream.into_split();
@@ -148,8 +149,14 @@ impl ServerSingleTcpBridge {
 }
 
 impl SerializeWith for TcpBridgeToClientMessage {
-    fn serialize<R: Serializer + ScratchSpace>(&mut self, serializer: &mut R) -> Result<usize, ()> {
+    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
         serializer.serialize_value(self).map_err(|_e| ())
+    }
+}
+
+impl SerializeWith for TcpBridgeToServerMessage {
+    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
+        serializer.serialize_value(&self.message).map_err(|_e| ())
     }
 }
 
@@ -229,7 +236,7 @@ impl<S> Drop for TcpBridgeServer<S> {
 type TBSSerializer = AllocSerializer<0x4000>;
 impl<M> TcpBridgeSend<M>
 where
-    M: Serialize<TBSSerializer>,
+    M: SerializeWith,
 {
     fn new(writer: OwnedWriteHalf, close_chan: OReceiver<()>) -> Result<(Self, Sender<M>)> {
         let (tx, rx) = mpsc::channel(32);
@@ -252,7 +259,7 @@ where
                     match received {
                         Some(message) => {
                             let mut serializer = self.serializer.take().unwrap();
-                            serializer.serialize_value(&message).unwrap();
+                            message.serialize(&mut serializer).unwrap();
                             let (inner_serializer, scratch, shared) = serializer.into_components();
                             let mut bytes = inner_serializer.into_inner();
                             log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);

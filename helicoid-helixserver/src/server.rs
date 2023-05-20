@@ -59,6 +59,7 @@ struct Compositor {
     containers: HashMap<RenderBlockId, EditorTree>,
     content_visitor: ContentVisitor,
     transfer_buffer_scratch: Option<TransferBuffer>,
+    lent_out_buffer_scratch: Option<Arc<TransferBuffer>>,
 }
 
 #[derive(Debug)]
@@ -77,7 +78,7 @@ struct ServerStateData {
 struct ServerState {
     pending_message: Option<TcpBridgeToServerMessage>,
     peer_address: SocketAddr,
-    channel_tx: Sender<TransferBuffer>,
+    channel_tx: Sender<Arc<TransferBuffer>>,
     channel_rx: Receiver<TcpBridgeToServerMessage>,
     close_rx: BReceiver<()>,
     editor_update_rx: BReceiver<()>,
@@ -148,6 +149,7 @@ impl HelicoidServer {
                     containers: HashMap::default(),
                     content_visitor: visitor,
                     transfer_buffer_scratch: Default::default(),
+                    lent_out_buffer_scratch: Default::default(),
                 })),
             };
             let view_id = {
@@ -368,7 +370,7 @@ impl ServerState {
         doc_mut.set_selection(view_id, selection);
     }
 
-    async fn maintain_enclosure(&mut self, transfer_buffer: &mut TransferBuffer) -> Result<()> {
+    async fn maintain_enclosure(&mut self) -> Result<()> {
         let view_size = self.viewport_size.as_ref().unwrap().physical_size;
         let scale_factor = self.viewport_size.as_ref().unwrap().scale_factor;
         let enclosure_extent = PointF32::new(view_size.0 as f32, view_size.1 as f32);
@@ -428,7 +430,15 @@ impl ServerState {
                 .enclosure
                 .as_mut()
                 .unwrap()
-                .insert_message(transfer_buffer)
+                .insert_message(
+                    self.state_data
+                        .compositor
+                        .as_mut()
+                        .unwrap()
+                        .transfer_buffer_scratch
+                        .as_mut()
+                        .unwrap(),
+                )
                 .await?;
             self.state_data.enclosure_hash = Some(enclosure_content_hash);
             log::trace!(
@@ -447,28 +457,37 @@ impl ServerState {
             /* TODO: Create transfer buffer if it does not exist */
 
             let comp = compositor.as_mut().unwrap();
+            /* Use the lent out trarnsfer buffer if possible, otherwise make a new one */
             if comp.transfer_buffer_scratch.is_none() {
-                comp.transfer_buffer_scratch = Some(Default::default());
+                comp.transfer_buffer_scratch = Some(
+                    if let Some(lent_out) = comp.lent_out_buffer_scratch.take() {
+                        match Arc::try_unwrap(lent_out) {
+                            Ok(mut unique_buf) => {
+                                unique_buf.clear();
+                                unique_buf
+                            }
+                            Err(shared_buf) => {
+                                comp.lent_out_buffer_scratch = Some(shared_buf);
+                                Default::default()
+                            }
+                        }
+                    } else {
+                        Default::default()
+                    },
+                );
             }
-            self.maintain_enclosure(comp.transfer_buffer_scratch.as_mut().unwrap())
-                .await?;
         }
-        let mut compositor = tokio::task::spawn_blocking(move || {
+        self.state_data.compositor = compositor;
+        self.maintain_enclosure().await?;
+        let mut compositor = self.state_data.compositor.take();
+        let compositor = tokio::task::spawn_blocking(move || {
             compositor.as_mut().unwrap().sync_screen().unwrap();
             compositor
         })
         .await
         .unwrap();
-        self.maintain_enclosure(
-            compositor
-                .as_mut()
-                .unwrap()
-                .transfer_buffer_scratch
-                .as_mut()
-                .unwrap(),
-        )
-        .await?;
         self.state_data.compositor = compositor;
+        self.maintain_enclosure().await?;
         self.state_data
             .compositor
             .as_mut()
@@ -513,7 +532,7 @@ impl TcpBridgeServerConnectionState for ServerState {
     type StateData = ServerStateData;
     async fn new_state(
         peer_address: SocketAddr,
-        channel_tx: Sender<TransferBuffer>,
+        channel_tx: Sender<Arc<TransferBuffer>>,
         channel_rx: Receiver<TcpBridgeToServerMessage>,
         close_rx: BReceiver<()>,
         state_data: Self::StateData,
@@ -587,12 +606,13 @@ impl Compositor {
     }
     async fn transfer_messages_to_client(
         &mut self,
-        channel_tx: &mut Sender<TransferBuffer>,
+        channel_tx: &mut Sender<Arc<TransferBuffer>>,
     ) -> anyhow::Result<()> {
         log::trace!("Send message to client: {:?}", self.transfer_buffer_scratch);
-        channel_tx
-            .send(self.transfer_buffer_scratch.take().unwrap())
-            .await?;
+        let transfer_buffer = self.transfer_buffer_scratch.take().unwrap();
+        let send_buffer = Arc::new(transfer_buffer);
+        channel_tx.send(send_buffer.clone()).await?;
+        self.lent_out_buffer_scratch = Some(send_buffer);
         Ok(())
     }
     pub fn containers(&self) -> &HashMap<RenderBlockId, EditorTree> {
