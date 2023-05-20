@@ -130,7 +130,7 @@ impl TransferBuffer {
                 },
             };
             let before_pos = dummy_serializer.pos();
-            let dummy_start_pos = dummy_serializer
+            let _dummy_root_pos = dummy_serializer
                 .serialize_value(&removal)
                 .map_err(|_e| ())?;
             serializer
@@ -138,16 +138,8 @@ impl TransferBuffer {
                     (dummy_serializer.pos() - before_pos) as u32,
                 ))
                 .map_err(|_e| ())?;
-            let start_pos = serializer.serialize_value(&removal).map_err(|_e| ())?;
-            let individual_size = serializer.pos() - start_pos;
-            log::trace!(
-                "Serialize removal: path {:?} msg ({}): {:?}",
-                &path,
-                individual_size,
-                &removal
-            );
-            assert_eq!(dummy_serializer.pos() - dummy_start_pos, individual_size);
-            size += individual_size;
+            let _root_pos = serializer.serialize_value(&removal).map_err(|_e| ())?;
+            size += dummy_serializer.pos() - before_pos;
         }
         /* Additions */
         for (path, additions) in self.additions.iter() {
@@ -162,7 +154,7 @@ impl TransferBuffer {
                 },
             };
             let before_pos = dummy_serializer.pos();
-            let dummy_start_pos = dummy_serializer
+            let _dummy_root_pos = dummy_serializer
                 .serialize_value(&addition)
                 .map_err(|_e| ())?;
             serializer
@@ -170,15 +162,8 @@ impl TransferBuffer {
                     (dummy_serializer.pos() - before_pos) as u32,
                 ))
                 .map_err(|_e| ())?;
-            let start_pos = serializer.serialize_value(&addition).map_err(|_e| ())?;
-            let individual_size = dummy_serializer.pos() - before_pos;
-            log::trace!(
-                "Serialize addition: path {:?} msg ({}): {:?}",
-                &path,
-                individual_size,
-                &addition
-            );
-            size += individual_size;
+            let _root_pos = serializer.serialize_value(&addition).map_err(|_e| ())?;
+            size += dummy_serializer.pos() - before_pos;
         }
         /* Moves */
         for (path, moves) in self.moves.iter() {
@@ -193,7 +178,7 @@ impl TransferBuffer {
                 },
             };
             let before_pos = dummy_serializer.pos();
-            let dummy_start_pos = dummy_serializer
+            let _dummy_root_pos = dummy_serializer
                 .serialize_value(&movement)
                 .map_err(|_e| ())?;
             serializer
@@ -201,15 +186,8 @@ impl TransferBuffer {
                     (dummy_serializer.pos() - before_pos) as u32,
                 ))
                 .map_err(|_e| ())?;
-            let start_pos = serializer.serialize_value(&movement).map_err(|_e| ())?;
-            let individual_size = serializer.pos() - start_pos;
-            log::trace!(
-                "Serialize move: path {:?} msg ({}): {:?}",
-                &path,
-                individual_size,
-                &movement
-            );
-            size += individual_size;
+            let _root_pos = serializer.serialize_value(&movement).map_err(|_e| ())?;
+            size += dummy_serializer.pos() - before_pos;
         }
         log::trace!("Serialize transfer buffer end, size:{}", size);
         Ok(size)
