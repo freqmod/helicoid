@@ -36,7 +36,9 @@ pub struct RenderBlockId(pub u16);
 
 pub type BlockLayer = u8;
 
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
+#[derive(
+    Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes, Ord, PartialOrd,
+)]
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct RenderBlockPath {
     path: SmallVec<[RenderBlockId; 16]>,

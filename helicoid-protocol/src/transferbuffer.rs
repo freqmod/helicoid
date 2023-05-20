@@ -1,8 +1,15 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, mem::size_of, sync::Arc};
 
 use ahash::HashMap;
 use anyhow::Result;
-use rkyv::ser::{ScratchSpace, Serializer};
+use itertools::assert_equal;
+use rkyv::{
+    ser::{
+        serializers::{AllocScratch, CompositeSerializer, WriteSerializer},
+        ScratchSpace, Serializer,
+    },
+    Archive,
+};
 use smallvec::SmallVec;
 
 use crate::{
@@ -10,26 +17,34 @@ use crate::{
         HelicoidToClientMessage, NewRenderBlock, RemoteSingleChange, RenderBlockId,
         RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction,
     },
-    tcp_bridge::{SerializeWith, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
+    tcp_bridge::{DummyWriter, SerializeWith, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
 
 /* Buffer that contains and reorganizes buffers to be transferred to the client */
 /* TODO: Use rkyv types where possible */
 #[derive(Default, Debug)]
 pub struct TransferBuffer {
-    removals: HashMap<RenderBlockPath, Vec<RenderBlockId>>,
-    additions: HashMap<RenderBlockPath, Vec<NewRenderBlock>>,
-    moves: HashMap<RenderBlockPath, Vec<RenderBlockLocation>>,
+    removals: BTreeMap<RenderBlockPath, Vec<RenderBlockId>>,
+    additions: BTreeMap<RenderBlockPath, Vec<NewRenderBlock>>,
+    moves: BTreeMap<RenderBlockPath, Vec<RenderBlockLocation>>,
 }
 
 impl SerializeWith for TransferBuffer {
-    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
-        TransferBuffer::serialize(self, serializer)
+    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
+        &self,
+        serializer: &mut R,
+        dummy_serializer: &mut D,
+    ) -> Result<usize, ()> {
+        TransferBuffer::serialize(self, serializer, dummy_serializer)
     }
 }
 impl SerializeWith for Arc<TransferBuffer> {
-    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
-        TransferBuffer::serialize(self, serializer)
+    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
+        &self,
+        serializer: &mut R,
+        dummy_serializer: &mut D,
+    ) -> Result<usize, ()> {
+        TransferBuffer::serialize(self, serializer, dummy_serializer)
     }
 }
 
@@ -90,10 +105,15 @@ impl TransferBuffer {
         path_entry.extend(new);
     }
 
-    pub fn serialize<S: Serializer + ScratchSpace>(&self, serializer: &mut S) -> Result<usize, ()> {
+    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
+        &self,
+        serializer: &mut R,
+        dummy_serializer: &mut D,
+    ) -> Result<usize, ()> {
         let mut size = 0usize;
+        log::trace!("Serialize transfer buffer start");
         /* Removals */
-        for (path, removals) in self.removals.iter() {
+        for (path, removals) in self.removals.iter().rev() {
             let removal = TcpBridgeToClientMessage {
                 message: HelicoidToClientMessage {
                     updates: vec![RemoteSingleChange {
@@ -109,11 +129,29 @@ impl TransferBuffer {
                     }],
                 },
             };
-            size += serializer.serialize_value(&removal).map_err(|_e| ())?;
+            let before_pos = dummy_serializer.pos();
+            let dummy_start_pos = dummy_serializer
+                .serialize_value(&removal)
+                .map_err(|_e| ())?;
+            serializer
+                .write(&u32::to_le_bytes(
+                    (dummy_serializer.pos() - before_pos) as u32,
+                ))
+                .map_err(|_e| ())?;
+            let start_pos = serializer.serialize_value(&removal).map_err(|_e| ())?;
+            let individual_size = serializer.pos() - start_pos;
+            log::trace!(
+                "Serialize removal: path {:?} msg ({}): {:?}",
+                &path,
+                individual_size,
+                &removal
+            );
+            assert_eq!(dummy_serializer.pos() - dummy_start_pos, individual_size);
+            size += individual_size;
         }
         /* Additions */
         for (path, additions) in self.additions.iter() {
-            let removal = TcpBridgeToClientMessage {
+            let addition = TcpBridgeToClientMessage {
                 message: HelicoidToClientMessage {
                     updates: vec![RemoteSingleChange {
                         parent: path.clone(),
@@ -123,11 +161,28 @@ impl TransferBuffer {
                     }],
                 },
             };
-            size += serializer.serialize_value(&removal).map_err(|_e| ())?;
+            let before_pos = dummy_serializer.pos();
+            let dummy_start_pos = dummy_serializer
+                .serialize_value(&addition)
+                .map_err(|_e| ())?;
+            serializer
+                .write(&u32::to_le_bytes(
+                    (dummy_serializer.pos() - before_pos) as u32,
+                ))
+                .map_err(|_e| ())?;
+            let start_pos = serializer.serialize_value(&addition).map_err(|_e| ())?;
+            let individual_size = dummy_serializer.pos() - before_pos;
+            log::trace!(
+                "Serialize addition: path {:?} msg ({}): {:?}",
+                &path,
+                individual_size,
+                &addition
+            );
+            size += individual_size;
         }
         /* Moves */
         for (path, moves) in self.moves.iter() {
-            let removal = TcpBridgeToClientMessage {
+            let movement = TcpBridgeToClientMessage {
                 message: HelicoidToClientMessage {
                     updates: vec![RemoteSingleChange {
                         parent: path.clone(),
@@ -137,9 +192,26 @@ impl TransferBuffer {
                     }],
                 },
             };
-            size += serializer.serialize_value(&removal).map_err(|_e| ())?;
+            let before_pos = dummy_serializer.pos();
+            let dummy_start_pos = dummy_serializer
+                .serialize_value(&movement)
+                .map_err(|_e| ())?;
+            serializer
+                .write(&u32::to_le_bytes(
+                    (dummy_serializer.pos() - before_pos) as u32,
+                ))
+                .map_err(|_e| ())?;
+            let start_pos = serializer.serialize_value(&movement).map_err(|_e| ())?;
+            let individual_size = serializer.pos() - start_pos;
+            log::trace!(
+                "Serialize move: path {:?} msg ({}): {:?}",
+                &path,
+                individual_size,
+                &movement
+            );
+            size += individual_size;
         }
-
+        log::trace!("Serialize transfer buffer end, size:{}", size);
         Ok(size)
     }
 }

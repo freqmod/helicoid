@@ -2,12 +2,15 @@
 managed by Tokio, and connected to the user interface by channels */
 
 use async_trait::async_trait;
-use rkyv::ser::serializers::AlignedSerializer;
+use rkyv::ser::serializers::{
+    AlignedSerializer, AllocScratch, CompositeSerializer, WriteSerializer,
+};
 use rkyv::ser::ScratchSpace;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Serialize};
+use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Infallible, Serialize};
 use std::collections::HashMap;
-use std::io::IoSlice;
+use std::io::{IoSlice, Write};
+use std::mem::{align_of, align_of_val, size_of};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -44,12 +47,18 @@ pub struct TcpBridgeToServerMessage {
 }
 
 pub trait SerializeWith {
-    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()>;
+    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
+        &self,
+        serializer: &mut R,
+        dummy_serializer: &mut D,
+    ) -> Result<usize, ()>;
 }
 
 pub struct TcpBridgeSend<M> {
     tcp_conn: OwnedWriteHalf,
     serializer: Option<TBSSerializer>,
+    dummy_serializer:
+        Option<CompositeSerializer<WriteSerializer<DummyWriter>, AllocScratch, Infallible>>,
     chan: Receiver<M>,
     close_chan: OReceiver<()>,
 }
@@ -79,6 +88,11 @@ pub struct ServerSingleTcpBridge {
     receive: TcpBridgeReceive<TcpBridgeToServerMessage>,
 }
 
+#[derive(Debug, Default)]
+pub struct DummyWriter {
+    pub pos: usize,
+}
+
 #[async_trait]
 pub trait TcpBridgeServerConnectionState: Send {
     type StateData: Send + 'static;
@@ -91,6 +105,17 @@ pub trait TcpBridgeServerConnectionState: Send {
     ) -> Self;
     async fn initialize(&mut self) -> Result<()>;
     async fn event_loop(&mut self) -> Result<()>;
+}
+
+impl Write for DummyWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.pos += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 impl ClientTcpBridge {
@@ -149,13 +174,34 @@ impl ServerSingleTcpBridge {
 }
 
 impl SerializeWith for TcpBridgeToClientMessage {
-    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
+    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
+        &self,
+        serializer: &mut R,
+        dummy_serializer: &mut D,
+    ) -> Result<usize, ()> {
+        let dummy_start_pos = dummy_serializer.serialize_value(self).map_err(|_e| ())?;
+        serializer
+            .write(&u32::to_le_bytes(
+                (dummy_serializer.pos() - dummy_start_pos) as u32,
+            ))
+            .map_err(|_e| ())?;
+
         serializer.serialize_value(self).map_err(|_e| ())
     }
 }
 
 impl SerializeWith for TcpBridgeToServerMessage {
-    fn serialize<R: Serializer + ScratchSpace>(&self, serializer: &mut R) -> Result<usize, ()> {
+    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
+        &self,
+        serializer: &mut R,
+        dummy_serializer: &mut D,
+    ) -> Result<usize, ()> {
+        let dummy_start_pos = dummy_serializer.serialize_value(self).map_err(|_e| ())?;
+        serializer
+            .write(&u32::to_le_bytes(
+                (dummy_serializer.pos() - dummy_start_pos) as u32,
+            ))
+            .map_err(|_e| ())?;
         serializer.serialize_value(&self.message).map_err(|_e| ())
     }
 }
@@ -241,11 +287,17 @@ where
     fn new(writer: OwnedWriteHalf, close_chan: OReceiver<()>) -> Result<(Self, Sender<M>)> {
         let (tx, rx) = mpsc::channel(32);
         let serializer = Some(TBSSerializer::default());
+        let dummy_serializer = Some(CompositeSerializer::new(
+            WriteSerializer::new(DummyWriter::default()),
+            AllocScratch::new(),
+            Default::default(),
+        ));
 
         Ok((
             Self {
                 tcp_conn: writer,
                 serializer,
+                dummy_serializer,
                 chan: rx,
                 close_chan,
             },
@@ -259,15 +311,17 @@ where
                     match received {
                         Some(message) => {
                             let mut serializer = self.serializer.take().unwrap();
-                            message.serialize(&mut serializer).unwrap();
+                            let mut dummy_serializer = self.dummy_serializer.take().unwrap();
+                            message.serialize(&mut serializer, &mut dummy_serializer).unwrap();
                             let (inner_serializer, scratch, shared) = serializer.into_components();
                             let mut bytes = inner_serializer.into_inner();
                             log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);
-                            let header = (bytes.len() as u16).to_le_bytes();
-                            let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
-                            self.tcp_conn.write_vectored(&bufs).await?;
+                            //let header = (bytes.len() as u32).to_le_bytes();
+                            //let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
+                            self.tcp_conn.write(&bytes).await?;
                             bytes.clear();
                             self.serializer = Some(TBSSerializer::new(AlignedSerializer::new(bytes), scratch, shared));
+                            self.dummy_serializer = Some(dummy_serializer);
                         }
                         None => {
                             break;
@@ -285,15 +339,15 @@ where
 
 #[repr(C, align(16))]
 struct AlignedBuffer {
-    contents: [u8; 0x8000],
+    contents: [u8; 0x10000],
 }
 enum ReadResult {
     GotPacket,
     NoData,
     StopReading,
 }
-const PACKET_HEADER_LENGTH: usize = 2;
-const PACKET_HEADER_ADJUST: usize = 14;
+const PACKET_HEADER_LENGTH: usize = 4;
+const PACKET_HEADER_ADJUST: usize = 16 - PACKET_HEADER_LENGTH;
 impl<M: Archive> TcpBridgeReceive<M>
 where
     M::Archived: Deserialize<M, rkyv::Infallible>,
@@ -318,8 +372,8 @@ where
         buffer_filled: &mut usize,
     ) -> Result<ReadResult> {
         let data_read;
-        if *pkg_len == u16::MAX as usize {
-            /* Read u16 length prefix */
+        if *pkg_len == u32::MAX as usize {
+            /* Read u32 length prefix */
             log::trace!("Try read");
             data_read = match self.tcp_conn.try_read(buffer) {
                 Ok(0) => {
@@ -337,12 +391,12 @@ where
                 log::warn!("No data received: {}", data_read);
                 return Ok(ReadResult::NoData);
             }
-            if data_read < 2 {
+            if data_read < PACKET_HEADER_LENGTH {
                 log::warn!("Unexpectedly small data received: {}", data_read);
                 return Ok(ReadResult::StopReading);
             }
             *pkg_len =
-                u16::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap()) as usize;
+                u32::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap()) as usize;
             debug_assert!(*pkg_len + PACKET_HEADER_LENGTH <= buffer.len());
             *pkg_offset = PACKET_HEADER_LENGTH;
             *buffer_filled = 0;
@@ -365,6 +419,7 @@ where
         while *buffer_filled >= PACKET_HEADER_LENGTH + *pkg_len {
             /* All the required data was transferred */
             let data_sliced = &buffer[*pkg_offset..(*pkg_len + *pkg_offset)];
+
             //println!("Data slized ptr; 0x{:X}", data_sliced.as_ptr() as usize);
             //let msg = rkyv::from_bytes::<HelicoidToClientMessage>(data_sliced)
             //    .map_err(|_| anyhow!("Error while deserializing message from wire"))?;
@@ -391,16 +446,16 @@ where
             //buffer_filled -= pkt_outer_len;
             //pkg_offset += pkt_outer_len;
             if *buffer_filled == pkt_end {
-                *pkg_len = u16::MAX as usize;
+                *pkg_len = u32::MAX as usize;
                 /* All other temp variable related to size are undefined at this point */
             } else {
                 /* There are still some data in the buffer, prepare for more data to come */
                 assert!(*buffer_filled > *pkg_len);
-                assert!(*buffer_filled - *pkg_len >= 2);
+                assert!(*buffer_filled - *pkg_len >= PACKET_HEADER_LENGTH);
                 buffer.copy_within(pkt_end..*buffer_filled, 0);
                 *buffer_filled -= pkt_end;
                 *pkg_offset = PACKET_HEADER_LENGTH;
-                *pkg_len = u16::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap())
+                *pkg_len = u32::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap())
                     as usize;
             }
         }
@@ -409,11 +464,11 @@ where
 
     pub async fn process(&mut self) -> Result<()> {
         let mut backing_buffer = AlignedBuffer {
-            contents: [0u8; 0x8000],
+            contents: [0u8; 0x10000],
         };
-        let mut buffer = &mut backing_buffer.contents[PACKET_HEADER_ADJUST..];
+        let buffer = &mut backing_buffer.contents[PACKET_HEADER_ADJUST..];
         let mut pkg_offset: usize = 0;
-        let mut pkg_len: usize = u16::MAX as usize;
+        let mut pkg_len: usize = u32::MAX as usize;
         let mut buffer_filled: usize = 0;
         log::trace!("TCPBR proc");
         'outer_loop: loop {
