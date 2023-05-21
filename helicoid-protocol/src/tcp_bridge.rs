@@ -89,9 +89,7 @@ pub struct ServerSingleTcpBridge {
 }
 
 #[derive(Debug, Default)]
-pub struct DummyWriter {
-    pub pos: usize,
-}
+pub struct DummyWriter {}
 
 #[async_trait]
 pub trait TcpBridgeServerConnectionState: Send {
@@ -109,7 +107,6 @@ pub trait TcpBridgeServerConnectionState: Send {
 
 impl Write for DummyWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.pos += buf.len();
         Ok(buf.len())
     }
 
