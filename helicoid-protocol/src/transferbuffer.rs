@@ -65,6 +65,15 @@ impl TransferBuffer {
         }
     }
 
+    pub fn moves(&self) -> &BTreeMap<RenderBlockPath, Vec<RenderBlockLocation>> {
+        &self.moves
+    }
+    pub fn removals(&self) -> &BTreeMap<RenderBlockPath, Vec<RenderBlockId>> {
+        &self.removals
+    }
+    pub fn additions(&self) -> &BTreeMap<RenderBlockPath, Vec<NewRenderBlock>> {
+        &self.additions
+    }
     pub fn add_moves(&mut self, path: &RenderBlockPath, mv: &[RenderBlockLocation]) {
         let path_entry = self.moves.entry(path.clone()).or_insert(Vec::new());
         path_entry.extend_from_slice(mv);

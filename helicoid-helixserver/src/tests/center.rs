@@ -2,8 +2,11 @@ use std::{env, iter::once, sync::Arc};
 
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    gfx::{PointF16, RemoteBoxUpdate, RenderBlockId, RenderBlockLocation, RenderBlockPath},
+    gfx::{
+        PointF16, PointF32, RemoteBoxUpdate, RenderBlockId, RenderBlockLocation, RenderBlockPath,
+    },
     shadowblocks::{ShadowMetaBlock, ShadowMetaContainerBlock},
+    transferbuffer::TransferBuffer,
 };
 use helix_core::{
     movement::{move_vertically, Direction},
@@ -110,12 +113,12 @@ async fn center_scoll() {
     center_model.scaled_font_size = OrderedFloat::<f32>(16f32);
     let mut block = ShadowMetaContainerBlock::new(
         CENTER_MODEL_CONTAINER_ID,
-        PointF16::new(10f32, 20f32),
+        PointF32::new(10f32, 20f32),
         false,
         None,
         center_model,
     );
-    block.set_extent(PointF16::new(100f32, 100f32));
+    block.set_extent(PointF32::new(100f32, 100f32));
 
     let mut content_visitor = prepare_content_visitor();
     let view_id = load_dummy_view(
@@ -138,16 +141,20 @@ async fn center_scoll() {
 
     let mut loc = RenderBlockLocation {
         id: CENTER_MODEL_CONTAINER_ID,
-        location: PointF16::new(25f32, 32f32),
+        location: PointF32::new(25f32, 32f32),
         layer: 0,
     };
-    let mut out_messages = Vec::<RemoteBoxUpdate>::with_capacity(100);
+    let mut transfer_buffer = TransferBuffer::new();
     let mut wrapped_block = ShadowMetaBlock::WrappedContainer(Box::new(block));
-    wrapped_block.client_transfer_messages(&CENTER_BLOCK_PARENT_PATH, &mut loc, &mut out_messages);
+    wrapped_block.client_transfer_messages(
+        &CENTER_BLOCK_PARENT_PATH,
+        &mut loc,
+        &mut transfer_buffer,
+    );
 
     log::debug!(
         "Messages to transfer to client pre move: {:?}",
-        out_messages
+        transfer_buffer
     );
     log::debug!("---------------------------------------------------------");
 
@@ -168,23 +175,33 @@ async fn center_scoll() {
     let (mut wrapped_block, _content_visitor) =
         update_blocked(wrapped_block, content_visitor).await;
 
-    out_messages.clear();
-    wrapped_block.client_transfer_messages(&CENTER_BLOCK_PARENT_PATH, &mut loc, &mut out_messages);
+    transfer_buffer.clear();
+    wrapped_block.client_transfer_messages(
+        &CENTER_BLOCK_PARENT_PATH,
+        &mut loc,
+        &mut transfer_buffer,
+    );
     log::debug!(
-        "Messages to transfer to client post move: {:?}",
-        out_messages
+        "Messages to transfer to client post move: Move: {:?} Update: {:?}",
+        transfer_buffer
+            .moves()
             .iter()
-            .map(|upd| {
+            .map(|(pt, mv)| {
                 format!(
-                    "New: {:x?} Move: {:x?}",
-                    upd.new_render_blocks
-                        .iter()
-                        .map(|nb| nb.id.0)
-                        .collect::<Vec<_>>(),
-                    upd.move_block_locations
-                        .iter()
-                        .map(|loc| loc.id.0)
-                        .collect::<Vec<_>>()
+                    "Path: {:x?} Moves: {:x?}",
+                    pt.path(),
+                    mv.iter().map(|loc| loc.id.0).collect::<Vec<_>>()
+                )
+            })
+            .collect::<Vec<_>>(),
+        transfer_buffer
+            .additions()
+            .iter()
+            .map(|(pt, nv)| {
+                format!(
+                    "Path: {:x?} Additions: {:x?}",
+                    pt.path(),
+                    nv.iter().map(|nv| nv.id.0).collect::<Vec<_>>()
                 )
             })
             .collect::<Vec<_>>()
