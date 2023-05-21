@@ -338,11 +338,14 @@ impl SkiaClientRenderBlock {
         canvas.translate(Vector::new(location.location.x(), location.location.y()));
 
         log::trace!(
-            "Draw text: {:?} at x:{}, y:{}, paint: {:?}",
+            "Draw text: {:?} at x:{}, y:{}, size: {:?}",
             blobs,
             x,
             y,
-            shaped.metadata_runs.first().map(|r| &r.paint)
+            shaped
+                .metadata_runs
+                .first()
+                .map(|r| &r.font_info.font_parameters.size)
         );
         for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
             let paint = font_paint_to_sk_paint(&metadata_run.paint);

@@ -96,6 +96,7 @@ struct RenderParagraph {
 #[derive(Hash, PartialEq, Default, Debug)]
 struct LayoutStringMetadata {
     section_length: u16,
+    font_size: OrderedFloat<f32>,
     style: Style,
 }
 #[derive(Hash, PartialEq, Default, Debug)]
@@ -103,6 +104,7 @@ struct LayoutParagraph {
     text: SmallVec<[u8; SHAPABLE_STRING_ALLOC_LEN]>, //text should always contain valid UTF-8?
     metadata_runs: SmallVec<[LayoutStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
     current_style: Style,
+    current_size: OrderedFloat<f32>,
     substring_end: u16,
 }
 #[derive(Hash, PartialEq, Default)]
@@ -125,7 +127,7 @@ time (possibly together with helix-view). A special symbol font is used to be ab
 relatively fancy graphics using text shaping engine. */
 #[derive(Hash, PartialEq, Default)]
 pub struct CenterModel {
-    pub(crate) scaled_font_size: OrderedFloat<f32>,
+    pub(crate) font_size: OrderedFloat<f32>,
     cfg_hash: Option<u64>,
     src_hash: Option<u64>,
     last_frame_time: Option<u32>,
@@ -214,14 +216,15 @@ impl LayoutParagraphEntry {
         self.client_location = Some(self.location);
     }
 
-    fn render(&mut self, scaled_font_size: OrderedFloat<f32>) -> Result<RenderParagraphSource, ()> {
+    fn render(&mut self) -> Result<RenderParagraphSource, ()> {
         let text = ShapableString {
             text: self.layout.text.clone(),
             metadata_runs: SmallVec::from_iter(self.layout.metadata_runs.iter().map(|run| {
+                assert!(f32::from(run.font_size) > 0f32);
                 let font_info = SmallFontOptions {
                     family_id: 0,
                     font_parameters: FontParameters {
-                        size: scaled_font_size,
+                        size: run.font_size,
                         allow_float_size: true,
                         underlined: run
                             .style
@@ -330,7 +333,18 @@ impl CenterModel {
         //        line_decorations: &mut [Box<dyn LineDecoration + '_>],
         //        translated_positions: &mut [TranslatedPosition],
     ) {
-        log::trace!("Render document: {:?}", doc.text());
+        let mut shaper_font_options = SmallFontOptions {
+            font_parameters: shaper.default_parameters(),
+            family_id: 0,
+        };
+        let (font_metrics, avg_char_width) = shaper.info(&shaper_font_options).unwrap();
+        log::debug!(
+            "Render document: {:?} @ FS: {} LD: {}",
+            "",
+            //            doc.text(),
+            shaper_font_options.font_parameters.size,
+            font_metrics.ascent + font_metrics.descent + font_metrics.leading
+        );
         /* This function updates the center model to match the document,
         changing blocks if neccesary */
         if doc.tab_width() != self.tab.len() {
@@ -348,13 +362,10 @@ impl CenterModel {
             text_fmt,
             text_annotations,
         );
-        let shaper_font_options = SmallFontOptions {
-            font_parameters: shaper.default_parameters(),
-            family_id: 0,
-        };
 
         self.offline_layout.clear();
         let mut paragraph = LayoutParagraph::default();
+        paragraph.current_size = shaper_font_options.font_parameters.size;
         row_off += offset.vertical_offset;
         let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
             text,
@@ -368,8 +379,6 @@ impl CenterModel {
             highlight_iter,
             theme,
         };
-
-        let (font_metrics, avg_char_width) = shaper.info(&shaper_font_options).unwrap();
 
         let mut last_line_pos = LinePos {
             first_visual_line: false,
@@ -452,7 +461,7 @@ impl CenterModel {
                     visual_line: pos.row as u16,
                     start_char_idx: char_pos,
                 };
-                line_y += font_metrics.ascent + font_metrics.descent + font_metrics.leading;
+                line_y += (font_metrics.ascent + font_metrics.descent + font_metrics.leading);
                 /*for line_decoration in &mut *line_de`corations {
                     line_decoration.render_background`(renderer, last_line_pos);
                 }*/
@@ -551,6 +560,7 @@ impl CenterModel {
         if style != layout_paragraph.current_style {
             if layout_paragraph.text.is_empty() {
                 layout_paragraph.current_style = style;
+                layout_paragraph.current_size = OrderedFloat(shaper.current_size());
             } else {
                 Self::flush_metadata(layout_paragraph, shaper);
             }
@@ -571,10 +581,12 @@ impl CenterModel {
                 .unwrap_or(0);
         /* Only flush non empty metadata blocks */
         if substring_length != 0 {
+            assert!(f32::from(layout_paragraph.current_size) > 0f32);
             layout_paragraph.substring_end += substring_length as u16;
             layout_paragraph.metadata_runs.push(LayoutStringMetadata {
                 section_length: substring_length as u16,
                 style: layout_paragraph.current_style,
+                font_size: layout_paragraph.current_size,
             })
         }
     }
@@ -599,6 +611,8 @@ impl CenterModel {
             }
         }
         let mut new_paragraph = LayoutParagraph::default(); // TODO: Does this need further init?
+        new_paragraph.current_size = OrderedFloat(shaper.current_size());
+
         std::mem::swap(layout_paragraph, &mut new_paragraph);
         let mut new_paragraph_entry = LayoutParagraphEntry {
             layout: new_paragraph,
@@ -686,7 +700,7 @@ impl CenterModel {
                 /* No entry to reuse, so a new entry has to be made */
                 let block_id = Self::new_id(&mut self.rendered_paragraphs);
                 assert!(entry.assign_id(block_id).is_ok());
-                let rendered = entry.render(self.scaled_font_size).unwrap();
+                let rendered = entry.render().unwrap();
                 let rendered_slot =
                     &mut self.rendered_paragraphs[(block_id.0 - CENTER_PARAGRAPH_BASE) as usize];
                 debug_assert!(rendered_slot.is_none());
@@ -788,7 +802,7 @@ impl ContainerBlockLogic for CenterModel {
         Self: Sized,
     {
         let (block, model) = outer_block.destruct_mut();
-        let options = SmallFontOptions {
+        let mut options = SmallFontOptions {
             font_parameters: context.shaper_ref().default_parameters(),
             family_id: 0,
         };

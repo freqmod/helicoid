@@ -446,7 +446,6 @@ impl ContainerBlockLogic for EditorModel {
         );
 
         let mut center_model = CenterModel::default();
-        center_model.scaled_font_size = logic.scaled_font_size;
         block_inner.set_child(
             RenderBlockLocation {
                 id: RenderBlockId(EDITOR_CHILD_CENTER),

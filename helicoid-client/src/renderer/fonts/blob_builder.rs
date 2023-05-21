@@ -1,3 +1,4 @@
+use ahash::HashMap;
 use half::f16;
 use helicoid_protocol::caching_shaper::base_asset_path;
 use helicoid_protocol::font_options::FontOptions;
@@ -7,8 +8,8 @@ use helicoid_protocol::text::{
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
 
 use log::{debug, trace, warn};
 use lru::LruCache;
@@ -43,7 +44,7 @@ pub struct ShapedBlobBuilder {
     //scale_factor: f32,
     font_cache: HashMap<SmallFontOptions, KeyedFont>,
     font_names: Vec<Option<String>>,
-    default_font: KeyedFont,
+    default_font: HashMap<FontParameters, KeyedFont>,
     font_manager: FontMgr,
     //    fudge_factor: f32,
 }
@@ -53,13 +54,7 @@ impl ShapedBlobBuilder {
         let mut font_manager = FontMgr::new();
         let options = FontOptions::default();
         let font_size = options.font_parameters.size;
-        let default_font = KeyedFont::load_keyed(
-            &mut font_manager,
-            &base_asset_path(),
-            Default::default(),
-            DEFAULT_FONT_SIZE,
-        )
-        .unwrap();
+        let default_font = HashMap::default();
         let mut shaper = ShapedBlobBuilder {
             options,
             //font_loader: FontLoader::new(font_size),
@@ -71,11 +66,31 @@ impl ShapedBlobBuilder {
             font_manager,
             //fudge_factor: 1.0,
         };
+        shaper.insert_sized_default(FontParameters {
+            size: OrderedFloat(DEFAULT_FONT_SIZE),
+            ..Default::default()
+        });
         shaper.reset_font_loader();
         shaper
     }
 
-    pub fn current_nsize(&self) -> f32 {
+    fn insert_sized_default(&mut self, font_parameters: FontParameters) {
+        let size = font_parameters.size;
+        self.default_font.insert(
+            font_parameters,
+            KeyedFont::load_keyed(
+                &mut self.font_manager,
+                &base_asset_path(),
+                FontKey {
+                    size,
+                    ..Default::default()
+                },
+                f32::from(size),
+            )
+            .unwrap(),
+        );
+    }
+    pub fn current_size(&self) -> f32 {
         f32::from(self.options.font_parameters.size)
     }
 
@@ -129,9 +144,13 @@ impl ShapedBlobBuilder {
             //let resolved_fonts =  SmallVec::<[u8;8]>::new();// self.fonts.get()
             let font: &KeyedFont = if let Some(font) = self.font_cache.get(&shaped_string.font_info)
             {
+                log::trace!(
+                    "Succeded using cached font with key: {:?}",
+                    &shaped_string.font_info
+                );
+
                 font
             } else {
-                //let loaded_font = self.font_loader.load(shaped_string.font_info);
                 if let Some(font_name) = self
                     .font_names
                     .get(shaped_string.font_info.family_id as usize)
@@ -160,9 +179,27 @@ impl ShapedBlobBuilder {
                         }
                     }
                 }
-                self.font_cache
-                    .get(&shaped_string.font_info)
-                    .unwrap_or(&self.default_font)
+
+                if let Some(cached_font) = self.font_cache.get(&shaped_string.font_info) {
+                    cached_font
+                } else {
+                    log::trace!(
+                        "Could not get font for key, using default font: {:?}",
+                        &shaped_string.font_info
+                    );
+                    if let Some(font) = self
+                        .default_font
+                        .get(&shaped_string.font_info.font_parameters)
+                    {
+                        &font
+                    } else {
+                        self.insert_sized_default(shaped_string.font_info.font_parameters.clone());
+                        &self
+                            .default_font
+                            .get(&shaped_string.font_info.font_parameters)
+                            .unwrap()
+                    }
+                }
             };
 
             let mut blob_builder = TextBlobBuilder::new();
@@ -256,7 +293,7 @@ impl KeyedFont {
         let font_style = font_style(font_key.bold, font_key.italic);
 
         if let Some(family_name) = &font_key.family_name {
-            trace!("Loading font {:?}", font_key);
+            trace!("Loading font {:?} {}", font_key, font_size);
             // Skip the system fonts for now, todo: Consider loading system fonts if file not found
             /*match font_manager.match_family_style(family_name, font_style) {
             Some(typeface) => {
@@ -276,7 +313,7 @@ impl KeyedFont {
         //                }
         //            }
         } else {
-            trace!("Loading default font {:?}", font_key);
+            trace!("Loading default font {:?} {}", font_key, font_size);
             let data = Data::new_copy(DEFAULT_FONT);
             let typeface = Typeface::from_data(data, 0).unwrap();
             KeyedFont::new(font_key, Font::from_typeface(typeface, font_size))

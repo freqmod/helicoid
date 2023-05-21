@@ -1,4 +1,4 @@
-use crate::font_options::FontOptions;
+use crate::font_options::{self, FontOptions};
 use crate::gfx::{FontPaint, PointF16, PointF32, SimplePaint};
 use crate::swash_font::SwashFont;
 use crate::text::{
@@ -134,6 +134,10 @@ impl CachingShaper {
         let inner = self.inner.read();
         inner.options.font_parameters.size() * inner.scale_factor
     }
+    pub fn current_scale_factor(&self) -> f32 {
+        let inner = self.inner.read();
+        inner.scale_factor
+    }
 
     fn reset_font_loader(&mut self) {
         let mut inner = self.inner.write();
@@ -243,7 +247,7 @@ impl CachingShaper {
         //let font_pair = self.current_font_pair();
         /* Ensure font is loaded (if possible) */
         let _ = self.cache_font_for_index(font_options);
-        let current_size = self.current_size();
+        //        let current_size = self.current_size();
         let Self {
             inner,
             shape_context,
@@ -253,7 +257,7 @@ impl CachingShaper {
         inner_read.font_cache.get(font_options).map(|font| {
             let mut shaper = shape_context
                 .builder(font.swash_font.as_ref())
-                .size(current_size)
+                .size(f32::from(font_options.font_parameters.size))
                 .build();
             shaper.add_str("M");
             let metrics = shaper.metrics();
@@ -273,7 +277,9 @@ impl CachingShaper {
     }
     pub fn default_parameters(&self) -> FontParameters {
         let inner = self.inner.read();
-        inner.options.font_parameters.clone()
+        let mut fp = inner.options.font_parameters.clone();
+        fp.size = OrderedFloat(self.current_size());
+        fp
     }
     /*
         pub fn font_base_dimensions(&mut self) -> (u64, u64) {
