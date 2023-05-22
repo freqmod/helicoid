@@ -79,7 +79,6 @@ struct ContainerBlock<G: BlockGfx> {
     pub(crate) layer: Option<BlockLayer>,
     //location: PointF16,
     block: Option<Block<G>>,
-    hash: u64,
     last_changed: ChangeGeneration,
 }
 
@@ -197,7 +196,7 @@ impl<G: BlockGfx> InteriorBlockContainer<G> {
         cblock.layer = Some(new_location.layer);
         //        cblock.location = new_location.location;
     }
-    fn container_block_mut(&mut self, id: RenderBlockId) -> Option<&mut ContainerBlock<G>> {
+    fn _container_block_mut(&mut self, id: RenderBlockId) -> Option<&mut ContainerBlock<G>> {
         self.blocks.get_mut(&id).map(|b| {
             b.last_changed = b.last_changed.wrapping_add(1);
             b
@@ -388,7 +387,6 @@ impl<BG: BlockGfx> ContainerBlock<BG> {
             layer,
             //location,
             block: Some(block),
-            hash: 0,
             last_changed: 0,
         }
     }

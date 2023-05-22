@@ -1,10 +1,7 @@
-use std::{env, iter::once, sync::Arc};
+use std::{iter::once, sync::Arc};
 
 use helicoid_protocol::{
-    caching_shaper::CachingShaper,
-    gfx::{
-        PointF16, PointF32, RemoteBoxUpdate, RenderBlockId, RenderBlockLocation, RenderBlockPath,
-    },
+    gfx::{PointF32, RenderBlockId, RenderBlockLocation, RenderBlockPath},
     shadowblocks::{ShadowMetaBlock, ShadowMetaContainerBlock},
     transferbuffer::TransferBuffer,
 };
@@ -12,8 +9,8 @@ use helix_core::{
     movement::{move_vertically, Direction},
     SmartString, Transaction,
 };
-use helix_view::{Document, Editor as VEditor, ViewId};
-use ordered_float::OrderedFloat;
+use helix_view::{Editor as VEditor, ViewId};
+
 use tokio::sync::Mutex as TMutex;
 
 use crate::{
@@ -106,11 +103,9 @@ async fn update_blocked(
     .unwrap()
 }
 
-#[test_env_log::test(tokio::test)]
+#[test_log::test(tokio::test)]
 async fn center_scoll() {
-    //    env::set_var("RUST_LOG", "trace");
-    let mut center_model = CenterModel::default();
-    center_model.scaled_font_size = OrderedFloat::<f32>(16f32);
+    let center_model = CenterModel::default();
     let mut block = ShadowMetaContainerBlock::new(
         CENTER_MODEL_CONTAINER_ID,
         PointF32::new(10f32, 20f32),
@@ -131,7 +126,7 @@ async fn center_scoll() {
     .await
     .unwrap();
 
-    let (mut block, mut content_visitor) = tokio::task::spawn_blocking(move || {
+    let (block, content_visitor) = tokio::task::spawn_blocking(move || {
         block.initialize(&mut content_visitor);
         block.update(&mut content_visitor);
         (block, content_visitor)

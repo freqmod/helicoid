@@ -1,23 +1,16 @@
-use crate::{
-    constants::{DEFAULT_TEXT_COLOR},
-    editor_view::ContentVisitor,
-};
+use crate::{constants::DEFAULT_TEXT_COLOR, editor_view::ContentVisitor};
 use ahash::AHasher;
 
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    gfx::{
-        FontPaint,
-        PointF32, PointU16, RenderBlockId,
-        RenderBlockLocation,
-    },
+    gfx::{FontPaint, PointF32, PointU16, RenderBlockId, RenderBlockLocation},
     shadowblocks::{
         ContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
         ShadowMetaContainerBlockInner, ShadowMetaTextBlock,
     },
     text::{
-        FontParameters, ShapableString, ShapedStringMetadata,
-        ShapedTextBlock, SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+        FontParameters, ShapableString, ShapedStringMetadata, ShapedTextBlock, SmallFontOptions,
+        SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
     },
 };
 use helix_core::{
@@ -29,23 +22,15 @@ use helix_core::{
     visual_offset_from_block, Position, RopeSlice,
 };
 
-use helix_view::{
-    graphics::UnderlineStyle, theme::Style,
-    view::ViewPosition, Document, Theme,
-};
+use helix_view::{graphics::UnderlineStyle, theme::Style, view::ViewPosition, Document, Theme};
 use ordered_float::OrderedFloat;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use std::{
-    hash::{Hash, Hasher},
-};
-
+use std::hash::{Hash, Hasher};
 
 const CENTER_PARAGRAPH_BASE: u16 = 0x1000;
 const MAX_AGE: i16 = 10;
-const DEFAULT_FONT_ID: u8 = 0;
 
-pub type ParagraphId = u16;
 #[derive(Hash, PartialEq, Default)]
 pub struct Paragraph {
     data_hash: u64, /* Of the latest changed value, it is up to the model to make it synced with the client */
@@ -104,11 +89,6 @@ struct LayoutParagraphEntry {
     rendered_id: Option<RenderBlockId>,
 }
 
-#[derive(Hash, PartialEq)]
-enum RenderingParagraph {
-    Source(RenderParagraph),
-    Dest((ShapedTextBlock, RenderBlockLocation)),
-}
 /* Currently make a text based status line, to be refactored with more fancy graphics at a later
 time (possibly together with helix-view). A special symbol font is used to be able to render
 relatively fancy graphics using text shaping engine. */
@@ -127,22 +107,6 @@ pub struct CenterModel {
     col_offset: u32,
     tab: String,
 }
-impl RenderingParagraph {
-    pub fn destination(&self) -> Option<&(ShapedTextBlock, RenderBlockLocation)> {
-        if let Self::Dest(tuple) = self {
-            Some(tuple)
-        } else {
-            None
-        }
-    }
-    pub fn source(&self) -> Option<&RenderParagraph> {
-        if let Self::Source(src) = self {
-            Some(src)
-        } else {
-            None
-        }
-    }
-}
 impl MaybeRenderedParagraph {
     pub fn rendered(&self) -> Option<&ShapedTextBlock> {
         if let Self::Rendered(rendered) = self {
@@ -151,7 +115,7 @@ impl MaybeRenderedParagraph {
             None
         }
     }
-    pub fn source(&self) -> Option<&RenderParagraphSource> {
+    pub fn _source(&self) -> Option<&RenderParagraphSource> {
         if let Self::Source(src) = self {
             Some(src)
         } else {
@@ -354,12 +318,13 @@ impl CenterModel {
         let mut paragraph = LayoutParagraph::default();
         paragraph.current_size = shaper_font_options.font_parameters.size;
         row_off += offset.vertical_offset;
-        let (mut formatter, mut first_visible_char_idx) = DocumentFormatter::new_at_prev_checkpoint(
-            text,
-            text_fmt,
-            text_annotations,
-            offset.anchor,
-        );
+        let (mut formatter, mut _first_visible_char_idx) =
+            DocumentFormatter::new_at_prev_checkpoint(
+                text,
+                text_fmt,
+                text_annotations,
+                offset.anchor,
+            );
         let mut styles = StyleIter {
             text_style: Style::default(), // TODO: Reintroduce custom styles
             active_highlights: Vec::with_capacity(64),
@@ -414,7 +379,7 @@ impl CenterModel {
                     }
                 }
                 char_pos += grapheme.doc_chars();
-                first_visible_char_idx = char_pos + 1;
+                _first_visible_char_idx = char_pos + 1;
                 continue;
             }
             pos.row -= row_off;
@@ -840,15 +805,6 @@ impl ContainerBlockLogic for CenterModel {
 }
 
 impl Paragraph {}
-pub fn hash_line<'t>(
-    _text: RopeSlice<'t>,
-    _offset: ViewPosition,
-    _text_fmt: &TextFormat,
-    _text_annotations: &TextAnnotations,
-    _highlight_iter: impl Iterator<Item = HighlightEvent>,
-    _theme: &Theme,
-) {
-}
 
 /* From helix-term */
 struct StyleIter<'a, H: Iterator<Item = HighlightEvent>> {

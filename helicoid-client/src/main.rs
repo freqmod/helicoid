@@ -14,8 +14,6 @@ mod renderer;
 mod window;
 
 #[macro_use]
-extern crate derive_new;
-#[macro_use]
 extern crate lazy_static;
 /// Simple program to greet a person
 

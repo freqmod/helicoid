@@ -1,6 +1,5 @@
 use ahash::AHasher;
-use hashbrown::HashSet;
-use smallvec::{SmallVec};
+use smallvec::SmallVec;
 use std::{
     any::Any,
     hash::{Hash, Hasher},
@@ -9,81 +8,12 @@ use std::{
 
 use crate::{
     gfx::{
-        MetaDrawBlock, NewRenderBlock, PointF32,
-        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath, SimpleDrawBlock,
+        MetaDrawBlock, NewRenderBlock, PointF32, RenderBlockDescription, RenderBlockId,
+        RenderBlockLocation, RenderBlockPath, SimpleDrawBlock,
     },
     text::ShapedTextBlock,
     transferbuffer::TransferBuffer,
 };
-trait Observer<T>
-where
-    T: PartialEq + Hash + Clone,
-{
-    fn data_changed(&mut self, data: &ObservableState<T>);
-}
-pub struct ObservableReference<T>
-where
-    T: PartialEq + Hash + Clone,
-{
-    value: T,
-    hash: u64,
-}
-pub struct ObservableState<T>
-where
-    T: PartialEq + Hash + Clone,
-{
-    current: T,
-    reference: Option<ObservableReference<T>>,
-    observers: HashSet<Box<dyn Observer<T>>>,
-}
-
-impl<T> ObservableState<T>
-where
-    T: PartialEq + Hash + Clone,
-{
-    pub fn new(state: T) -> Self {
-        Self {
-            current: state,
-            reference: None,
-            observers: Default::default(),
-        }
-    }
-    pub fn check_changed(&mut self) {
-        let mut hasher = AHasher::default();
-        self.current.hash(&mut hasher);
-        let new_hash = hasher.finish();
-        if let Some(reference) = self.reference.as_ref() {
-            if reference.hash != new_hash {
-                if reference.value != self.current {
-                    self.fire_changed();
-                }
-            }
-        }
-    }
-    fn fire_changed(&mut self) {}
-    fn subscribe(&mut self, _observer: Box<dyn Observer<T>>) {
-        //        self.observer.insert(observer);
-    }
-    fn unsubscribe(&mut self, _observer: Box<dyn Observer<T>>) {
-        //        self.observers.insert(observer);
-    }
-}
-
-struct ObservableGuard<'a, T>
-where
-    T: PartialEq + Hash + Clone,
-{
-    state: &'a mut ObservableState<T>,
-}
-
-impl<'a, T> Drop for ObservableGuard<'a, T>
-where
-    T: PartialEq + Hash + Clone,
-{
-    fn drop(&mut self) {
-        self.state.check_changed();
-    }
-}
 /* Type erased Container (inspired by Xilem) */
 pub trait AnyShadowMetaContainerBlock<C>: Send
 where

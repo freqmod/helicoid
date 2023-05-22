@@ -1,13 +1,10 @@
-use crate::bridge::{RedrawEvent, WindowAnchor};
-
-const MODE_CMDLINE: u64 = 4;
+use crate::bridge::WindowAnchor;
 
 //mod cursor;
 pub(crate) mod editor;
-mod style;
+//mod style;
 
 //pub use cursor::{Cursor, CursorMode, CursorShape};
-pub use style::{Colors, Style, UnderlineStyle};
 
 #[derive(Clone, Debug)]
 pub struct AnchorInfo {
@@ -19,7 +16,7 @@ pub struct AnchorInfo {
 }
 
 impl WindowAnchor {
-    fn modified_top_left(
+    fn _modified_top_left(
         &self,
         grid_left: f64,
         grid_top: f64,
@@ -33,10 +30,4 @@ impl WindowAnchor {
             WindowAnchor::SouthEast => (grid_left - width as f64, grid_top - height as f64),
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum EditorCommand {
-    NeovimRedrawEvent(RedrawEvent),
-    RedrawScreen,
 }

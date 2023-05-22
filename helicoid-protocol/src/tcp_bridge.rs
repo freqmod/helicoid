@@ -9,18 +9,16 @@ use rkyv::ser::ScratchSpace;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
 use rkyv::{Archive, Deserialize, Infallible, Serialize};
 use std::collections::HashMap;
-use std::io::{Write};
+use std::io::Write;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-
 
 use crate::gfx::HelicoidToClientMessage;
 use crate::input::HelicoidToServerMessage;
 use crate::transferbuffer::TransferBuffer;
 use anyhow::{anyhow, Result};
 use bytecheck::CheckBytes;
-use futures::{StreamExt};
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
@@ -74,10 +72,11 @@ pub struct ClientTcpBridge {
 
 pub struct TcpBridgeServer<S> {
     close_sender: BSender<()>,
-    listener: Option<TcpListener>,
-    connections: HashMap<SocketAddr, TcpBridgeServerConnection<S>>,
+    _listener: Option<TcpListener>,
+    _connections: HashMap<SocketAddr, TcpBridgeServerConnection<S>>,
 }
 
+#[allow(dead_code)]
 pub struct TcpBridgeServerConnection<S> {
     bridge: ServerSingleTcpBridge,
     connection_state: S,
@@ -208,8 +207,8 @@ impl<S: TcpBridgeServerConnectionState> TcpBridgeServer<S> {
         let (close_sender, _) = broadcast::channel(1);
 
         Ok(Self {
-            listener: None,
-            connections: Default::default(),
+            _listener: None,
+            _connections: Default::default(),
             close_sender,
         })
     }

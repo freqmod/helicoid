@@ -10,7 +10,6 @@ use ordered_float::OrderedFloat;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-
 use log::{trace, warn};
 use lru::LruCache;
 use skia_safe::{
@@ -19,23 +18,13 @@ use skia_safe::{
     Data, Font, FontHinting as SkiaHinting, FontMgr, FontStyle, TextBlob, TextBlobBuilder,
     Typeface,
 };
-use swash::{
-    shape::ShapeContext,
-};
-
-
-//use {caching_shaper::base_asset_path, font_loader::*, font_options::*};
 
 static DEFAULT_FONT: &[u8] =
     include_bytes!("../../../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
-static LAST_RESORT_FONT: &[u8] = include_bytes!("../../../../assets/fonts/LastResort-Regular.ttf");
 static DEFAULT_FONT_SIZE: f32 = 12.0f32;
 
 pub struct ShapedBlobBuilder {
-    options: FontOptions,
-    //skia: FontLoader,
     blob_cache: LruCache<ShapedTextBlock, Vec<TextBlob>>,
-    shape_context: ShapeContext,
     //scale_factor: f32,
     font_cache: HashMap<SmallFontOptions, KeyedFont>,
     font_names: Vec<Option<String>>,
@@ -51,10 +40,7 @@ impl ShapedBlobBuilder {
         let _font_size = options.font_parameters.size;
         let default_font = HashMap::default();
         let mut shaper = ShapedBlobBuilder {
-            options,
-            //font_loader: FontLoader::new(font_size),
             blob_cache: LruCache::new(NonZeroUsize::new(10000).unwrap()),
-            shape_context: ShapeContext::new(),
             font_cache: Default::default(),
             font_names: Vec::new(),
             default_font,
@@ -85,21 +71,11 @@ impl ShapedBlobBuilder {
             .unwrap(),
         );
     }
-    pub fn current_size(&self) -> f32 {
-        f32::from(self.options.font_parameters.size)
-    }
 
     fn reset_font_loader(&mut self) {
         self.font_names.clear();
         self.blob_cache.clear();
         // clear font manager?
-    }
-
-    pub fn font_names(&self) -> Vec<String> {
-        self.font_names
-            .iter()
-            .filter_map(|s| s.as_ref().map(|s| s.clone()))
-            .collect()
     }
 
     pub fn has_font_key(&self, font_id: u8) -> bool {
@@ -255,13 +231,6 @@ impl FontKey {
             size: parameters.size,
         }
     }
-    pub fn size(&self) -> f32 {
-        f32::from(self.size)
-    }
-}
-#[derive(Debug, Default)]
-pub struct FontSet {
-    fonts: Vec<KeyedFont>,
 }
 #[derive(Debug)]
 pub struct KeyedFont {
@@ -316,9 +285,6 @@ impl KeyedFont {
     }
     fn skia_font(&self) -> &Font {
         &self.skia_font
-    }
-    fn as_skia_font(self) -> Font {
-        self.skia_font
     }
 }
 

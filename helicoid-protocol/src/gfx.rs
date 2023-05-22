@@ -10,7 +10,6 @@ use ordered_float::OrderedFloat;
 use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt;
-use std::hash::Hasher;
 
 pub const SVG_RESOURCE_NAME_LEN: usize = 32;
 

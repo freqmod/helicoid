@@ -1,4 +1,4 @@
-use crate::font_options::{FontOptions};
+use crate::font_options::FontOptions;
 use crate::gfx::{FontPaint, PointF32};
 use crate::swash_font::SwashFont;
 use crate::text::{
@@ -7,17 +7,13 @@ use crate::text::{
 };
 use smallvec::SmallVec;
 use std::env;
-use std::num::NonZeroUsize;
-use std::{
-    collections::HashMap,
-    path::{PathBuf},
-    sync::Arc,
-};
+
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 
-use log::{trace};
-use lru::LruCache;
+use log::trace;
+
 use ordered_float::OrderedFloat;
 /* use skia_safe::{
     graphics::{font_cache_limit, font_cache_used, set_font_cache_limit},
@@ -36,8 +32,6 @@ use unicode_segmentation::UnicodeSegmentation;
 /* Make a shaper per font (variant), that contains cached shaped info etc.
 then make an algorithm that works on multiple shapers to shape multifont text */
 static DEFAULT_FONT: &[u8] = include_bytes!("../../assets/fonts/FiraCodeNerdFont-Regular.ttf");
-static LAST_RESORT_FONT: &[u8] = include_bytes!("../../assets/fonts/LastResort-Regular.ttf");
-static DEFAULT_FONT_SIZE: f32 = 12.0f32;
 pub const DEFAULT_FONT_NAME_LENGTH: usize = 32;
 
 /* TODO: This should ideally point to the configuration / shared directory for the helix/helicoid editor
@@ -72,9 +66,7 @@ pub struct BackupClusterKey {
 }
 struct CachingShaperInner {
     options: FontOptions,
-    shape_cache: LruCache<ShapableString, ShapedTextBlock>,
     font_cache: HashMap<SmallFontOptions, KeyedSwashFont>,
-    backed_up_clusters: LruCache<BackupClusterKey, SmallFontOptions>,
     font_names: Vec<Option<String>>,
     default_font: KeyedSwashFont,
     scale_factor: f32,
@@ -95,8 +87,6 @@ impl CachingShaper {
         let shaper = CachingShaper {
             inner: Arc::new(RwLock::new(CachingShaperInner {
                 options,
-                shape_cache: LruCache::new(NonZeroUsize::new(10000).unwrap()),
-                backed_up_clusters: LruCache::new(NonZeroUsize::new(64).unwrap()),
                 font_cache: Default::default(),
                 font_names: Vec::new(),
                 default_font,
@@ -139,11 +129,9 @@ impl CachingShaper {
         inner.scale_factor
     }
 
-    fn reset_font_loader(&mut self) {
+    fn _reset_font_loader(&mut self) {
         let mut inner = self.inner.write();
         inner.font_names.clear();
-        //self.blob_cache.clear();
-        // clear font manager?
     }
 
     pub fn font_names(&self) -> Vec<String> {
@@ -161,60 +149,6 @@ impl CachingShaper {
         }
         inner.font_names[font_id as usize] = Some(font_name);
     }
-    /*
-        pub fn update_scale_factor(&mut self, scale_factor: f32) {
-            debug!("scale_factor changed: {:.2}", scale_factor);
-            self.scale_factor = scale_factor;
-            self.reset_font_loader();
-        }
-
-        pub fn update_font(&mut self, guifont_setting: &str) {
-            debug!("Updating font: {}", guifont_setting);
-
-            let options = FontOptions::parse(guifont_setting);
-            let font_key = FontKey {
-                italic: false,
-                bold: false,
-                family_name: options.primary_font(),
-                hinting: options.font_parameters.hinting.clone(),
-                edging: options.font_parameters.edging.clone(),
-            };
-
-            if self.font_loader.get_or_load(&font_key).is_some() {
-                debug!("Font updated to: {}", guifont_setting);
-                self.options = options;
-                self.reset_font_loader();
-            } else {
-                debug!("Font can't be updated to: {}", guifont_setting);
-            }
-        }
-
-        fn reset_font_loader(&mut self) {
-            self.fudge_factor = 1.0;
-            let mut font_size = self.current_size();
-            debug!("Original font_size: {:.2}px", font_size);
-
-            self.font_loader = FontLoader::new(font_size);
-            let (metrics, font_width) = self.info();
-
-            debug!("Original font_width: {:.2}px", font_width);
-
-            if !self.options.font_parameters.allow_float_size {
-                // Calculate the new fudge factor required to scale the font width to the nearest exact pixel
-                debug!(
-                    "Font width: {:.2}px (avg: {:.2}px)",
-                    font_width, metrics.average_width
-                );
-                self.fudge_factor = font_width.round() / font_width;
-                debug!("Fudge factor: {:.2}", self.fudge_factor);
-                font_size = self.current_size();
-                debug!("Fudged font size: {:.2}px", font_size);
-                debug!("Fudged font width: {:.2}px", self.info().1);
-                self.font_loader = FontLoader::new(font_size);
-            }
-            //self.blob_cache.clear();
-        }
-    */
 
     fn cache_font_for_index(&self, options: &SmallFontOptions) -> bool {
         //        let font_key =
@@ -272,7 +206,7 @@ impl CachingShaper {
         })
     }
 
-    fn metrics(&mut self, font_options: &SmallFontOptions) -> Option<Metrics> {
+    fn _metrics(&mut self, font_options: &SmallFontOptions) -> Option<Metrics> {
         self.info(font_options).map(|i| i.0)
     }
     pub fn default_parameters(&self) -> FontParameters {
@@ -553,7 +487,7 @@ impl CachingShaper {
                 backup_font_families,
             );
             let mut current_cluster_offset = 0;
-            'cluster: for shaped_string_run in shaped_string_list {
+            for shaped_string_run in shaped_string_list {
                 let font_options = &shaped_string_run.font_info;
                 /* If this font is not valid it should not be returned by build clusters */
                 let font = inner
@@ -644,7 +578,7 @@ impl Clone for CachingShaper {
     }
 }
 impl KeyedSwashFont {
-    fn new(key: Option<&str>, swash_font: SwashFont) -> Self {
+    fn _new(key: Option<&str>, swash_font: SwashFont) -> Self {
         Self {
             key: key.map(|s| SmallVec::from_slice(s.as_bytes())),
             swash_font,

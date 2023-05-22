@@ -1,12 +1,12 @@
+#[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
 
-use anyhow::{Result};
+use anyhow::Result;
 use clap::Parser;
 use futures::StreamExt;
 use server::HelicoidServer;
 use std::future;
-
 
 use termion::{event::Key, raw::IntoRawMode};
 use termion_input_tokio::TermReadAsync;
@@ -63,7 +63,6 @@ fn wait_for_input() {
             loop {
                 ttime::sleep(std::time::Duration::from_secs(1)).await;
             }
-            return;
         }
         log::warn!("Press q to quit");
 

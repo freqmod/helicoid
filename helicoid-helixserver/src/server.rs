@@ -1,5 +1,5 @@
 use ahash::AHasher;
-use anyhow::{Result};
+use anyhow::Result;
 
 use async_trait::async_trait;
 use hashbrown::HashMap;
@@ -7,23 +7,15 @@ use hashbrown::HashMap;
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
-        MetaDrawBlock, NewRenderBlock,
-        PointF32, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath,
+        MetaDrawBlock, NewRenderBlock, PointF32, RenderBlockDescription, RenderBlockId,
+        RenderBlockLocation, RenderBlockPath,
     },
-    input::{
-        HelicoidToServerMessage, ViewportInfo, VirtualKeycode,
-    },
-    tcp_bridge::{
-        TcpBridgeServer, TcpBridgeServerConnectionState,
-        TcpBridgeToServerMessage,
-    },
-    text::{SmallFontOptions},
+    input::{HelicoidToServerMessage, ViewportInfo, VirtualKeycode},
+    tcp_bridge::{TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToServerMessage},
+    text::SmallFontOptions,
     transferbuffer::TransferBuffer,
 };
-use helix_core::{
-    movement::{move_horizontally, move_vertically, Direction},
-};
+use helix_core::movement::{move_horizontally, move_vertically, Direction};
 
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
@@ -33,7 +25,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{
-    broadcast::{Receiver as BReceiver},
+    broadcast::Receiver as BReceiver,
     mpsc::{Receiver, Sender},
     Mutex as TMutex,
 };
@@ -66,8 +58,8 @@ struct ServerStateData {
 }
 
 struct ServerState {
-    pending_message: Option<TcpBridgeToServerMessage>,
-    peer_address: SocketAddr,
+    _pending_message: Option<TcpBridgeToServerMessage>,
+    _peer_address: SocketAddr,
     channel_tx: Sender<Arc<TransferBuffer>>,
     channel_rx: Receiver<TcpBridgeToServerMessage>,
     close_rx: BReceiver<()>,
@@ -540,8 +532,8 @@ impl TcpBridgeServerConnectionState for ServerState {
             inner_editor.update_receiver()
         };
         Self {
-            pending_message: None,
-            peer_address,
+            _pending_message: None,
+            _peer_address: peer_address,
             channel_tx,
             channel_rx,
             close_rx,

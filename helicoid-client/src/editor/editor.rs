@@ -18,7 +18,7 @@ use helicoid_protocol::{
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
 use ordered_float::OrderedFloat;
-use skia_safe::{Surface};
+use skia_safe::Surface;
 use tokio::sync::{
     mpsc::{Receiver, Sender},
     Mutex as TMutex,
@@ -188,7 +188,10 @@ impl HeliconeEditor {
         window: &winit::window::Window,
     ) -> Option<ControlFlow> {
         match event {
-            Event::WindowEvent { window_id: _, event } => match event {
+            Event::WindowEvent {
+                window_id: _,
+                event,
+            } => match event {
                 WindowEvent::CloseRequested => {
                     return Some(ControlFlow::Exit);
                 }
@@ -355,7 +358,10 @@ impl HeliconeEditor {
             }
             match event {
                 Event::NewEvents(_) => {}
-                Event::WindowEvent { window_id: _, event } => match event {
+                Event::WindowEvent {
+                    window_id: _,
+                    event,
+                } => match event {
                     WindowEvent::Resized(event) => {
                         //let scale_factor = inner.as_ref().map(|i| i.scale_factor).unwrap_or(1.0);
                         let scale_factor = if let Some(monitor) = window.current_monitor() {
@@ -395,7 +401,7 @@ impl HeliconeEditor {
                     WindowEvent::CursorMoved {
                         device_id: _,
                         position: _,
-                        modifiers: _,
+                        ..
                     } => {}
                     WindowEvent::CursorEntered { device_id: _ } => {}
                     WindowEvent::CursorLeft { device_id: _ } => {}
@@ -403,13 +409,13 @@ impl HeliconeEditor {
                         device_id: _,
                         delta: _,
                         phase: _,
-                        modifiers: _,
+                        ..
                     } => {}
                     WindowEvent::MouseInput {
                         device_id: _,
                         state: _,
                         button: _,
-                        modifiers: _,
+                        ..
                     } => {}
                     WindowEvent::TouchpadPressure {
                         device_id: _,
@@ -464,7 +470,10 @@ impl HeliconeEditor {
                         phase: _,
                     } => {}
                 },
-                Event::DeviceEvent { device_id: _, event: _ } => {}
+                Event::DeviceEvent {
+                    device_id: _,
+                    event: _,
+                } => {}
                 Event::UserEvent(_) => {}
                 Event::Suspended => {}
                 Event::Resumed => {}

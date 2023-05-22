@@ -65,14 +65,17 @@ pub fn ease_out_expo(t: f32) -> f32 {
     }
 }
 
+#[allow(dead_code)]
 pub fn lerp(start: f32, end: f32, t: f32) -> f32 {
     start + (end - start) * t
 }
 
+#[allow(dead_code)]
 pub fn ease(ease_func: fn(f32) -> f32, start: f32, end: f32, t: f32) -> f32 {
     lerp(start, end, ease_func(t))
 }
 
+#[allow(dead_code)]
 pub fn ease_point(ease_func: fn(f32) -> f32, start: Point, end: Point, t: f32) -> Point {
     Point {
         x: ease(ease_func, start.x, end.x, t),

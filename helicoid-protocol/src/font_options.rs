@@ -4,9 +4,8 @@ use crate::text::{FontEdging, FontHinting, FontParameters};
 use ordered_float::OrderedFloat;
 use rkyv::{Archive, Deserialize, Serialize};
 //use serde::{Serialize, Deserialize};
-use itertools::Itertools;
-use smallvec::{SmallVec};
 
+use smallvec::SmallVec;
 
 const DEFAULT_FONT_SIZE: f32 = 14.0;
 /*
@@ -111,27 +110,6 @@ impl Default for FontOptions {
             },
         }
     }
-}
-
-fn parse_font_name(font_name: impl AsRef<str>) -> SmallVec<[u8; 32]> {
-    let mut parsed_font_name_bytes = SmallVec::new();
-    font_name
-        .as_ref()
-        .chars()
-        .batching(|iter| {
-            let ch = iter.next();
-            match ch? {
-                '\\' => iter.next(),
-                '_' => Some(' '),
-                _ => ch,
-            }
-        })
-        .for_each(|ch| {
-            let mut tmp_enc = [0u8; 4];
-            ch.encode_utf8(&mut tmp_enc);
-            parsed_font_name_bytes.extend_from_slice(&tmp_enc[0..ch.len_utf8()]);
-        });
-    parsed_font_name_bytes
 }
 
 fn points_to_pixels(value: f32) -> f32 {

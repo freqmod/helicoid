@@ -25,7 +25,7 @@ impl RedrawScheduler {
         }
     }
 
-    pub fn schedule(&self, new_scheduled: Instant) {
+    pub fn _schedule(&self, new_scheduled: Instant) {
         trace!("Redraw scheduled for {:?}", new_scheduled);
         let mut scheduled_frame = self.scheduled_frame.lock().unwrap();
 

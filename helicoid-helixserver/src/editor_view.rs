@@ -2,27 +2,17 @@ use crate::{center::CenterModel, editor::Editor as HcEditor, statusline::StatusL
 
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    gfx::{
-        PointF32, PointU32,
-        RenderBlockId, RenderBlockLocation, RenderBlockPath,
-    },
+    gfx::{PointF32, PointU32, RenderBlockId, RenderBlockLocation, RenderBlockPath},
     shadowblocks::{
-        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock, VisitingContext,
-    },
-    tcp_bridge::{
-        TcpBridgeServerConnectionState,
+        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
+        VisitingContext,
     },
     transferbuffer::TransferBuffer,
 };
 
-use helix_view::{
-    Document, View, ViewId,
-};
+use helix_view::{Document, View, ViewId};
 use ordered_float::OrderedFloat;
-use std::{
-    hash::{Hash},
-    sync::Arc,
-};
+use std::{hash::Hash, sync::Arc};
 use swash::Metrics;
 use tokio::sync::MutexGuard;
 
@@ -58,33 +48,33 @@ impl ContentDocContainer<'_> {
     pub fn editor(&self) -> &HcEditor {
         &self.editor
     }
-    pub fn editor_mut(&mut self) -> &mut HcEditor {
+    pub fn _editor_mut(&mut self) -> &mut HcEditor {
         &mut self.editor
     }
-    pub fn view_id(&self) -> ViewId {
+    pub fn _view_id(&self) -> ViewId {
         self.view_id
     }
     pub fn view(&self) -> &View {
         self.editor.editor().tree.get(self.view_id)
     }
-    pub fn view_mut(&mut self) -> &mut View {
+    pub fn _view_mut(&mut self) -> &mut View {
         self.editor.editor_mut().tree.get_mut(self.view_id)
     }
     pub fn document(&self) -> Option<&Document> {
         let view = self.editor.editor().tree.get(self.view_id);
         self.editor.editor().document(view.doc)
     }
-    pub fn destruct(&self) -> (&HcEditor, &View, Option<&Document>) {
+    pub fn _destruct(&self) -> (&HcEditor, &View, Option<&Document>) {
         let view = self.editor.editor().tree.get(self.view_id);
         let document = self.editor.editor().document(view.doc);
         (&self.editor, view, document)
     }
-    pub fn document_mut(&mut self) -> Option<&mut Document> {
+    pub fn _document_mut(&mut self) -> Option<&mut Document> {
         let view = self.editor.editor().tree.get(self.view_id);
         let doc_id = view.doc.clone();
         self.editor.editor_mut().document_mut(doc_id)
     }
-    pub fn destruct_mut(&mut self) -> (&mut View, Option<&mut Document>) {
+    pub fn _destruct_mut(&mut self) -> (&mut View, Option<&mut Document>) {
         let hxeditor = self.editor.editor_mut();
         let view = hxeditor.tree.get_mut(self.view_id);
         let document = hxeditor.documents.get_mut(&view.doc);
@@ -146,7 +136,7 @@ impl ContentVisitor {
             &mut self.shaper,
         )
     }
-    pub fn active_view_id(&self) -> Option<ViewId> {
+    pub fn _active_view_id(&self) -> Option<ViewId> {
         self.active_view_id
     }
 
@@ -229,22 +219,9 @@ struct EditorModel {
     scale_factor: OrderedFloat<f32>,
 }
 
-pub struct EditorContainer {
-    top: EditorTop,
-    left: LeftGutter,
-    right: RightGutter, // Scrollbar, minimap etc.
-    /*    top_overlay: TopOverlay,
-    bottom_overlay: BottomOverlay,
-    left_overlay: LeftOverlay,
-    right_overlay: RightOverlay,
-    topright_overlay: TopRightOverlay,*/
-    center_text: EditorTextArea,
-    model: EditorModel,
-}
-
 pub struct EditorTree {
     root: ShadowMetaContainerBlock<EditorModel, ContentVisitor>,
-    path: RenderBlockPath,
+    _path: RenderBlockPath,
 }
 
 impl EditorModel {
@@ -466,10 +443,10 @@ impl From<SizeScale> for u32 {
 }
 
 impl SizeScale {
-    fn round_up(&self) -> u32 {
+    fn _round_up(&self) -> u32 {
         self.line_height.ceil() as u32
     }
-    fn round_down(&self) -> u32 {
+    fn _round_down(&self) -> u32 {
         self.line_height.floor() as u32
     }
 }
@@ -489,7 +466,7 @@ impl EditorTree {
         let root = ShadowMetaContainerBlock::new(tree_id, extent, true, None, editor_tree_logic);
         Self {
             root,
-            path: parent_path,
+            _path: parent_path,
         }
     }
     pub fn initialize(&mut self, visitor: &mut ContentVisitor) {
@@ -549,7 +526,7 @@ impl EditorModel {
     fn font_line_height(&self) -> OrderedFloat<f32> {
         self.scale.line_height * self.scale_factor
     }
-    pub fn current_view_id(&self) -> Option<ViewId> {
+    pub fn _current_view_id(&self) -> Option<ViewId> {
         self.view_id
     }
 }

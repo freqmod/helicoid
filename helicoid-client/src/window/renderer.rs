@@ -1,9 +1,4 @@
-use std::{
-    convert::TryInto,
-    ffi::{CString},
-    num::NonZeroU32,
-    time::Duration,
-};
+use std::{convert::TryInto, ffi::CString, num::NonZeroU32, time::Duration};
 
 use crate::redraw_scheduler::REDRAW_SCHEDULER;
 use gl::types::*;
@@ -11,14 +6,14 @@ use glutin::{
     self,
     config::{GetGlConfig, GlConfig},
     context::{NotCurrentContext, PossiblyCurrentContext},
-    display::{GetGlDisplay},
+    display::GetGlDisplay,
     prelude::{GlDisplay, GlSurface, NotCurrentGlContextSurfaceAccessor},
     surface::{Surface as GlutinSurface, SurfaceAttributesBuilder, WindowSurface},
 };
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe::{
     gpu::{gl::FramebufferInfo, BackendRenderTarget, DirectContext, SurfaceOrigin},
-    Canvas, ColorType, Surface,
+    ColorType, Surface,
 };
 use winit::window::Window as WinitWindow;
 
@@ -126,9 +121,6 @@ impl SkiaRenderer {
         }
     }
 
-    pub fn canvas(&mut self) -> &mut Canvas {
-        self.surface.canvas()
-    }
     pub fn surface(&mut self) -> &mut Surface {
         &mut self.surface
     }
