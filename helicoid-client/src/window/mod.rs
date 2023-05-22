@@ -9,15 +9,14 @@ mod settings;
 //mod draw_background;
 
 use std::{
-    mem::ManuallyDrop,
     time::{Duration, Instant},
 };
 
 use glutin::{
     self,
     config::{GetGlConfig, GlConfig},
-    context::{AsRawContext, GlProfile, NotCurrentContext, PossiblyCurrentContext},
-    display::{AsRawDisplay, Display, GetGlDisplay},
+    context::{NotCurrentContext},
+    display::{GetGlDisplay},
     prelude::GlDisplay,
 };
 use winit::{
@@ -28,18 +27,18 @@ use winit::{
     window::{self, Fullscreen, Icon},
 };
 
-use winit::event_loop::EventLoopBuilder;
+
 use winit::window::{Window, WindowBuilder};
 
-use glutin::config::{Config as GlutinConfig, ConfigTemplateBuilder};
+use glutin::config::{ConfigTemplateBuilder};
 use glutin::context::{ContextApi, ContextAttributesBuilder};
 //use glutin::prelude::*;
-use glutin::surface::{Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
+
 use glutin_winit::{self, DisplayBuilder};
 
 use raw_window_handle::HasRawWindowHandle;
 
-use log::trace;
+
 use tokio::sync::mpsc::UnboundedReceiver;
 
 /*#[cfg(target_os = "macos")]
@@ -60,13 +59,10 @@ use renderer::SkiaRenderer;
 use crate::{
     //bridge::{ParallelCommand, UiCommand},
     //cmd_line::CmdLineSettings,
-    dimensions::Dimensions,
     editor::{editor::HeliconeEditor, EditorCommand},
     event_aggregator::EVENT_AGGREGATOR,
-    frame::Frame,
     redraw_scheduler::REDRAW_SCHEDULER,
     renderer::Renderer,
-    renderer::WindowPadding,
     HeliconeCommandLineArguments,
     //    running_tracker::*,
     /*    settings::{
@@ -254,11 +250,11 @@ impl GlutinWindowWrapper {
                 event: WindowEvent::DroppedFile(path),
                 ..
             } => {
-                let file_path = path.into_os_string().into_string().unwrap();
+                let _file_path = path.into_os_string().into_string().unwrap();
                 //EVENT_AGGREGATOR.send(UiCommand::Parallel(ParallelCommand::FileDrop(file_path)));
             }
             Event::WindowEvent {
-                event: WindowEvent::Focused(focus),
+                event: WindowEvent::Focused(_focus),
                 ..
             } => {
                 /*
@@ -414,7 +410,7 @@ fn create_window_with_gl_context(
         .with_maximized(maximized)
         .with_transparent(true);
 
-    let frame_decoration = true; //cmd_line_settings.frame;
+    let _frame_decoration = true; //cmd_line_settings.frame;
 
     // There is only two options for windows & linux, no need to match more options.
     #[cfg(not(target_os = "macos"))]
@@ -425,7 +421,7 @@ fn create_window_with_gl_context(
         .with_transparency(true);
 
     let display_builder = DisplayBuilder::new().with_window_builder(Some(winit_window_builder));
-    let (mut window, gl_config) = display_builder
+    let (window, gl_config) = display_builder
         .build(event_loop, template, |configs| {
             // Find the config with the maximum number of samples, so our triangle will
             // be smooth.
@@ -461,7 +457,7 @@ fn create_window_with_gl_context(
     let fallback_context_attributes = ContextAttributesBuilder::new()
         .with_context_api(ContextApi::Gles(None))
         .build(raw_window_handle);
-    let mut not_current_gl_context = unsafe {
+    let not_current_gl_context = unsafe {
         gl_display
             .create_context(&gl_config, &context_attributes)
             .unwrap_or_else(|_| {

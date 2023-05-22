@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    time::{Duration, Instant},
+    time::{Instant},
 };
 
 use skia_safe::Rect;
@@ -17,11 +17,9 @@ use winit::{
 
 use crate::{
     //bridge::{SerialCommand, UiCommand},
-    event_aggregator::EVENT_AGGREGATOR,
     renderer::{Renderer, WindowDrawDetails},
     //settings::SETTINGS,
     window::keyboard_manager::KeyboardManager,
-    window::WindowSettings,
 };
 
 fn clamp_position(
@@ -105,10 +103,10 @@ impl MouseManager {
 
     fn handle_pointer_motion(
         &mut self,
-        x: i32,
-        y: i32,
-        keyboard_manager: &KeyboardManager,
-        renderer: &Renderer,
+        _x: i32,
+        _y: i32,
+        _keyboard_manager: &KeyboardManager,
+        _renderer: &Renderer,
         //windowed_context: &WindowedContext<PossiblyCurrent>,
     ) {
         /*let size = windowed_context.window().inner_size();
@@ -195,21 +193,21 @@ impl MouseManager {
         &mut self,
         mouse_button: &MouseButton,
         down: bool,
-        keyboard_manager: &KeyboardManager,
+        _keyboard_manager: &KeyboardManager,
     ) {
         // For some reason pointer down is handled differently from pointer up and drag.
         // Floating windows: relative coordinates are great.
         // Non floating windows: rather than global coordinates, relative are needed
         if self.enabled {
             if let Some(button_text) = mouse_button_to_button_text(mouse_button) {
-                if let Some(details) = &self.window_details_under_mouse {
-                    let action = if down {
+                if let Some(_details) = &self.window_details_under_mouse {
+                    let _action = if down {
                         "press".to_owned()
                     } else {
                         "release".to_owned()
                     };
 
-                    let position = if !down && self.has_moved {
+                    let _position = if !down && self.has_moved {
                         self.drag_position
                     } else {
                         self.relative_position
@@ -237,7 +235,7 @@ impl MouseManager {
         }
     }
 
-    fn handle_line_scroll(&mut self, x: f32, y: f32, keyboard_manager: &KeyboardManager) {
+    fn handle_line_scroll(&mut self, x: f32, y: f32, _keyboard_manager: &KeyboardManager) {
         if !self.enabled {
             return;
         }
@@ -246,7 +244,7 @@ impl MouseManager {
         self.scroll_position.y += y;
         let new_y = self.scroll_position.y as i64;
 
-        let vertical_input_type = match new_y.partial_cmp(&previous_y) {
+        let _vertical_input_type = match new_y.partial_cmp(&previous_y) {
             Some(Ordering::Greater) => Some("up"),
             Some(Ordering::Less) => Some("down"),
             _ => None,
@@ -273,7 +271,7 @@ impl MouseManager {
         self.scroll_position.x += x;
         let new_x = self.scroll_position.x as i64;
 
-        let horizontal_input_type = match new_x.partial_cmp(&previous_x) {
+        let _horizontal_input_type = match new_x.partial_cmp(&previous_x) {
             Some(Ordering::Greater) => Some("right"),
             Some(Ordering::Less) => Some("left"),
             _ => None,
@@ -313,12 +311,12 @@ impl MouseManager {
 
     fn handle_touch(
         &mut self,
-        keyboard_manager: &KeyboardManager,
-        renderer: &Renderer,
+        _keyboard_manager: &KeyboardManager,
+        _renderer: &Renderer,
         //windowed_context: &WindowedContext<PossiblyCurrent>,
-        finger_id: (DeviceId, u64),
-        location: PhysicalPosition<f32>,
-        phase: &TouchPhase,
+        _finger_id: (DeviceId, u64),
+        _location: PhysicalPosition<f32>,
+        _phase: &TouchPhase,
     ) {
         /*
         match phase {

@@ -1,17 +1,17 @@
 use ahash::HashMap;
-use half::f16;
+
 use helicoid_protocol::caching_shaper::base_asset_path;
 use helicoid_protocol::font_options::FontOptions;
 use helicoid_protocol::text::{
     FontEdging, FontHinting, FontParameters, ShapedTextBlock, SmallFontOptions,
 };
 use ordered_float::OrderedFloat;
-use smallvec::SmallVec;
+
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use log::{debug, trace, warn};
+
+use log::{trace, warn};
 use lru::LruCache;
 use skia_safe::{
     font::Edging as SkiaEdging,
@@ -21,13 +21,8 @@ use skia_safe::{
 };
 use swash::{
     shape::ShapeContext,
-    text::{
-        cluster::{CharCluster, Parser, Status, Token},
-        Script,
-    },
-    Metrics,
 };
-use unicode_segmentation::UnicodeSegmentation;
+
 
 //use {caching_shaper::base_asset_path, font_loader::*, font_options::*};
 
@@ -51,9 +46,9 @@ pub struct ShapedBlobBuilder {
 
 impl ShapedBlobBuilder {
     pub fn new() -> ShapedBlobBuilder {
-        let mut font_manager = FontMgr::new();
+        let font_manager = FontMgr::new();
         let options = FontOptions::default();
-        let font_size = options.font_parameters.size;
+        let _font_size = options.font_parameters.size;
         let default_font = HashMap::default();
         let mut shaper = ShapedBlobBuilder {
             options,
@@ -280,17 +275,17 @@ impl KeyedFont {
         skia_font.set_hinting(font_hinting(&key.hinting));
         skia_font.set_edging(font_edging(&key.edging));
 
-        let typeface = skia_font.typeface().unwrap();
+        let _typeface = skia_font.typeface().unwrap();
 
         Some(Self { key, skia_font })
     }
     fn load_keyed(
-        font_manager: &mut FontMgr,
+        _font_manager: &mut FontMgr,
         base_directory: &PathBuf,
         font_key: FontKey,
         font_size: f32,
     ) -> Option<Self> {
-        let font_style = font_style(font_key.bold, font_key.italic);
+        let _font_style = font_style(font_key.bold, font_key.italic);
 
         if let Some(family_name) = &font_key.family_name {
             trace!("Loading font {:?} {}", font_key, font_size);

@@ -2,11 +2,11 @@ use crate::text::{FontEdging, FontHinting, FontParameters};
 //use itertools::Itertools;
 
 use ordered_float::OrderedFloat;
-use rkyv::{with::Skip, Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 //use serde::{Serialize, Deserialize};
 use itertools::Itertools;
-use smallvec::{smallvec, SmallVec};
-use std::sync::Arc;
+use smallvec::{SmallVec};
+
 use unicode_segmentation::UnicodeSegmentation;
 const DEFAULT_FONT_SIZE: f32 = 14.0;
 /*

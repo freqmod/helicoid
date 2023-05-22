@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -11,7 +10,7 @@ use crate::{
 };
 use helicoid_protocol::{
     block_manager::Manager,
-    gfx::{PointF16, PointF32, RenderBlockDescription, RenderBlockId, RenderBlockLocation},
+    gfx::{PointF32, RenderBlockId, RenderBlockLocation},
     input::{
         ComplexKeyEvent, HelicoidToServerMessage, KeyModifierStateUpdateEvent, ViewportInfo,
         VirtualKeycode,
@@ -19,7 +18,7 @@ use helicoid_protocol::{
     tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
 };
 use ordered_float::OrderedFloat;
-use skia_safe::{Canvas, Image, Surface};
+use skia_safe::{Surface};
 use tokio::sync::{
     mpsc::{Receiver, Sender},
     Mutex as TMutex,
@@ -189,7 +188,7 @@ impl HeliconeEditor {
         window: &winit::window::Window,
     ) -> Option<ControlFlow> {
         match event {
-            Event::WindowEvent { window_id, event } => match event {
+            Event::WindowEvent { window_id: _, event } => match event {
                 WindowEvent::CloseRequested => {
                     return Some(ControlFlow::Exit);
                 }
@@ -356,7 +355,7 @@ impl HeliconeEditor {
             }
             match event {
                 Event::NewEvents(_) => {}
-                Event::WindowEvent { window_id, event } => match event {
+                Event::WindowEvent { window_id: _, event } => match event {
                     WindowEvent::Resized(event) => {
                         //let scale_factor = inner.as_ref().map(|i| i.scale_factor).unwrap_or(1.0);
                         let scale_factor = if let Some(monitor) = window.current_monitor() {
@@ -394,33 +393,33 @@ impl HeliconeEditor {
                         );
                     }
                     WindowEvent::CursorMoved {
-                        device_id,
-                        position,
-                        modifiers,
+                        device_id: _,
+                        position: _,
+                        modifiers: _,
                     } => {}
-                    WindowEvent::CursorEntered { device_id } => {}
-                    WindowEvent::CursorLeft { device_id } => {}
+                    WindowEvent::CursorEntered { device_id: _ } => {}
+                    WindowEvent::CursorLeft { device_id: _ } => {}
                     WindowEvent::MouseWheel {
-                        device_id,
-                        delta,
-                        phase,
-                        modifiers,
+                        device_id: _,
+                        delta: _,
+                        phase: _,
+                        modifiers: _,
                     } => {}
                     WindowEvent::MouseInput {
-                        device_id,
-                        state,
-                        button,
-                        modifiers,
+                        device_id: _,
+                        state: _,
+                        button: _,
+                        modifiers: _,
                     } => {}
                     WindowEvent::TouchpadPressure {
-                        device_id,
-                        pressure,
-                        stage,
+                        device_id: _,
+                        pressure: _,
+                        stage: _,
                     } => {}
                     WindowEvent::AxisMotion {
-                        device_id,
-                        axis,
-                        value,
+                        device_id: _,
+                        axis: _,
+                        value: _,
                     } => {}
                     WindowEvent::Touch(_) => {}
                     WindowEvent::ScaleFactorChanged {
@@ -454,18 +453,18 @@ impl HeliconeEditor {
                     WindowEvent::Ime(_) => {}
                     WindowEvent::Occluded(_) => {}
                     WindowEvent::TouchpadMagnify {
-                        device_id,
-                        delta,
-                        phase,
+                        device_id: _,
+                        delta: _,
+                        phase: _,
                     } => {}
-                    WindowEvent::SmartMagnify { device_id } => todo!(),
+                    WindowEvent::SmartMagnify { device_id: _ } => todo!(),
                     WindowEvent::TouchpadRotate {
-                        device_id,
-                        delta,
-                        phase,
+                        device_id: _,
+                        delta: _,
+                        phase: _,
                     } => {}
                 },
-                Event::DeviceEvent { device_id, event } => {}
+                Event::DeviceEvent { device_id: _, event: _ } => {}
                 Event::UserEvent(_) => {}
                 Event::Suspended => {}
                 Event::Resumed => {}
@@ -522,7 +521,7 @@ impl HeliconeEditor {
             self.reconnect_bridge()
         }
     }
-    pub fn draw_frame(&mut self, root_surface: &mut Surface, dt: f32) -> bool {
+    pub fn draw_frame(&mut self, root_surface: &mut Surface, _dt: f32) -> bool {
         if !self.ensure_connected() {
             log::warn!("Try to draw frame before connection is established to server");
             return false;

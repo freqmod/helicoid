@@ -1,18 +1,16 @@
 use ahash::AHasher;
 use hashbrown::HashSet;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec};
 use std::{
     any::Any,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::Deref,
 };
 
 use crate::{
     gfx::{
-        MetaDrawBlock, NewRenderBlock, PointF16, PointF32, RemoteBoxUpdate, RemoteSingleChange,
-        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
-        RenderBlockRemoveInstruction, SimpleDrawBlock,
+        MetaDrawBlock, NewRenderBlock, PointF32,
+        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath, SimpleDrawBlock,
     },
     text::ShapedTextBlock,
     transferbuffer::TransferBuffer,
@@ -63,10 +61,10 @@ where
         }
     }
     fn fire_changed(&mut self) {}
-    fn subscribe(&mut self, observer: Box<dyn Observer<T>>) {
+    fn subscribe(&mut self, _observer: Box<dyn Observer<T>>) {
         //        self.observer.insert(observer);
     }
-    fn unsubscribe(&mut self, observer: Box<dyn Observer<T>>) {
+    fn unsubscribe(&mut self, _observer: Box<dyn Observer<T>>) {
         //        self.observers.insert(observer);
     }
 }
@@ -132,10 +130,10 @@ pub struct NoContainerBlockLogic<C> {
 }
 
 impl<C> Hash for NoContainerBlockLogic<C> {
-    fn hash<H: Hasher>(&self, state: &mut H) {}
+    fn hash<H: Hasher>(&self, _state: &mut H) {}
 }
 impl<C> PartialEq for NoContainerBlockLogic<C> {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
@@ -152,23 +150,23 @@ where
 {
     type UpdateContext = C;
     fn pre_update(
-        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
-        context: &mut Self::UpdateContext,
+        _block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {
     }
     fn post_update(
-        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
-        context: &mut Self::UpdateContext,
+        _block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {
     }
 
     fn initialize(
-        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
-        context: &mut Self::UpdateContext,
+        _block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {

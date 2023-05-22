@@ -3,17 +3,17 @@ the depedenencies that are introduced */
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use log::trace;
+
 use std::fmt::{self, Debug};
-use std::sync::Arc;
+
 
 use bytecheck::CheckBytes;
-use half::f16;
+
 use num_enum::IntoPrimitive;
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
 
-use crate::gfx::{FontPaint, PointF16, PointF32};
+use crate::gfx::{FontPaint, PointF32};
 
 pub const SHAPABLE_STRING_ALLOC_LEN: usize = 128;
 pub const SHAPABLE_STRING_ALLOC_RUNS: usize = 16;
@@ -148,7 +148,7 @@ impl ShapableString {
     }
     pub fn push_plain_str(&mut self, text: &str, color: u32, scaled_font_size: f32) {
         log::trace!("PPS: {}", text);
-        let mut simple_run = ShapedStringMetadata {
+        let simple_run = ShapedStringMetadata {
             substring_length: text.as_bytes().len() as u16,
             font_info: SmallFontOptions {
                 family_id: 0,

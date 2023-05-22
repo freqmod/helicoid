@@ -1,6 +1,6 @@
 use std::{
     convert::TryInto,
-    ffi::{CStr, CString},
+    ffi::{CString},
     num::NonZeroU32,
     time::Duration,
 };
@@ -10,8 +10,8 @@ use gl::types::*;
 use glutin::{
     self,
     config::{GetGlConfig, GlConfig},
-    context::{AsRawContext, GlProfile, NotCurrentContext, PossiblyCurrentContext},
-    display::{AsRawDisplay, Display, GetGlDisplay},
+    context::{NotCurrentContext, PossiblyCurrentContext},
+    display::{GetGlDisplay},
     prelude::{GlDisplay, GlSurface, NotCurrentGlContextSurfaceAccessor},
     surface::{Surface as GlutinSurface, SurfaceAttributesBuilder, WindowSurface},
 };
@@ -136,7 +136,7 @@ impl SkiaRenderer {
     pub fn resize(&mut self, window: &mut WinitWindow) {
         let monitor_scale_factor =
         /* First resize the opengl drawable */
-        if let Some(monitor) = window.current_monitor() {
+        if let Some(_monitor) = window.current_monitor() {
 //            monitor.scale_factor()
                 1.0
         }else{
@@ -169,7 +169,7 @@ impl SkiaRenderer {
         //self.surface = create_surface(windowed_context, &mut self.gr_context, self.fb_info);
         REDRAW_SCHEDULER.queue_next_frame();
     }
-    pub fn flush_and_swap_buffers(&mut self, window: &mut WinitWindow) {
+    pub fn flush_and_swap_buffers(&mut self, _window: &mut WinitWindow) {
         /* Tell skia to draw */
         //        window.request_redraw();
         self.gr_context.flush_and_submit();

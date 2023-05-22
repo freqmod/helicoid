@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use tokio::sync::{
-    broadcast::{self, Receiver as BReceiver, Sender as BSender},
-    mpsc::{self, Receiver, Sender},
-    Mutex as TMutex,
+    broadcast::{self},
 };
 
 use helix_core::{config::user_syntax_loader, syntax};
@@ -52,7 +50,7 @@ impl Editor {
             Err(err) => return Err(Error::new(err)),
         };*/
         let config = Arc::new(ArcSwap::from_pointee(Config::default()));
-        let mut veditor = VEditor::new(Rect::new(0, 0, 10, 10), theme_loader, syn_loader, config);
+        let veditor = VEditor::new(Rect::new(0, 0, 10, 10), theme_loader, syn_loader, config);
 
         Self {
             editor_state_changed_send,

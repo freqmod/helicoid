@@ -1,10 +1,9 @@
-use log::error;
+
 //use nvim_rs::Value;
-use skia_safe::{paint::Style, BlendMode, Canvas, Color, Paint, Point, Rect};
+use skia_safe::{Canvas, Paint, Point};
 
 use crate::{
-    editor::Cursor,
-    renderer::animation_utils::*, //, grid_renderer::GridRenderer},
+    editor::Cursor, //, grid_renderer::GridRenderer},
     //settings::*,
     renderer::cursor_renderer::CursorSettings,
 };
@@ -128,10 +127,10 @@ impl CursorVfx for PointHighlight {
 
     fn render(
         &self,
-        settings: &CursorSettings,
-        canvas: &mut Canvas,
+        _settings: &CursorSettings,
+        _canvas: &mut Canvas,
         //grid_renderer: &mut GridRenderer,
-        cursor: &Cursor,
+        _cursor: &Cursor,
     ) {
         if (self.t - 1.0).abs() < std::f32::EPSILON {
             return;
@@ -318,12 +317,12 @@ impl CursorVfx for ParticleTrail {
 
     fn render(
         &self,
-        settings: &CursorSettings,
-        canvas: &mut Canvas,
+        _settings: &CursorSettings,
+        _canvas: &mut Canvas,
         //grid_renderer: &mut GridRenderer,
-        cursor: &Cursor,
+        _cursor: &Cursor,
     ) {
-        let mut paint = Paint::new(skia_safe::colors::WHITE, None);
+        let _paint = Paint::new(skia_safe::colors::WHITE, None);
         /*
         let font_dimensions = grid_renderer.font_dimensions;
         match self.trail_mode {

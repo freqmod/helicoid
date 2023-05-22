@@ -1,5 +1,5 @@
-use crate::font_options::{self, FontOptions};
-use crate::gfx::{FontPaint, PointF16, PointF32, SimplePaint};
+use crate::font_options::{FontOptions};
+use crate::gfx::{FontPaint, PointF32};
 use crate::swash_font::SwashFont;
 use crate::text::{
     FontParameters, ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph,
@@ -10,13 +10,13 @@ use std::env;
 use std::num::NonZeroUsize;
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::{PathBuf},
     sync::Arc,
 };
 
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 
-use log::{debug, trace, warn};
+use log::{trace};
 use lru::LruCache;
 use ordered_float::OrderedFloat;
 /* use skia_safe::{
@@ -334,7 +334,7 @@ impl CachingShaper {
         SmallVec<[CharCluster; SHAPABLE_STRING_ALLOC_LEN]>,
         SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
     ) {
-        let mut cluster = CharCluster::new();
+        let _cluster = CharCluster::new();
         let meta_run = &text.metadata_runs[meta_run_index];
         let text_str_data =
             &text.text[meta_run_start..(meta_run_start + meta_run.substring_length as usize)];
@@ -531,7 +531,7 @@ impl CachingShaper {
         text: &ShapableString,
         backup_font_families: &Option<SmallVec<[u8; 8]>>,
     ) -> ShapedTextBlock {
-        let current_size = self.current_size();
+        let _current_size = self.current_size();
         //let (glyph_width, ..) = self.font_base_dimensions();
 
         //        let mut resulting_blobs = Vec::new();
@@ -656,7 +656,7 @@ impl KeyedSwashFont {
             swash_font,
         }
     }
-    fn load_keyed(base_directory: &PathBuf, name: Option<String>, font_size: f32) -> Option<Self> {
+    fn load_keyed(base_directory: &PathBuf, name: Option<String>, _font_size: f32) -> Option<Self> {
         //        let font_style = font_style(font_key.bold, font_key.italic);
         if let Some(family_name) = &name {
             trace!("KSFLoading font {:?}", name);

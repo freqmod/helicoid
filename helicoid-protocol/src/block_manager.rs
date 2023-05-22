@@ -1,9 +1,9 @@
 use smallvec::SmallVec;
 
 use crate::gfx::BlockLayer;
-use crate::gfx::PointF16;
+
 use crate::gfx::PointF32;
-use crate::gfx::RemoteBoxUpdate;
+
 use crate::gfx::RemoteSingleChange;
 use crate::gfx::RenderBlockDescription;
 use crate::gfx::RenderBlockId;
@@ -742,9 +742,9 @@ impl<BG: BlockGfx> BlockContainer<BG> for InteriorBlockContainer<BG> {
 
     fn move_blocks(
         &mut self,
-        mask_id: RenderBlockId,
-        dst_mask_id: RenderBlockId,
-        base_id: RenderBlockId,
+        _mask_id: RenderBlockId,
+        _dst_mask_id: RenderBlockId,
+        _base_id: RenderBlockId,
     ) {
         todo!()
     }
@@ -770,13 +770,13 @@ impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
         &self.path
     }
 
-    fn add_block(&mut self, id: RenderBlockId, block: Block<BG>) -> anyhow::Result<()> {
+    fn add_block(&mut self, _id: RenderBlockId, _block: Block<BG>) -> anyhow::Result<()> {
         todo!()
     }
     fn update_block(
         &mut self,
-        id: RenderBlockId,
-        block_description: &RenderBlockDescription,
+        _id: RenderBlockId,
+        _block_description: &RenderBlockDescription,
     ) -> bool {
         false
     }
@@ -789,24 +789,24 @@ impl<BG: BlockGfx> BlockContainer<BG> for Manager<BG> {
         self.containers.get_mut(&id)
     }
 
-    fn block_ref_mut(&mut self, id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
+    fn block_ref_mut(&mut self, _id: RenderBlockId) -> Option<&mut Option<Block<BG>>> {
         None /* Not supported for (top level) block manager */
     }
 
-    fn remove_blocks(&mut self, mask_id: RenderBlockId, base_id: RenderBlockId) {
+    fn remove_blocks(&mut self, _mask_id: RenderBlockId, _base_id: RenderBlockId) {
         todo!()
     }
 
     fn move_blocks(
         &mut self,
-        mask_id: RenderBlockId,
-        dst_mask_id: RenderBlockId,
-        base_id: RenderBlockId,
+        _mask_id: RenderBlockId,
+        _dst_mask_id: RenderBlockId,
+        _base_id: RenderBlockId,
     ) {
         todo!()
     }
 
-    fn log_block_tree(&self, depth: usize) {
+    fn log_block_tree(&self, _depth: usize) {
         todo!()
     }
 }

@@ -11,7 +11,6 @@ use winit::event::{Event, WindowEvent};
 use crate::{
     //bridge::EditorMode,
     editor::{Cursor, CursorShape},
-    redraw_scheduler::REDRAW_SCHEDULER,
     renderer::animation_utils::*,
     //renderer::{GridRenderer, RenderedWindow},
     //settings::{ParseFromValue, SETTINGS},
@@ -282,8 +281,8 @@ impl CursorRenderer {
         &mut self,
         //grid_renderer: &mut GridRenderer,
         //current_mode: &EditorMode,
-        canvas: &mut Canvas,
-        dt: f32,
+        _canvas: &mut Canvas,
+        _dt: f32,
     ) {
         /*
         let render = self.blink_status.update_status(&self.cursor);

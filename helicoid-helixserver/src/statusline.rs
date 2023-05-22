@@ -1,39 +1,26 @@
 use crate::{
     constants::{DEFAULT_TEXT_COLOR, S1, S2, S3, S4},
-    editor::Editor as HcEditor,
     editor_view::ContentVisitor,
 };
-use hashbrown::HashMap;
+
 use helicoid_protocol::{
-    caching_shaper::CachingShaper,
     gfx::{
-        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
-        RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath,
-        SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
-    },
-    input::{
-        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
-        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+        PointF32, RenderBlockId,
+        RenderBlockLocation,
     },
     shadowblocks::{
-        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
+        ContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
+        ShadowMetaContainerBlockInner, ShadowMetaTextBlock,
     },
-    tcp_bridge::{
-        TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
-        TcpBridgeToServerMessage,
-    },
-    text::{FontEdging, FontHinting, ShapableString},
+    text::{ShapableString},
 };
 use helix_lsp::lsp::DiagnosticSeverity;
-use helix_view::{document::Mode, editor::StatusLineElement, Document, DocumentId, Editor, ViewId};
+use helix_view::{document::Mode, editor::StatusLineElement, Document, Editor};
 use ordered_float::OrderedFloat;
 use std::{
     hash::{BuildHasher, Hash, Hasher},
-    sync::Arc,
 };
-use swash::Metrics;
+
 
 const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
 const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
@@ -104,7 +91,7 @@ impl StatusLineModel {
                 .diagnostics
                 .values()
                 .flatten()
-                .fold((0, 0), |mut counts, (diag, num)| {
+                .fold((0, 0), |mut counts, (diag, _num)| {
                     match diag.severity {
                         Some(DiagnosticSeverity::WARNING) => counts.0 += 1,
                         Some(DiagnosticSeverity::ERROR) | None => counts.1 += 1,
@@ -313,8 +300,8 @@ impl ContainerBlockLogic for StatusLineModel {
     }
 
     fn post_update(
-        block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
-        context: &mut Self::UpdateContext,
+        _block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {

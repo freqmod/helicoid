@@ -1,10 +1,10 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use skia_safe::{
-    canvas::{SaveLayerRec, SrcRectConstraint},
+    canvas::{SaveLayerRec},
     gpu::SurfaceOrigin,
     image_filters::blur,
-    BlendMode, Budgeted, Canvas, Color, Image, ImageInfo, Paint, Point, Rect, SamplingOptions,
+    BlendMode, Budgeted, Canvas, Color, Image, ImageInfo, Paint, Point, Rect,
     Surface, SurfaceProps, SurfacePropsFlags,
 };
 
@@ -12,7 +12,7 @@ use crate::{
     dimensions::Dimensions,
     editor::Style,
     redraw_scheduler::REDRAW_SCHEDULER,
-    renderer::{animation_utils::*, RendererSettings},
+    renderer::{RendererSettings},
 };
 
 #[derive(Clone, Debug)]
@@ -169,7 +169,7 @@ pub struct WindowDrawDetails {
 
 impl RenderedWindow {
     pub fn new(
-        parent_canvas: &mut Canvas,
+        _parent_canvas: &mut Canvas,
         //grid_renderer: &GridRenderer,
         id: u64,
         grid_position: Point,
@@ -212,8 +212,8 @@ impl RenderedWindow {
         Rect::from_point_and_size(current_pixel_position, image_size)
     }
 
-    pub fn update(&mut self, settings: &RendererSettings, dt: f32) -> bool {
-        let mut animating = false;
+    pub fn update(&mut self, _settings: &RendererSettings, _dt: f32) -> bool {
+        let animating = false;
         /*
                 {
                     if 1.0 - self.position_t < std::f32::EPSILON {

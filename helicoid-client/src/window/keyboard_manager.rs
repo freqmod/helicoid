@@ -1,5 +1,5 @@
-use crate::event_aggregator::EVENT_AGGREGATOR;
-use winit::event::{ElementState, Event, KeyboardInput, WindowEvent};
+
+use winit::event::{Event, KeyboardInput, WindowEvent};
 
 enum InputEvent {
     KeyboardInput(KeyboardInput),
@@ -79,9 +79,9 @@ impl KeyboardManager {
                 if !self.should_ignore_input() {
                     // And we have a keyboard event this frame
                     for input_event in self.queued_input_events.iter() {
-                        let mut next_dead_key = self.prev_dead_key;
+                        let next_dead_key = self.prev_dead_key;
                         match input_event {
-                            InputEvent::KeyboardInput(key_event) => {
+                            InputEvent::KeyboardInput(_key_event) => {
                                 /*
                                 // And a key was pressed
                                 if key_event.state == ElementState::Pressed {
@@ -99,7 +99,7 @@ impl KeyboardManager {
                                     }
                                 }*/
                             }
-                            InputEvent::ImeInput(raw_input) => {
+                            InputEvent::ImeInput(_raw_input) => {
                                 if self.prev_dead_key.is_none() {
                                     /*EVENT_AGGREGATOR.send(UiCommand::Serial(
                                         SerialCommand::Keyboard(raw_input.to_string()),
@@ -204,7 +204,7 @@ fn use_alt(alt: bool) -> bool {
 // and does not operate the same as other systems.
 
 #[cfg(target_os = "macos")]
-fn use_alt(alt: bool) -> bool {
+fn use_alt(_alt: bool) -> bool {
     /* TODO: Create logic for getting this from settings again */
     //    let settings = SETTINGS.get::<KeyboardSettings>();
     //    settings.macos_alt_is_meta && alt

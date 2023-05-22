@@ -3,24 +3,22 @@ use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 
 use helicoid_protocol::block_manager::{
-    BlockContainer, BlockGfx, BlockRenderParents, InteriorBlockContainer, ManagerGfx, MetaBlock,
-    RenderBlockFullId,
+    BlockGfx, ManagerGfx, MetaBlock,
 };
 use helicoid_protocol::gfx::{
-    FontPaint, PathVerb, PointF16, PointF32, RemoteBoxUpdate, RenderBlockLocation,
+    FontPaint, PathVerb, PointF32, RenderBlockLocation,
     SimpleDrawElement, SimplePaint, SVG_RESOURCE_NAME_LEN,
 };
 use helicoid_protocol::{
-    gfx::{MetaDrawBlock, RenderBlockDescription, RenderBlockId, SimpleDrawBlock},
-    text::ShapedTextBlock,
+    gfx::{RenderBlockDescription, RenderBlockId},
 };
 use parking_lot::Mutex;
 use skia_safe as skia;
-use skia_safe::canvas::PointMode;
+
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
-    BlendMode, Budgeted, Canvas, Color, Data, Handle, ISize, Image, ImageInfo, Paint, Path,
-    PathFillType, Point, Size, Surface, SurfaceProps, SurfacePropsFlags, Vector,
+    BlendMode, Budgeted, Color, Data, ISize, Image, ImageInfo, Paint, Path,
+    PathFillType, Point, Surface, SurfaceProps, SurfacePropsFlags, Vector,
 };
 use smallvec::SmallVec;
 
@@ -560,7 +558,7 @@ impl SkiaClientRenderBlock {
                 SimpleDrawElement::Fill(f) => {
                     let rect = skia::Rect::new(0f32, 0f32, sd.extent.x(), sd.extent.y());
                     if (f.paint.fill_color >> 24 & 0xFF) != 0 {
-                        let mut rect_fill_paint = simple_paint_to_sk_paint(&f.paint, true);
+                        let rect_fill_paint = simple_paint_to_sk_paint(&f.paint, true);
                         canvas.draw_rect(rect, &rect_fill_paint);
                     }
                     if f.paint.line_width() != 0.0 {
@@ -677,8 +675,8 @@ impl SkiaClientRenderBlock {
                 let src_img = &cached.image;
                 let img_tmp; /* For lifetime reasons */
                 if (extent.x() as i32 > 0) && (extent.y() as i32 > 0) {
-                    let clipped_src_img = if (src_img.width() as f32 > extent.x()
-                        || src_img.height() as f32 > extent.y())
+                    let _clipped_src_img = if src_img.width() as f32 > extent.x()
+                        || src_img.height() as f32 > extent.y()
                     {
                         /* Clip image as it is too big */
                         img_tmp = src_img
@@ -740,8 +738,8 @@ impl SkiaClientRenderBlock {
             let src_img = &self.rendered.as_ref().unwrap().image;
             let img_tmp; /* For lifetime reasons */
             if (extent.x() as i32 > 0) && (extent.y() as i32 > 0) {
-                let clipped_src_img = if (src_img.width() as f32 > extent.x()
-                    || src_img.height() as f32 > extent.y())
+                let _clipped_src_img = if src_img.width() as f32 > extent.x()
+                    || src_img.height() as f32 > extent.y()
                 {
                     /* Clip image as it is too big */
                     img_tmp = src_img
@@ -787,10 +785,10 @@ impl SkiaClientRenderBlock {
         meta: &mut MetaBlock<SkiaClientRenderBlock>,
     ) {
         let (wire_description, container) = meta.destruct_mut();
-        let Some(RenderBlockDescription::MetaBox(mb)) = wire_description else {
+        let Some(RenderBlockDescription::MetaBox(_mb)) = wire_description else {
             panic!("Render meta box should not be called with a description that is not a meta box")
         };
-        let container = container
+        let _container = container
             .as_mut()
             .expect("Expecting block to have container if wire description has children");
         /*let mut target = SkiaClientRenderTarget {
@@ -876,7 +874,7 @@ impl ManagerGfx<SkiaClientRenderBlock> for SkiaGfxManager {
         SkiaClientRenderBlock::new(wire_description)
     }
 
-    fn create_top_block(&mut self, id: RenderBlockId) -> SkiaClientRenderBlock {
+    fn create_top_block(&mut self, _id: RenderBlockId) -> SkiaClientRenderBlock {
         SkiaClientRenderBlock::new_top_block()
     }
     fn reset(&mut self) {

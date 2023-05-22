@@ -1,13 +1,9 @@
-use std::{collections::HashMap, sync::Arc, thread};
 
-use log::{error, trace};
+
+
 
 use crate::{
-    bridge::{GuiOption, RedrawEvent, WindowAnchor},
-    event_aggregator::EVENT_AGGREGATOR,
-    redraw_scheduler::REDRAW_SCHEDULER,
-    renderer::DrawCommand,
-    window::WindowCommand,
+    bridge::{RedrawEvent, WindowAnchor},
 };
 
 const MODE_CMDLINE: u64 = 4;

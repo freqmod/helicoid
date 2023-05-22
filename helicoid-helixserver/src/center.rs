@@ -1,34 +1,22 @@
 use crate::{
-    constants::{DEFAULT_TEXT_COLOR, S1, S2, S3, S4},
-    editor::Editor as HcEditor,
+    constants::{DEFAULT_TEXT_COLOR},
     editor_view::ContentVisitor,
 };
 use ahash::AHasher;
-use hashbrown::HashMap;
+
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    font_options::FontOptions,
     gfx::{
-        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, PointU16, PointU32, RemoteBoxUpdate, RenderBlockDescription, RenderBlockId,
-        RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction, SimpleDrawBlock,
-        SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect,
-        SimpleSvg,
-    },
-    input::{
-        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
-        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+        FontPaint,
+        PointF32, PointU16, RenderBlockId,
+        RenderBlockLocation,
     },
     shadowblocks::{
-        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
-    },
-    tcp_bridge::{
-        TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
-        TcpBridgeToServerMessage,
+        ContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
+        ShadowMetaContainerBlockInner, ShadowMetaTextBlock,
     },
     text::{
-        FontEdging, FontHinting, FontParameters, ShapableString, ShapedStringMetadata,
+        FontParameters, ShapableString, ShapedStringMetadata,
         ShapedTextBlock, SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
     },
 };
@@ -40,19 +28,18 @@ use helix_core::{
     text_annotations::TextAnnotations,
     visual_offset_from_block, Position, RopeSlice,
 };
-use helix_lsp::lsp::DiagnosticSeverity;
+
 use helix_view::{
-    document::Mode, editor::StatusLineElement, graphics::UnderlineStyle, theme::Style,
-    view::ViewPosition, Document, DocumentId, Editor, Theme, ViewId,
+    graphics::UnderlineStyle, theme::Style,
+    view::ViewPosition, Document, Theme,
 };
 use ordered_float::OrderedFloat;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::{
-    hash::{BuildHasher, Hash, Hasher},
-    sync::Arc,
+    hash::{Hash, Hasher},
 };
-use swash::Metrics;
+
 
 const CENTER_PARAGRAPH_BASE: u16 = 0x1000;
 const MAX_AGE: i16 = 10;
@@ -333,11 +320,11 @@ impl CenterModel {
         //        line_decorations: &mut [Box<dyn LineDecoration + '_>],
         //        translated_positions: &mut [TranslatedPosition],
     ) {
-        let mut shaper_font_options = SmallFontOptions {
+        let shaper_font_options = SmallFontOptions {
             font_parameters: shaper.default_parameters(),
             family_id: 0,
         };
-        let (font_metrics, avg_char_width) = shaper.info(&shaper_font_options).unwrap();
+        let (font_metrics, _avg_char_width) = shaper.info(&shaper_font_options).unwrap();
         log::debug!(
             "Render document: {:?} @ FS: {} LD: {}",
             "",
@@ -461,7 +448,7 @@ impl CenterModel {
                     visual_line: pos.row as u16,
                     start_char_idx: char_pos,
                 };
-                line_y += (font_metrics.ascent + font_metrics.descent + font_metrics.leading);
+                line_y += font_metrics.ascent + font_metrics.descent + font_metrics.leading;
                 /*for line_decoration in &mut *line_de`corations {
                     line_decoration.render_background`(renderer, last_line_pos);
                 }*/
@@ -520,15 +507,15 @@ impl CenterModel {
         &mut self,
         layout_paragraph: &mut LayoutParagraph,
         grapheme: Grapheme,
-        mut style: Style,
-        is_virtual: bool,
-        last_indent_level: &mut usize,
-        is_in_indent_area: &mut bool,
+        style: Style,
+        _is_virtual: bool,
+        _last_indent_level: &mut usize,
+        _is_in_indent_area: &mut bool,
         position: Position,
         shaper: &CachingShaper,
     ) {
         /* Quick and dirty solution, to have sometheing to add at a later time */
-        let width = grapheme.width();
+        let _width = grapheme.width();
         /* TODO: Support virtual / printed whitespace */
         let grapheme = match grapheme {
             Grapheme::Tab { width } => {
@@ -572,7 +559,7 @@ impl CenterModel {
             layout_paragraph.text.push(*byte)
         }
     }
-    fn flush_metadata(layout_paragraph: &mut LayoutParagraph, shaper: &CachingShaper) {
+    fn flush_metadata(layout_paragraph: &mut LayoutParagraph, _shaper: &CachingShaper) {
         let substring_length = layout_paragraph.text.len()
             - layout_paragraph
                 .metadata_runs
@@ -673,7 +660,7 @@ impl CenterModel {
                 .find(|(_, (_, h))| *h == entry_hash);
             //            log::trace!("Slot hash: H: {:?}", entry_hash);
 
-            if let Some((client_idx, (client_id, _client_hash))) = client_entry {
+            if let Some((client_idx, (_client_id, _client_hash))) = client_entry {
                 /* If this entry is found, it is up to date, so there is no reason to update the contents,
                 however it is removed and added back to the client layout list to be able to move it and
                 avoid it being reused again in the same iteration */
@@ -749,7 +736,7 @@ impl CenterModel {
             self.rendered_paragraphs
                 .par_iter_mut()
                 .enumerate()
-                .for_each(|(idx, paragraph)| {
+                .for_each(|(_idx, paragraph)| {
                     if let Some(ref mut paragraph) = paragraph {
                         paragraph.ensure_rendered(&mut shaper.clone());
                     }
@@ -802,7 +789,7 @@ impl ContainerBlockLogic for CenterModel {
         Self: Sized,
     {
         let (block, model) = outer_block.destruct_mut();
-        let mut options = SmallFontOptions {
+        let options = SmallFontOptions {
             font_parameters: context.shaper_ref().default_parameters(),
             family_id: 0,
         };
@@ -836,16 +823,16 @@ impl ContainerBlockLogic for CenterModel {
     }
 
     fn initialize(
-        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
-        context: &mut Self::UpdateContext,
+        _block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {
     }
 
     fn post_update(
-        block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
-        context: &mut Self::UpdateContext,
+        _block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {
@@ -854,12 +841,12 @@ impl ContainerBlockLogic for CenterModel {
 
 impl Paragraph {}
 pub fn hash_line<'t>(
-    text: RopeSlice<'t>,
-    offset: ViewPosition,
-    text_fmt: &TextFormat,
-    text_annotations: &TextAnnotations,
-    highlight_iter: impl Iterator<Item = HighlightEvent>,
-    theme: &Theme,
+    _text: RopeSlice<'t>,
+    _offset: ViewPosition,
+    _text_fmt: &TextFormat,
+    _text_annotations: &TextAnnotations,
+    _highlight_iter: impl Iterator<Item = HighlightEvent>,
+    _theme: &Theme,
 ) {
 }
 

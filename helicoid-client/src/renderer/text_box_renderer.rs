@@ -116,17 +116,17 @@ impl RemoteBoxRenderer {
         }
     }
     pub fn update_contents(&mut self, update: &RemoteBoxUpdate) {
-        let mut cache = self.surface_cache.lock();
-        for block in update.remove_render_blocks.iter() {
+        let _cache = self.surface_cache.lock();
+        for _block in update.remove_render_blocks.iter() {
             unimplemented!();
             /*            if let Some(entry) = self.rendered_surfaces.remove(block) {
                 cache.put_surface(entry);
             }*/
         }
         /* Render new blocks */
-        for block in update.new_render_blocks.iter() {}
+        for _block in update.new_render_blocks.iter() {}
     }
-    pub fn draw_box(&mut self, root_canvas: &mut Canvas) -> bool {
+    pub fn draw_box(&mut self, _root_canvas: &mut Canvas) -> bool {
         false
     }
 }

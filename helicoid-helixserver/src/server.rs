@@ -1,40 +1,30 @@
 use ahash::AHasher;
-use anyhow::{anyhow, Result};
-use arc_swap::{access::Map, ArcSwap};
+use anyhow::{Result};
+
 use async_trait::async_trait;
 use hashbrown::HashMap;
 
 use helicoid_protocol::{
-    block_manager::RenderBlockFullId,
     caching_shaper::CachingShaper,
     gfx::{
-        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, PointU16, PointU32, RemoteBoxUpdate, RemoteSingleChange,
-        RemoteSingleChangeElement, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
-        SimplePaint, SimpleRoundRect, SimpleSvg,
+        MetaDrawBlock, NewRenderBlock,
+        PointF32, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
+        RenderBlockPath,
     },
     input::{
-        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
-        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+        HelicoidToServerMessage, ViewportInfo, VirtualKeycode,
     },
     tcp_bridge::{
-        TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
+        TcpBridgeServer, TcpBridgeServerConnectionState,
         TcpBridgeToServerMessage,
     },
-    text::{FontEdging, FontHinting, ShapableString, SmallFontOptions},
+    text::{SmallFontOptions},
     transferbuffer::TransferBuffer,
 };
 use helix_core::{
-    config::user_syntax_loader,
     movement::{move_horizontally, move_vertically, Direction},
-    syntax,
 };
-use helix_view::{
-    editor::{Action, Config},
-    graphics::Rect,
-    theme, Editor,
-};
+
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -43,8 +33,8 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{
-    broadcast::{self, Receiver as BReceiver, Sender as BSender},
-    mpsc::{self, Receiver, Sender},
+    broadcast::{Receiver as BReceiver},
+    mpsc::{Receiver, Sender},
     Mutex as TMutex,
 };
 
@@ -193,7 +183,7 @@ impl HelicoidServer {
 
             log::trace!("Helicoid test server event loop iterate");
             tokio::select! {
-            result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
+            _result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
                     /* Currently all event handling is done inside the state */
 
                 },
@@ -213,13 +203,13 @@ impl ServerState {
                 self.viewport_size = Some(viewportinfo);
                 self.sync_screen().await?;
             }
-            HelicoidToServerMessage::KeyModifierStateUpdate(keymodifierstateupdateevent) => {}
-            HelicoidToServerMessage::KeyPressedEvent(simplekeytappedevent) => {}
-            HelicoidToServerMessage::MouseButtonStateChange(mousebuttonstatechangeevent) => {}
-            HelicoidToServerMessage::CursorMoved(cursormovedevent) => {}
-            HelicoidToServerMessage::CharReceived(ch) => {}
-            HelicoidToServerMessage::Ime(imeevent) => {}
-            HelicoidToServerMessage::ClipboardEvent(clipboard) => {}
+            HelicoidToServerMessage::KeyModifierStateUpdate(_keymodifierstateupdateevent) => {}
+            HelicoidToServerMessage::KeyPressedEvent(_simplekeytappedevent) => {}
+            HelicoidToServerMessage::MouseButtonStateChange(_mousebuttonstatechangeevent) => {}
+            HelicoidToServerMessage::CursorMoved(_cursormovedevent) => {}
+            HelicoidToServerMessage::CharReceived(_ch) => {}
+            HelicoidToServerMessage::Ime(_imeevent) => {}
+            HelicoidToServerMessage::ClipboardEvent(_clipboard) => {}
             HelicoidToServerMessage::KeyInputEvent(event) => {
                 if event.pressed {
                     let text = match event.virtual_keycode {
@@ -272,8 +262,8 @@ impl ServerState {
                         }
                         _ => None,
                     };
-                    if let Some(text) = text {
-                        let mut editor = self
+                    if let Some(_text) = text {
+                        let _editor = self
                             .state_data
                             .compositor
                             .as_mut()
@@ -285,7 +275,7 @@ impl ServerState {
                         //editor.text += &text.to_string();
                     }
                     if let VirtualKeycode::Backspace = event.virtual_keycode {
-                        let mut editor = self
+                        let _editor = self
                             .state_data
                             .compositor
                             .as_mut()
@@ -498,7 +488,7 @@ impl ServerState {
     }
 
     async fn editor_updated(&mut self) -> Result<()> {
-        let mut editor = self
+        let _editor = self
             .state_data
             .compositor
             .as_mut()
@@ -587,7 +577,7 @@ impl TcpBridgeServerConnectionState for ServerState {
 impl Compositor {
     /* This is running synchronously, and should not depend on any non cpu/gpu resources*/
     fn sync_screen(&mut self) -> anyhow::Result<()> {
-        for (id, tree) in self.containers.iter_mut() {
+        for (_id, tree) in self.containers.iter_mut() {
             tree.update(&mut self.content_visitor);
             /*TODO: Retrieve the proper location and id from the enclosure, this is needed to be done
             if multiple enclosures in the same client / changing the location live is required */

@@ -1,14 +1,12 @@
-use std::{collections::BTreeMap, mem::size_of, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
-use ahash::HashMap;
+
 use anyhow::Result;
-use itertools::assert_equal;
+
 use rkyv::{
     ser::{
-        serializers::{AllocScratch, CompositeSerializer, WriteSerializer},
         ScratchSpace, Serializer,
     },
-    Archive,
 };
 use smallvec::SmallVec;
 
@@ -17,7 +15,7 @@ use crate::{
         HelicoidToClientMessage, NewRenderBlock, RemoteSingleChange, RenderBlockId,
         RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction,
     },
-    tcp_bridge::{DummyWriter, SerializeWith, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
+    tcp_bridge::{SerializeWith, TcpBridgeToClientMessage},
 };
 
 /* Buffer that contains and reorganizes buffers to be transferred to the client */

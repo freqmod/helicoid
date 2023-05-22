@@ -61,7 +61,7 @@ impl KeyedFont {
         skia_font.set_hinting(font_hinting(&key.hinting));
         skia_font.set_edging(font_edging(&key.edging));
 
-        let typeface = skia_font.typeface().unwrap();
+        let _typeface = skia_font.typeface().unwrap();
 
         Some(Self { key, skia_font })
     }

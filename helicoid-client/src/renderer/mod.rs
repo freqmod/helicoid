@@ -10,16 +10,15 @@ mod text_renderer;
 
 use std::{
     cmp::Ordering,
-    collections::{hash_map::Entry, HashMap},
-    sync::Arc,
+    collections::{HashMap},
 };
 
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
-    gfx::{FontPaint, SimplePaint},
+    gfx::{FontPaint},
     text::ShapableString,
 };
-use log::error;
+
 use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect, Surface};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -30,8 +29,6 @@ use crate::{
     editor::{editor::HeliconeEditor, Cursor, Style},
     event_aggregator::EVENT_AGGREGATOR,
     renderer::{block_renderer::font_paint_to_sk_paint, fonts::blob_builder::ShapedBlobBuilder},
-    //settings::*,
-    window::WindowSettings,
 };
 
 use cursor_renderer::CursorRenderer;
@@ -40,7 +37,7 @@ pub use rendered_window::{
     LineFragment, RenderedWindow, WindowDrawCommand, WindowDrawDetails, WindowPadding,
 };
 
-use self::text_box_renderer::RemoteBoxRenderer;
+
 
 //#[derive(SettingGroup, Clone)]
 pub struct RendererSettings {
@@ -105,7 +102,7 @@ impl Renderer {
         //      let window_settings = SETTINGS.get::<WindowSettings>();
 
         let user_scale_factor = 1.0; //window_settings.scale_factor.into();
-        let scale_factor = user_scale_factor * os_scale_factor;
+        let _scale_factor = user_scale_factor * os_scale_factor;
         let cursor_renderer = CursorRenderer::new();
         //let grid_renderer = GridRenderer::new(scale_factor);
         //let current_mode = EditorMode::Unknown(String::from(""));
@@ -344,7 +341,7 @@ impl Renderer {
         //    .handle_scale_factor_update(self.os_scale_factor * self.user_scale_factor);
     }
 
-    fn handle_draw_command(&mut self, root_canvas: &mut Canvas, draw_command: DrawCommand) {
+    fn handle_draw_command(&mut self, _root_canvas: &mut Canvas, draw_command: DrawCommand) {
         match draw_command {
             DrawCommand::Window {
                 grid_id,

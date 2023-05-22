@@ -1,13 +1,13 @@
 #[macro_use]
 extern crate lazy_static;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result};
 use clap::Parser;
 use futures::StreamExt;
 use server::HelicoidServer;
 use std::future;
-use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
+
+
 use termion::{event::Key, raw::IntoRawMode};
 use termion_input_tokio::TermReadAsync;
 use tokio::runtime::Runtime;

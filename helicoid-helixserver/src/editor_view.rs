@@ -1,35 +1,26 @@
 use crate::{center::CenterModel, editor::Editor as HcEditor, statusline::StatusLineModel};
-use hashbrown::HashMap;
+
 use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
-        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, PointU32, RemoteBoxUpdate, RemoteSingleChange, RenderBlockDescription,
-        RenderBlockId, RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement,
-        SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
-    },
-    input::{
-        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
-        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
+        PointF32, PointU32,
+        RenderBlockId, RenderBlockLocation, RenderBlockPath,
     },
     shadowblocks::{
-        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
-        ShadowMetaContainerBlockInner, ShadowMetaTextBlock, VisitingContext,
+        ContainerBlockLogic, NoContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock, VisitingContext,
     },
     tcp_bridge::{
-        TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
-        TcpBridgeToServerMessage,
+        TcpBridgeServerConnectionState,
     },
-    text::{FontEdging, FontHinting, ShapableString},
     transferbuffer::TransferBuffer,
 };
-use helix_lsp::lsp::DiagnosticSeverity;
+
 use helix_view::{
-    document::Mode, editor::StatusLineElement, Document, DocumentId, Editor, View, ViewId,
+    Document, View, ViewId,
 };
 use ordered_float::OrderedFloat;
 use std::{
-    hash::{BuildHasher, Hash, Hasher},
+    hash::{Hash},
     sync::Arc,
 };
 use swash::Metrics;
@@ -261,7 +252,7 @@ impl EditorModel {
     called if the scale or external extent of the editor has changed */
     fn layout(
         outer_block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
-        context: &mut ContentVisitor,
+        _context: &mut ContentVisitor,
     ) {
         let (block, model) = outer_block.destruct_mut();
         log::info!("Editor top level layout with extent: {:?}", model.extent);
@@ -357,7 +348,7 @@ impl ContainerBlockLogic for EditorModel {
     }
 
     fn post_update(
-        block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
+        _block: &mut ShadowMetaContainerBlock<Self, ContentVisitor>,
         context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
@@ -366,7 +357,7 @@ impl ContainerBlockLogic for EditorModel {
     }
     fn initialize(
         block: &mut ShadowMetaContainerBlock<Self, Self::UpdateContext>,
-        context: &mut Self::UpdateContext,
+        _context: &mut Self::UpdateContext,
     ) where
         Self: Sized,
     {
@@ -445,7 +436,7 @@ impl ContainerBlockLogic for EditorModel {
             ))),
         );
 
-        let mut center_model = CenterModel::default();
+        let center_model = CenterModel::default();
         block_inner.set_child(
             RenderBlockLocation {
                 id: RenderBlockId(EDITOR_CHILD_CENTER),
@@ -645,7 +636,7 @@ impl GfxComposibleBlock for EditorTop {
         ));
     }
 
-    fn render(&mut self, context: &mut dyn RenderContext) {}
+    fn render(&mut self, _context: &mut dyn RenderContext) {}
 }
 impl GfxComposibleBlock for LeftGutter {
     fn extent(&self) -> PointU32 {
@@ -658,7 +649,7 @@ impl GfxComposibleBlock for LeftGutter {
         ));
     }
 
-    fn render(&mut self, context: &mut dyn RenderContext) {}
+    fn render(&mut self, _context: &mut dyn RenderContext) {}
 }
 impl GfxComposibleBlock for RightGutter {
     fn extent(&self) -> PointU32 {
@@ -671,7 +662,7 @@ impl GfxComposibleBlock for RightGutter {
         ));
     }
 
-    fn render(&mut self, context: &mut dyn RenderContext) {}
+    fn render(&mut self, _context: &mut dyn RenderContext) {}
 }
 /*
 impl GfxComposibleBlock for TopOverlay {
@@ -708,9 +699,9 @@ impl GfxComposibleBlock for EditorTextArea {
     fn extent(&self) -> PointU32 {
         self.extent
     }
-    fn set_layout(&mut self, scale: SizeScale, extent: PointU32) {
+    fn set_layout(&mut self, _scale: SizeScale, extent: PointU32) {
         self.extent = extent;
     }
 
-    fn render(&mut self, context: &mut dyn RenderContext) {}
+    fn render(&mut self, _context: &mut dyn RenderContext) {}
 }

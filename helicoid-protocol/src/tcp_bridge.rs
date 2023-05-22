@@ -7,20 +7,20 @@ use rkyv::ser::serializers::{
 };
 use rkyv::ser::ScratchSpace;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Infallible, Serialize};
+use rkyv::{Archive, Deserialize, Fallible, Infallible, Serialize};
 use std::collections::HashMap;
-use std::io::{IoSlice, Write};
-use std::mem::{align_of, align_of_val, size_of};
+use std::io::{Write};
+
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::task::JoinSet;
+
 
 use crate::gfx::HelicoidToClientMessage;
 use crate::input::HelicoidToServerMessage;
 use crate::transferbuffer::TransferBuffer;
 use anyhow::{anyhow, Result};
 use bytecheck::CheckBytes;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt};
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
@@ -125,7 +125,7 @@ impl ClientTcpBridge {
     )> {
         //        Ok(Self{})
         //        unimplemented!()
-        let mut stream = TcpStream::connect(addr).await?;
+        let stream = TcpStream::connect(addr).await?;
         let (r, w) = stream.into_split();
         let (cs, cr) = oneshot::channel();
         let (send, send_channel) = TcpBridgeSend::new(w, cr)?;
@@ -430,7 +430,7 @@ where
 
             match self.chan.send(deserialized).await {
                 Ok(_) => {}
-                Err(e) => {
+                Err(_e) => {
                     /* There are no receiver anymore, close the socket receiver */
                     log::debug!("Client channel send error");
                     return Ok(ReadResult::StopReading);
