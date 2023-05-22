@@ -1,4 +1,4 @@
-mod blink;
+//mod blink;
 mod cursor_vfx;
 
 use crate::renderer::RenderedWindow;

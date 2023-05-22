@@ -1,19 +1,15 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use skia_safe::{
-    canvas::{SaveLayerRec},
-    gpu::SurfaceOrigin,
-    image_filters::blur,
-    BlendMode, Budgeted, Canvas, Color, Image, ImageInfo, Paint, Point, Rect,
-    Surface, SurfaceProps, SurfacePropsFlags,
+    canvas::SaveLayerRec, gpu::SurfaceOrigin, image_filters::blur, BlendMode, Budgeted, Canvas,
+    Color, Image, ImageInfo, Paint, Point, Rect, Surface, SurfaceProps, SurfacePropsFlags,
 };
 
-use crate::{
-    dimensions::Dimensions,
-    editor::Style,
-    redraw_scheduler::REDRAW_SCHEDULER,
-    renderer::{RendererSettings},
-};
+use crate::{dimensions::Dimensions, editor::Style, redraw_scheduler::REDRAW_SCHEDULER};
+
+const FLOATING_BLUR_AMOUNT_X: f32 = 16.0f32;
+const FLOATING_BLUR_AMOUNT_Y: f32 = 16.0f32;
+const FLOATING_OPACITY: f32 = 0.5f32;
 
 #[derive(Clone, Debug)]
 pub struct LineFragment {
@@ -212,7 +208,7 @@ impl RenderedWindow {
         Rect::from_point_and_size(current_pixel_position, image_size)
     }
 
-    pub fn update(&mut self, _settings: &RendererSettings, _dt: f32) -> bool {
+    pub fn update(&mut self, _dt: f32) -> bool {
         let animating = false;
         /*
                 {
@@ -257,12 +253,11 @@ impl RenderedWindow {
     pub fn draw(
         &mut self,
         root_canvas: &mut Canvas,
-        settings: &RendererSettings,
         default_background: Color,
         font_dimensions: Dimensions,
         dt: f32,
     ) -> WindowDrawDetails {
-        if self.update(settings, dt) {
+        if self.update(dt) {
             REDRAW_SCHEDULER.queue_next_frame();
         }
         log::trace!("Draw Window");
@@ -276,12 +271,9 @@ impl RenderedWindow {
             root_canvas.clear(default_background);
         }
 
-        if self.floating_order.is_some() && settings.floating_blur {
+        if self.floating_order.is_some() {
             let blur = blur(
-                (
-                    settings.floating_blur_amount_x,
-                    settings.floating_blur_amount_y,
-                ),
+                (FLOATING_BLUR_AMOUNT_X, FLOATING_BLUR_AMOUNT_Y),
                 None,
                 None,
                 None,
@@ -304,7 +296,7 @@ impl RenderedWindow {
         root_canvas.save_layer(&SaveLayerRec::default());
         let mut a = 255;
         if self.floating_order.is_some() {
-            a = (settings.floating_opacity.min(1.0).max(0.0) * 255.0) as u8;
+            a = (FLOATING_OPACITY.min(1.0).max(0.0) * 255.0) as u8;
         }
 
         paint.set_color(default_background.with_a(a));

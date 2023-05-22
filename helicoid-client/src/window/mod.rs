@@ -1,22 +1,20 @@
 /* Based on neovide, Copyright Neovide contributors under BSD license */
 
-mod keyboard_manager;
-mod mouse_manager;
+//mod keyboard_manager;
+//mod mouse_manager;
 mod renderer;
 mod settings;
 
 //#[cfg(target_os = "macos")]
 //mod draw_background;
 
-use std::{
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use glutin::{
     self,
     config::{GetGlConfig, GlConfig},
-    context::{NotCurrentContext},
-    display::{GetGlDisplay},
+    context::NotCurrentContext,
+    display::GetGlDisplay,
     prelude::GlDisplay,
 };
 use winit::{
@@ -24,43 +22,25 @@ use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
-    window::{self, Fullscreen, Icon},
+    window::{self, Icon},
 };
-
 
 use winit::window::{Window, WindowBuilder};
 
-use glutin::config::{ConfigTemplateBuilder};
+use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder};
-//use glutin::prelude::*;
 
 use glutin_winit::{self, DisplayBuilder};
 
 use raw_window_handle::HasRawWindowHandle;
 
-
-use tokio::sync::mpsc::UnboundedReceiver;
-
-/*#[cfg(target_os = "macos")]
-use glutin::platform::macos::WindowBuilderExtMacOS;
-
-#[cfg(target_os = "macos")]
-use draw_background::draw_background;
-*/
-
-//#[cfg(target_os = "linux")]
-//use glutin::platform::unix::WindowBuilderExtUnix;
-
 use image::{load_from_memory, GenericImageView, Pixel};
-use keyboard_manager::KeyboardManager;
-use mouse_manager::MouseManager;
 use renderer::SkiaRenderer;
 
 use crate::{
     //bridge::{ParallelCommand, UiCommand},
     //cmd_line::CmdLineSettings,
-    editor::{editor::HeliconeEditor, EditorCommand},
-    event_aggregator::EVENT_AGGREGATOR,
+    editor::editor::HeliconeEditor,
     redraw_scheduler::REDRAW_SCHEDULER,
     renderer::Renderer,
     HeliconeCommandLineArguments,
@@ -73,15 +53,13 @@ pub use settings::{KeyboardSettings, WindowSettings};
 
 static ICON: &[u8] = include_bytes!("../../../assets/icon.ico");
 
-const MIN_WINDOW_WIDTH: u64 = 20;
-const MIN_WINDOW_HEIGHT: u64 = 6;
-
+/*
 #[derive(Clone, Debug)]
 pub enum WindowCommand {
     TitleChanged(String),
     SetMouseEnabled(bool),
     ListAvailableFonts,
-}
+}*/
 struct GlutinRunning {
     //    skia_renderer: ManuallyDrop<SkiaRenderer>,
     skia_renderer: SkiaRenderer,
@@ -102,34 +80,34 @@ pub struct GlutinWindowWrapper {
     //gl_window: GlWindow,
     //    surface: Surface<WindowSurface>,
     renderer: Renderer,
-    keyboard_manager: KeyboardManager,
-    mouse_manager: MouseManager,
-    title: String,
-    fullscreen: bool,
+    //keyboard_manager: KeyboardManager,
+    //mouse_manager: MouseManager,
+    //title: String,
+    //fullscreen: bool,
     font_changed_last_frame: bool,
     saved_inner_size: PhysicalSize<u32>,
     /*saved_grid_size: Option<Dimensions>,*/
-    size_at_startup: PhysicalSize<u32>,
-    maximized_at_startup: bool,
-    window_command_receiver: UnboundedReceiver<WindowCommand>,
+    //size_at_startup: PhysicalSize<u32>,
+    //maximized_at_startup: bool,
+    //window_command_receiver: UnboundedReceiver<WindowCommand>,
     /* NB: Observer drop (i.e declaration) order */
     glutin_context: GlutinWindowGl,
     window: Window,
 }
 
 impl GlutinWindowWrapper {
-    pub fn toggle_fullscreen(&mut self) {
-        let window = &self.window;
-        if self.fullscreen {
-            window.set_fullscreen(None);
-        } else {
-            let handle = window.current_monitor();
-            window.set_fullscreen(Some(Fullscreen::Borderless(handle)));
+    /*pub fn toggle_fullscreen(&mut self) {
+            let window = &self.window;
+            if self.fullscreen {
+                window.set_fullscreen(None);
+            } else {
+                let handle = window.current_monitor();
+                window.set_fullscreen(Some(Fullscreen::Borderless(handle)));
+            }
+
+            self.fullscreen = !self.fullscreen;
         }
-
-        self.fullscreen = !self.fullscreen;
-    }
-
+    */
     pub fn synchronize_settings(&mut self) {
         /*let fullscreen = { SETTINGS.get::<WindowSettings>().fullscreen };
 
@@ -138,23 +116,24 @@ impl GlutinWindowWrapper {
         }*/
     }
 
-    #[allow(clippy::needless_collect)]
-    pub fn handle_window_commands(&mut self) {
-        while let Ok(window_command) = self.window_command_receiver.try_recv() {
-            match window_command {
-                WindowCommand::TitleChanged(new_title) => self.handle_title_changed(new_title),
-                WindowCommand::SetMouseEnabled(mouse_enabled) => {
-                    self.mouse_manager.enabled = mouse_enabled
+    /*
+        #[allow(clippy::needless_collect)]
+        pub fn handle_window_commands(&mut self) {
+            while let Ok(window_command) = self.window_command_receiver.try_recv() {
+                match window_command {
+                    WindowCommand::TitleChanged(new_title) => self.handle_title_changed(new_title),
+                    WindowCommand::SetMouseEnabled(mouse_enabled) => {
+                        //self.mouse_manager.enabled = mouse_enabled
+                    }
+                    WindowCommand::ListAvailableFonts => {} //self.send_font_names(),
                 }
-                WindowCommand::ListAvailableFonts => {} //self.send_font_names(),
             }
         }
-    }
-
-    pub fn handle_title_changed(&mut self, new_title: String) {
+    */
+    /*pub fn handle_title_changed(&mut self, new_title: String) {
         self.title = new_title;
         self.window.set_title(&self.title);
-    }
+    }*/
 
     /*pub fn send_font_names(&self) {
         let font_names = self.renderer.font_names();
@@ -207,16 +186,16 @@ impl GlutinWindowWrapper {
         wt: &EventLoopWindowTarget<()>,
     ) -> Option<ControlFlow> {
         //log::info!("Got event: {:?}", event);
-        self.keyboard_manager.handle_event(&event);
+        /*self.keyboard_manager.handle_event(&event);
         self.mouse_manager.handle_event(
             &event,
             &self.keyboard_manager,
             &self.renderer,
             //&self.windowed_context,
-        );
+        );*/
         if let Some(control_flow) = self.renderer.handle_event(&event, &self.window) {
             match control_flow {
-                ControlFlow::ExitWithCode(_) | ControlFlow::Exit => {
+                ControlFlow::ExitWithCode(_) => {
                     /* TODO: Something should probably be done before exit,
                     like notifying the server */
                     //self.handle_quit();
@@ -231,7 +210,7 @@ impl GlutinWindowWrapper {
                 //self.handle_quit();
             }
             Event::Resumed => {
-                EVENT_AGGREGATOR.send(EditorCommand::RedrawScreen);
+                //EVENT_AGGREGATOR.send(EditorCommand::RedrawScreen);
                 self.finish_gl_initialization(wt);
             }
             Event::WindowEvent {
@@ -384,13 +363,13 @@ impl GlutinWindowWrapper {
     */
     fn handle_scale_factor_update(&mut self, scale_factor: f64) {
         self.renderer.handle_os_scale_factor_change(scale_factor);
-        EVENT_AGGREGATOR.send(EditorCommand::RedrawScreen);
+        //EVENT_AGGREGATOR.send(EditorCommand::RedrawScreen);
     }
 
-    fn has_been_resized(&self) -> bool {
+    /*fn has_been_resized(&self) -> bool {
         true
         //self.windowed_context.window().inner_size() != self.size_at_startup
-    }
+    }*/
 }
 
 /*
@@ -565,7 +544,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         let window = windowed_context.window();
     */
     let (window, gl_context) = create_window_with_gl_context(&event_loop, icon, maximized);
-    let initial_size = window.inner_size();
+    //let initial_size = window.inner_size();
 
     let gl_paused = GlutinPaused {
         context: gl_context,
@@ -605,9 +584,9 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
     let renderer = Renderer::new(scale_factor, editor);
     let saved_inner_size = window.inner_size();
 
-    //    let skia_renderer = SkiaRenderer::new(&windowed_context);
+    //let skia_renderer = SkiaRenderer::new(&windowed_context);
 
-    let window_command_receiver = EVENT_AGGREGATOR.register_event::<WindowCommand>();
+    //let window_command_receiver = EVENT_AGGREGATOR.register_event::<WindowCommand>();
 
     log::info!(
         "window created (scale_factor: {:.4}, font_dimensions: {:?})",
@@ -620,16 +599,14 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         //        windowed_context,
         window,
         renderer,
-        keyboard_manager: KeyboardManager::new(),
-        mouse_manager: MouseManager::new(),
-        title: String::from("Helicoid"),
-        fullscreen: false,
+        //title: String::from("Helicoid"),
+        //fullscreen: false,
         font_changed_last_frame: false,
-        size_at_startup: initial_size,
-        maximized_at_startup: maximized,
+        //size_at_startup: initial_size,
+        //maximized_at_startup: maximized,
         saved_inner_size,
         //        saved_grid_size: None,
-        window_command_receiver,
+        //window_command_receiver,
         glutin_context: GlutinWindowGl::Paused(gl_paused),
     };
 
@@ -678,7 +655,7 @@ pub fn create_window(args: &HeliconeCommandLineArguments) {
         */
         let frame_start = Instant::now();
 
-        window_wrapper.handle_window_commands();
+        //window_wrapper.handle_window_commands();
         window_wrapper.synchronize_settings();
         let ctrl: Option<ControlFlow> = window_wrapper.handle_event(e, window_target);
         if let Some(ctrl) = ctrl {

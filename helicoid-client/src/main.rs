@@ -3,11 +3,11 @@ use command_line::HeliconeCommandLineArguments;
 use window::create_window;
 
 mod bridge;
-mod channel_utils;
+//mod channel_utils;
 mod command_line;
 mod dimensions;
 mod editor;
-mod event_aggregator;
+//mod event_aggregator;
 mod frame;
 mod redraw_scheduler;
 mod renderer;

@@ -1,18 +1,12 @@
-
-
-
-
-use crate::{
-    bridge::{RedrawEvent, WindowAnchor},
-};
+use crate::bridge::{RedrawEvent, WindowAnchor};
 
 const MODE_CMDLINE: u64 = 4;
 
-mod cursor;
+//mod cursor;
 pub(crate) mod editor;
 mod style;
 
-pub use cursor::{Cursor, CursorMode, CursorShape};
+//pub use cursor::{Cursor, CursorMode, CursorShape};
 pub use style::{Colors, Style, UnderlineStyle};
 
 #[derive(Clone, Debug)]

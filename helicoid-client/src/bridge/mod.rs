@@ -1,6 +1,7 @@
 /* This is the start of an (currently imaginary) bridge to the helix editor.
 This bridge is having a quite different architecture than the (neo)vim bridge. */
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum WindowAnchor {
     NorthWest,
@@ -12,6 +13,7 @@ pub enum WindowAnchor {
 #[derive(Clone, Debug)]
 pub enum RedrawEvent {}
 
+/*
 #[derive(Clone, Debug)]
 pub enum GuiOption {
     ArabicShape(bool),
@@ -25,4 +27,4 @@ pub enum GuiOption {
     ShowTabLine(u64),
     TermGuiColors(bool),
     //Unknown(String, ),
-}
+}*/

@@ -7,7 +7,7 @@ use rkyv::ser::serializers::{
 };
 use rkyv::ser::ScratchSpace;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{Archive, Deserialize, Fallible, Infallible, Serialize};
+use rkyv::{Archive, Deserialize, Infallible, Serialize};
 use std::collections::HashMap;
 use std::io::{Write};
 

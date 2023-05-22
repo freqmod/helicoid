@@ -7,7 +7,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use itertools::Itertools;
 use smallvec::{SmallVec};
 
-use unicode_segmentation::UnicodeSegmentation;
+
 const DEFAULT_FONT_SIZE: f32 = 14.0;
 /*
 #[derive(Clone, Debug, Archive, Serialize, Deserialize, Hash, Eq)]

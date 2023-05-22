@@ -1,8 +1,4 @@
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    time::{Instant},
-};
+use std::{cmp::Ordering, collections::HashMap, time::Instant};
 
 use skia_safe::Rect;
 use winit::{

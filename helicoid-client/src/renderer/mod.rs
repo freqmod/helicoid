@@ -1,73 +1,30 @@
 pub mod animation_utils;
-pub mod cursor_renderer;
+//pub mod cursor_renderer;
 pub mod fonts;
 //pub mod grid_renderer;
 pub mod block_renderer;
 pub mod profiler;
-mod rendered_window;
-mod text_box_renderer;
-mod text_renderer;
+//mod rendered_window;
+//mod text_box_renderer;
+//mod text_renderer;
 
-use std::{
-    cmp::Ordering,
-    collections::{HashMap},
-};
-
-use helicoid_protocol::{
-    caching_shaper::CachingShaper,
-    gfx::{FontPaint},
-    text::ShapableString,
-};
+use helicoid_protocol::{caching_shaper::CachingShaper, gfx::FontPaint, text::ShapableString};
 
 use ordered_float::OrderedFloat;
 use skia_safe::{BlendMode, Canvas, Color, Paint, Point, Rect, Surface};
-use tokio::sync::mpsc::UnboundedReceiver;
 use winit::{event::Event, event_loop::ControlFlow};
 
 use crate::{
     //bridge::EditorMode,
-    editor::{editor::HeliconeEditor, Cursor, Style},
-    event_aggregator::EVENT_AGGREGATOR,
+    editor::editor::HeliconeEditor,
     renderer::{block_renderer::font_paint_to_sk_paint, fonts::blob_builder::ShapedBlobBuilder},
 };
 
-use cursor_renderer::CursorRenderer;
 //pub use grid_renderer::GridRenderer;
-pub use rendered_window::{
+/*pub use rendered_window::{
     LineFragment, RenderedWindow, WindowDrawCommand, WindowDrawDetails, WindowPadding,
-};
-
-
-
-//#[derive(SettingGroup, Clone)]
-pub struct RendererSettings {
-    position_animation_length: f32,
-    scroll_animation_length: f32,
-    floating_opacity: f32,
-    floating_blur: bool,
-    floating_blur_amount_x: f32,
-    floating_blur_amount_y: f32,
-    debug_renderer: bool,
-    profiler: bool,
-    underline_automatic_scaling: bool,
-}
-
-impl Default for RendererSettings {
-    fn default() -> Self {
-        Self {
-            position_animation_length: 0.15,
-            scroll_animation_length: 0.3,
-            floating_opacity: 0.7,
-            floating_blur: true,
-            floating_blur_amount_x: 2.0,
-            floating_blur_amount_y: 2.0,
-            debug_renderer: false,
-            profiler: false,
-            underline_automatic_scaling: false,
-        }
-    }
-}
-
+};*/
+/*
 #[derive(Clone, Debug)]
 pub enum DrawCommand {
     CloseWindow(u64),
@@ -75,22 +32,18 @@ pub enum DrawCommand {
         grid_id: u64,
         command: WindowDrawCommand,
     },
-    UpdateCursor(Cursor),
     FontChanged(String),
     DefaultStyleChanged(Style),
     //    ModeChanged(EditorMode),
 }
-
+*/
 pub struct Renderer {
-    cursor_renderer: CursorRenderer,
     editor: HeliconeEditor,
     //    text_box: RemoteBoxRenderer,
     //pub grid_renderer: GridRenderer,
     //    current_mode: EditorMode,
-    rendered_windows: HashMap<u64, RenderedWindow>,
-    pub window_regions: Vec<WindowDrawDetails>,
 
-    pub batched_draw_command_receiver: UnboundedReceiver<Vec<DrawCommand>>,
+    //pub batched_draw_command_receiver: UnboundedReceiver<Vec<DrawCommand>>,
     //profiler: profiler::Profiler,
     os_scale_factor: f64,
     user_scale_factor: f64,
@@ -103,14 +56,10 @@ impl Renderer {
 
         let user_scale_factor = 1.0; //window_settings.scale_factor.into();
         let _scale_factor = user_scale_factor * os_scale_factor;
-        let cursor_renderer = CursorRenderer::new();
         //let grid_renderer = GridRenderer::new(scale_factor);
         //let current_mode = EditorMode::Unknown(String::from(""));
 
-        let rendered_windows = HashMap::new();
-        let window_regions = Vec::new();
-
-        let batched_draw_command_receiver = EVENT_AGGREGATOR.register_event::<Vec<DrawCommand>>();
+        //        let batched_draw_command_receiver = EVENT_AGGREGATOR.register_event::<Vec<DrawCommand>>();
         //let profiler = profiler::Profiler::new(12.0);
 
         /*let window_padding = WindowPadding {
@@ -121,13 +70,6 @@ impl Renderer {
         };*/
 
         Renderer {
-            rendered_windows,
-            cursor_renderer,
-            //grid_renderer,
-            //current_mode,
-            window_regions,
-            batched_draw_command_receiver,
-            //profiler,
             os_scale_factor,
             user_scale_factor,
             editor,
@@ -143,7 +85,6 @@ impl Renderer {
         event: &Event<()>,
         window: &winit::window::Window,
     ) -> Option<ControlFlow> {
-        self.cursor_renderer.handle_event(event);
         self.editor.handle_event(event, window)
     }
     /*
@@ -340,84 +281,4 @@ impl Renderer {
         //self.grid_renderer
         //    .handle_scale_factor_update(self.os_scale_factor * self.user_scale_factor);
     }
-
-    fn handle_draw_command(&mut self, _root_canvas: &mut Canvas, draw_command: DrawCommand) {
-        match draw_command {
-            DrawCommand::Window {
-                grid_id,
-                command: WindowDrawCommand::Close,
-            } => {
-                self.rendered_windows.remove(&grid_id);
-            }
-            /*            DrawCommand::Window { grid_id, command } => {
-                match self.rendered_windows.entry(grid_id) {
-                    Entry::Occupied(mut occupied_entry) => {
-                        let rendered_window = occupied_entry.get_mut();
-                        rendered_window
-                            .handle_window_draw_command(&mut self.grid_renderer, command);
-                    }
-                    Entry::Vacant(vacant_entry) => {
-                        if let WindowDrawCommand::Position {
-                            grid_position: (grid_left, grid_top),
-                            grid_size: (width, height),
-                            ..
-                        } = command
-                        {
-                            let new_window = RenderedWindow::new(
-                                root_canvas,
-                                &self.grid_renderer,
-                                grid_id,
-                                (grid_left as f32, grid_top as f32).into(),
-                                (width, height).into(),
-                                //self.window_padding,
-                            );
-                            vacant_entry.insert(new_window);
-                        } else {
-                            error!("WindowDrawCommand sent for uninitialized grid {}", grid_id);
-                        }
-                    }
-                }
-            }*/
-            DrawCommand::UpdateCursor(new_cursor) => {
-                self.cursor_renderer.update_cursor(new_cursor);
-            }
-            /*DrawCommand::FontChanged(new_font) => {
-                self.grid_renderer.update_font(&new_font);
-            }
-            DrawCommand::DefaultStyleChanged(new_style) => {
-                self.grid_renderer.default_style = Arc::new(new_style);
-            }
-            DrawCommand::ModeChanged(new_mode) => {
-                self.current_mode = new_mode;
-            }*/
-            _ => {}
-        }
-    }
-}
-
-/// Defines how floating windows are sorted.
-fn floating_sort(window_a: &&mut RenderedWindow, window_b: &&mut RenderedWindow) -> Ordering {
-    // First, compare floating order
-    let mut ord = window_a
-        .floating_order
-        .unwrap()
-        .partial_cmp(&window_b.floating_order.unwrap())
-        .unwrap();
-    if ord == Ordering::Equal {
-        // if equal, compare grid pos x
-        ord = window_a
-            .grid_current_position
-            .x
-            .partial_cmp(&window_b.grid_current_position.x)
-            .unwrap();
-        if ord == Ordering::Equal {
-            // if equal, compare grid pos z
-            ord = window_a
-                .grid_current_position
-                .y
-                .partial_cmp(&window_b.grid_current_position.y)
-                .unwrap();
-        }
-    }
-    ord
 }
