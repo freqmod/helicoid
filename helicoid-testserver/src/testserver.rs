@@ -4,9 +4,10 @@ use helicoid_protocol::{
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        RemoteBoxUpdate, RenderBlockDescription, RenderBlockId, RenderBlockLocation,
-        RenderBlockPath, SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon,
-        SimplePaint, SimpleRoundRect, SimpleSvg,
+        PointF32, RemoteBoxUpdate, RemoteSingleChange, RemoteSingleChangeElement,
+        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
+        SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon, SimplePaint,
+        SimpleRoundRect, SimpleSvg,
     },
     input::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
@@ -17,6 +18,7 @@ use helicoid_protocol::{
         TcpBridgeToServerMessage,
     },
     text::{FontEdging, FontHinting, ShapableString},
+    transferbuffer::TransferBuffer,
 };
 use ordered_float::OrderedFloat;
 use smallvec::{smallvec, SmallVec};
@@ -43,7 +45,7 @@ struct ServerStateData {
 struct ServerState {
     pending_message: Option<TcpBridgeToServerMessage>,
     peer_address: SocketAddr,
-    channel_tx: Sender<TcpBridgeToClientMessage>,
+    channel_tx: Sender<Arc<TransferBuffer>>,
     channel_rx: Receiver<TcpBridgeToServerMessage>,
     close_rx: BReceiver<()>,
     editor_update_rx: BReceiver<()>,
@@ -191,19 +193,15 @@ impl ServerState {
         let new_shaped_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1000).unwrap(),
             contents: RenderBlockDescription::ShapedTextBlock(shaped),
+            update: true,
         };
         self.channel_tx
-            .send(TcpBridgeToClientMessage {
-                message: HelicoidToClientMessage {
-                    update: RemoteBoxUpdate {
-                        parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
-                        new_render_blocks: smallvec![new_shaped_string_block],
-                        remove_render_blocks: Default::default(),
-                        move_block_locations: Default::default(),
-                    },
-                },
-            })
+            .send(Arc::new(TransferBuffer::new_additions(
+                RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+                smallvec![new_shaped_string_block],
+            )))
             .await?;
+
         log::trace!("Prepared message3, now sending it to the tcp bridge");
         Ok(())
     }
@@ -222,7 +220,7 @@ impl ServerState {
     }
     async fn send_simple_test_shaped_string(&mut self) -> Result<()> {
         //        let editor = self.state_data.editor.lock();
-        let mut shaper = CachingShaper::new(1.0f32);
+        let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
         shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
         shaper.set_font_key(1, String::from("FiraCodeNerdFont-Regular"));
@@ -247,6 +245,7 @@ impl ServerState {
         let new_shaped_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1000).unwrap(),
             contents: RenderBlockDescription::ShapedTextBlock(shaped),
+            update: false,
         };
         //        new_render_blocks.push(new_shaped_string_block);
         //        let mut render_block_locations = SmallVec::with_capacity(1);
@@ -254,43 +253,38 @@ impl ServerState {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1000).unwrap(),
             layer: 2,
-            location: PointF16::new(1.0, 300.0),
+            location: PointF32::new(1.0, 300.0),
         };
         let meta_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1).unwrap(),
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
-                extent: PointF16::new(1500.0, 1500.0),
+                extent: PointF32::new(1500.0, 1500.0),
                 //extent: PointF16::new(500.0, 500.0),
                 buffered: false,
                 alpha: None,
                 sub_blocks: smallvec![RenderBlockLocation {
                     id: RenderBlockId::normal(1000).unwrap(),
                     layer: 1,
-                    location: PointF16::new(0.0, 0.0)
+                    location: PointF32::new(0.0, 0.0)
                 }],
             }),
+            update: false,
         };
         let meta_block_location = RenderBlockLocation {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1).unwrap(),
             layer: 0,
-            location: PointF16::new(1.0, 1.0),
+            location: PointF32::new(1.0, 1.0),
         };
         //        render_block_locations.push(shaped_string_location);
         //        render_block_locations.push(meta_block_location);
         //        new_render_blocks.push(meta_string_block);
 
-        let box_update = RemoteBoxUpdate {
-            parent: RenderBlockPath::top(),
-            new_render_blocks: smallvec![meta_string_block],
-            remove_render_blocks: Default::default(),
-            move_block_locations: smallvec![meta_block_location],
-        };
-        let msg = TcpBridgeToClientMessage {
-            message: HelicoidToClientMessage { update: box_update },
-        };
         log::trace!("Prepared message1, now sending it to the tcp bridge");
-        self.channel_tx.send(msg).await?;
+        let mut buf = TransferBuffer::new();
+        buf.add_news(&RenderBlockPath::top(), &[meta_string_block]);
+        buf.add_moves(&RenderBlockPath::top(), &[meta_block_location]);
+        self.channel_tx.send(Arc::new(buf)).await?;
         let polygon = SimpleDrawPolygon {
             paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAABB55DD), Some(5.0)),
             draw_elements: smallvec![
@@ -345,14 +339,14 @@ impl ServerState {
         };
         let svg = SimpleSvg {
             paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA3311DD), Some(5.0)),
-            location: PointF16::new(90.0, 60.0),
-            extent: PointF16::new(512.0, 512.0),
+            location: PointF32::new(90.0, 60.0),
+            extent: PointF32::new(512.0, 512.0),
             resource_name: smallvec![b't', b'e', b's', b't'],
         };
         let fill_block = NewRenderBlock {
             id: RenderBlockId::normal(1001).unwrap(),
             contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
-                extent: PointF16::new(1000f32, 1000f32),
+                extent: PointF32::new(1000f32, 1000f32),
                 draw_elements: smallvec![
                     SimpleDrawElement::Polygon(polygon),
                     SimpleDrawElement::fill(SimplePaint::new(
@@ -365,35 +359,32 @@ impl ServerState {
                     SimpleDrawElement::SvgResource(svg),
                 ],
             }),
+            update: false,
         };
         let fill_location = RenderBlockLocation {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1001).unwrap(),
             layer: 0,
-            location: PointF16::new(10.0, 10.0),
-        };
-
-        let box_text_update = RemoteBoxUpdate {
-            parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
-            new_render_blocks: smallvec![new_shaped_string_block, fill_block],
-            remove_render_blocks: Default::default(),
-            move_block_locations: smallvec![shaped_string_location, fill_location],
+            location: PointF32::new(10.0, 10.0),
         };
 
         log::trace!("Prepared message2, now sending it to the tcp bridge");
-        self.channel_tx
-            .send(TcpBridgeToClientMessage {
-                message: HelicoidToClientMessage {
-                    update: box_text_update,
-                },
-            })
-            .await?;
+        let mut buf = TransferBuffer::new();
+        buf.add_news(
+            &RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+            &[new_shaped_string_block, fill_block],
+        );
+        buf.add_moves(
+            &RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+            &[shaped_string_location, fill_location],
+        );
+        self.channel_tx.send(Arc::new(buf)).await?;
         let mut overlay_paint = SimplePaint::new(Some(0x03110022), Some(0x88009255), Some(0.5));
         overlay_paint.set_background_blur_amount(2.5);
         let overlay_fill_block = NewRenderBlock {
             id: RenderBlockId::normal(1002).unwrap(),
             contents: RenderBlockDescription::SimpleDraw(SimpleDrawBlock {
-                extent: PointF16::new(750f32, 750f32),
+                extent: PointF32::new(750f32, 750f32),
                 draw_elements: smallvec![
                     SimpleDrawElement::fill(SimplePaint::new(
                         Some(0xFFAABBCC),
@@ -408,26 +399,25 @@ impl ServerState {
                     })
                 ],
             }),
+            update: true,
         };
         let overlay_fill_block_location = RenderBlockLocation {
             //path: RenderBlockPath::new(smallvec![1]),
             id: RenderBlockId::normal(1002).unwrap(),
             layer: 5,
-            location: PointF16::new(25.0, 25.0),
+            location: PointF32::new(25.0, 25.0),
         };
+        let mut buf = TransferBuffer::new();
+        buf.add_news(
+            &RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+            &[overlay_fill_block],
+        );
+        buf.add_moves(
+            &RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
+            &[overlay_fill_block_location],
+        );
+        self.channel_tx.send(Arc::new(buf)).await?;
 
-        self.channel_tx
-            .send(TcpBridgeToClientMessage {
-                message: HelicoidToClientMessage {
-                    update: RemoteBoxUpdate {
-                        parent: RenderBlockPath::new(smallvec![RenderBlockId::normal(1).unwrap()]),
-                        new_render_blocks: smallvec![overlay_fill_block],
-                        remove_render_blocks: Default::default(),
-                        move_block_locations: smallvec![overlay_fill_block_location],
-                    },
-                },
-            })
-            .await?;
         log::trace!("Prepared message3, now sending it to the tcp bridge");
 
         Ok(())
@@ -438,7 +428,7 @@ impl TcpBridgeServerConnectionState for ServerState {
     type StateData = ServerStateData;
     async fn new_state(
         peer_address: SocketAddr,
-        channel_tx: Sender<TcpBridgeToClientMessage>,
+        channel_tx: Sender<Arc<TransferBuffer>>,
         channel_rx: Receiver<TcpBridgeToServerMessage>,
         close_rx: BReceiver<()>,
         state_data: Self::StateData,

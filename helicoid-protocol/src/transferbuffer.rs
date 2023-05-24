@@ -1,13 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-
 use anyhow::Result;
 
-use rkyv::{
-    ser::{
-        ScratchSpace, Serializer,
-    },
-};
+use rkyv::ser::{ScratchSpace, Serializer};
 use smallvec::SmallVec;
 
 use crate::{
@@ -47,6 +42,21 @@ impl SerializeWith for Arc<TransferBuffer> {
 }
 
 impl TransferBuffer {
+    pub fn new_moves(path: RenderBlockPath, moves: SmallVec<[RenderBlockLocation; 4]>) -> Self {
+        let mut s: Self = Default::default();
+        s.add_moves(&path, &moves);
+        s
+    }
+    pub fn new_removals(path: RenderBlockPath, removals: SmallVec<[RenderBlockId; 4]>) -> Self {
+        let mut s: Self = Default::default();
+        s.add_removes(&path, &removals);
+        s
+    }
+    pub fn new_additions(path: RenderBlockPath, moves: SmallVec<[NewRenderBlock; 4]>) -> Self {
+        let mut s: Self = Default::default();
+        s.add_news(&path, &moves);
+        s
+    }
     pub fn new() -> Self {
         Default::default()
     }
