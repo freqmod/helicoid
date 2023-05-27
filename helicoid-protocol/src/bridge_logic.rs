@@ -118,6 +118,8 @@ impl Default for TcpBridgeReceiveState {
     }
 }
 
+/* TODO: Currently this function will result in quite a lot of (small) reads and possibly memcpys,
+which may be worthwile to optimize */
 #[derive(Default)]
 pub struct TcpBridgeReceiveProcessor<M> {
     recv_buffer: AlignedVec,
