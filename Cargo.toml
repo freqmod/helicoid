@@ -4,6 +4,7 @@ members = [
     "helicoid-protocol",
     "helicoid-helixserver",
     "helicoid-testserver",
+    "helicoid-eguiclient",
 ]
 
 default-members = [

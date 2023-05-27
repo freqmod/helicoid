@@ -29,29 +29,6 @@ use tokio::sync::{
     Mutex as TMutex,
 };
 
-/*pub struct OwnedRkyvArchive<T: Archive, L: usize> {
-    bytes: [u8; L],
-    archive: T,
-}*/
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
-#[archive_attr(derive(CheckBytes, Debug))]
-pub struct TcpBridgeToClientMessage {
-    pub message: HelicoidToClientMessage,
-}
-#[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[archive_attr(derive(Debug))]
-pub struct TcpBridgeToServerMessage {
-    pub message: HelicoidToServerMessage,
-}
-
-pub trait SerializeWith {
-    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
-        &self,
-        serializer: &mut R,
-        dummy_serializer: &mut D,
-    ) -> Result<usize, ()>;
-}
-
 pub struct TcpBridgeSend<M> {
     tcp_conn: OwnedWriteHalf,
     serializer: Option<TBSSerializer>,
@@ -87,9 +64,6 @@ pub struct ServerSingleTcpBridge {
     receive: TcpBridgeReceive<TcpBridgeToServerMessage>,
 }
 
-#[derive(Debug, Default)]
-pub struct DummyWriter {}
-
 #[async_trait]
 pub trait TcpBridgeServerConnectionState: Send {
     type StateData: Send + 'static;
@@ -102,16 +76,6 @@ pub trait TcpBridgeServerConnectionState: Send {
     ) -> Self;
     async fn initialize(&mut self) -> Result<()>;
     async fn event_loop(&mut self) -> Result<()>;
-}
-
-impl Write for DummyWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 impl ClientTcpBridge {
@@ -166,39 +130,6 @@ impl ServerSingleTcpBridge {
         rec_proc_res?;
         Ok(())
         // Need to call process on send and on receive
-    }
-}
-
-impl SerializeWith for TcpBridgeToClientMessage {
-    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
-        &self,
-        serializer: &mut R,
-        dummy_serializer: &mut D,
-    ) -> Result<usize, ()> {
-        let dummy_start_pos = dummy_serializer.serialize_value(self).map_err(|_e| ())?;
-        serializer
-            .write(&u32::to_le_bytes(
-                (dummy_serializer.pos() - dummy_start_pos) as u32,
-            ))
-            .map_err(|_e| ())?;
-
-        serializer.serialize_value(self).map_err(|_e| ())
-    }
-}
-
-impl SerializeWith for TcpBridgeToServerMessage {
-    fn serialize<R: Serializer + ScratchSpace, D: Serializer + ScratchSpace>(
-        &self,
-        serializer: &mut R,
-        dummy_serializer: &mut D,
-    ) -> Result<usize, ()> {
-        let dummy_start_pos = dummy_serializer.serialize_value(self).map_err(|_e| ())?;
-        serializer
-            .write(&u32::to_le_bytes(
-                (dummy_serializer.pos() - dummy_start_pos) as u32,
-            ))
-            .map_err(|_e| ())?;
-        serializer.serialize_value(&self.message).map_err(|_e| ())
     }
 }
 
@@ -312,8 +243,6 @@ where
                             let (inner_serializer, scratch, shared) = serializer.into_components();
                             let mut bytes = inner_serializer.into_inner();
                             log::trace!("Tcp bridge Sending {} bytes ({:?})", bytes.len(), bytes);
-                            //let header = (bytes.len() as u32).to_le_bytes();
-                            //let bufs = [IoSlice::new(&header), IoSlice::new(&bytes)];
                             self.tcp_conn.write(&bytes).await?;
                             bytes.clear();
                             self.serializer = Some(TBSSerializer::new(AlignedSerializer::new(bytes), scratch, shared));
