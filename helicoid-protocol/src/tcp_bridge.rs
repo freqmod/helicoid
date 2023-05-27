@@ -14,6 +14,10 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crate::bridge_logic::{
+    DummyWriter, SerializeWith, TcpBridgeReceiveProcessor, TcpBridgeToClientMessage,
+    TcpBridgeToServerMessage,
+};
 use crate::gfx::HelicoidToClientMessage;
 use crate::input::HelicoidToServerMessage;
 use crate::transferbuffer::TransferBuffer;
@@ -41,6 +45,7 @@ pub struct TcpBridgeReceive<M> {
     tcp_conn: OwnedReadHalf,
     chan: Sender<M>,
     close_chan: Option<OSender<()>>,
+    processor: TcpBridgeReceiveProcessor<M>,
 }
 pub struct ClientTcpBridge {
     send: TcpBridgeSend<TcpBridgeToServerMessage>,
@@ -284,6 +289,7 @@ where
                 tcp_conn: reader,
                 chan: tx,
                 close_chan: Some(close_chan),
+                processor: TcpBridgeReceiveProcessor::new(),
             },
             rx,
         ))
@@ -296,95 +302,32 @@ where
         pkg_len: &mut usize,
         buffer_filled: &mut usize,
     ) -> Result<ReadResult> {
-        let data_read;
-        if *pkg_len == u32::MAX as usize {
-            /* Read u32 length prefix */
-            log::trace!("Try read");
-            data_read = match self.tcp_conn.try_read(buffer) {
-                Ok(0) => {
-                    return Ok(ReadResult::StopReading);
-                }
-                Ok(n) => n,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    log::trace!("Read would block");
-                    return Ok(ReadResult::NoData);
-                }
-                Err(e) => return Err(e.into()),
-            };
-
-            if data_read == 0 {
-                log::warn!("No data received: {}", data_read);
-                return Ok(ReadResult::NoData);
+        loop {
+            let read_buffer = self.processor.next_read_buffer();
+            if let Some(read_buffer) = read_buffer {
+                let data_read_length = match self.tcp_conn.try_read(read_buffer) {
+                    Ok(n) => n,
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        self.processor.mark_data_read(0);
+                        log::trace!("Read would block");
+                        return Ok(ReadResult::NoData);
+                    }
+                    Err(e) => return Err(e.into()),
+                };
+                self.processor.mark_data_read(data_read_length);
             }
-            if data_read < PACKET_HEADER_LENGTH {
-                log::warn!("Unexpectedly small data received: {}", data_read);
-                return Ok(ReadResult::StopReading);
-            }
-            *pkg_len =
-                u32::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap()) as usize;
-            debug_assert!(*pkg_len + PACKET_HEADER_LENGTH <= buffer.len());
-            *pkg_offset = PACKET_HEADER_LENGTH;
-            *buffer_filled = 0;
-        } else {
-            log::trace!(
-                "Read: {}..{}+{}-{} (of {})",
-                buffer_filled,
-                pkg_len,
-                buffer_filled,
-                PACKET_HEADER_LENGTH,
-                buffer.len()
-            );
-            data_read = self.tcp_conn.try_read(
-                &mut buffer[*buffer_filled..*pkg_len + *buffer_filled - PACKET_HEADER_LENGTH],
-            )?;
-        }
-        log::trace!("Received event data: {}", pkg_len);
-        *buffer_filled += data_read;
-
-        while *buffer_filled >= PACKET_HEADER_LENGTH + *pkg_len {
-            /* All the required data was transferred */
-            let data_sliced = &buffer[*pkg_offset..(*pkg_len + *pkg_offset)];
-
-            //println!("Data slized ptr; 0x{:X}", data_sliced.as_ptr() as usize);
-            //let msg = rkyv::from_bytes::<HelicoidToClientMessage>(data_sliced)
-            //    .map_err(|_| anyhow!("Error while deserializing message from wire"))?;
-            let archived = unsafe { rkyv::archived_root::<M>(data_sliced) };
-            // TODO: Does the deserialized type copy or reference the archived memory (currently we assume copy)
-            let deserialized =
-                Deserialize::<M, _>::deserialize(archived, &mut rkyv::Infallible).unwrap();
-
-            //let channel_message = TcpBridgeMessage{ message: deserialized };
-            //log::trace!("Sending event message: {}", pkg_len);
-
-            match self.chan.send(deserialized).await {
-                Ok(_) => {}
-                Err(_e) => {
-                    /* There are no receiver anymore, close the socket receiver */
-                    log::debug!("Client channel send error");
-                    return Ok(ReadResult::StopReading);
+            if let Some(archive) = self.processor.extract_archive() {
+                match self.chan.send(archive).await {
+                    Ok(_) => {}
+                    Err(_e) => {
+                        /* There are no receiver anymore, close the socket receiver */
+                        log::debug!("Client channel send error");
+                        return Ok(ReadResult::StopReading);
+                    }
                 }
-            }
-            /* If not all data was read, move the extra data to the start of the buffer */
-            //let pkt_outer_len = pkg_len + PACKET_HEADER_LENGTH;
-            let pkt_end = *pkg_offset + *pkg_len;
-
-            //buffer_filled -= pkt_outer_len;
-            //pkg_offset += pkt_outer_len;
-            if *buffer_filled == pkt_end {
-                *pkg_len = u32::MAX as usize;
-                /* All other temp variable related to size are undefined at this point */
-            } else {
-                /* There are still some data in the buffer, prepare for more data to come */
-                assert!(*buffer_filled > *pkg_len);
-                assert!(*buffer_filled - *pkg_len >= PACKET_HEADER_LENGTH);
-                buffer.copy_within(pkt_end..*buffer_filled, 0);
-                *buffer_filled -= pkt_end;
-                *pkg_offset = PACKET_HEADER_LENGTH;
-                *pkg_len = u32::from_le_bytes(buffer[0..(PACKET_HEADER_LENGTH)].try_into().unwrap())
-                    as usize;
+                return Ok(ReadResult::GotPacket);
             }
         }
-        return Ok(ReadResult::GotPacket);
     }
 
     pub async fn process(&mut self) -> Result<()> {

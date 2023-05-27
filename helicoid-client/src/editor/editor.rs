@@ -10,12 +10,13 @@ use crate::{
 };
 use helicoid_protocol::{
     block_manager::Manager,
+    bridge_logic::{TcpBridgeToClientMessage, TcpBridgeToServerMessage},
     gfx::{PointF32, RenderBlockId, RenderBlockLocation},
     input::{
         ComplexKeyEvent, HelicoidToServerMessage, KeyModifierStateUpdateEvent, ViewportInfo,
         VirtualKeycode,
     },
-    tcp_bridge::{ClientTcpBridge, TcpBridgeToClientMessage, TcpBridgeToServerMessage},
+    tcp_bridge::ClientTcpBridge,
 };
 use ordered_float::OrderedFloat;
 use skia_safe::Surface;

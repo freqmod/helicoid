@@ -6,11 +6,11 @@ use rkyv::ser::{ScratchSpace, Serializer};
 use smallvec::SmallVec;
 
 use crate::{
+    bridge_logic::{SerializeWith, TcpBridgeToClientMessage},
     gfx::{
         HelicoidToClientMessage, NewRenderBlock, RemoteSingleChange, RenderBlockId,
         RenderBlockLocation, RenderBlockPath, RenderBlockRemoveInstruction,
     },
-    tcp_bridge::{SerializeWith, TcpBridgeToClientMessage},
 };
 
 /* Buffer that contains and reorganizes buffers to be transferred to the client */

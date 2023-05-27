@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use tokio::sync::{
-    broadcast::{self},
-};
+use tokio::sync::broadcast::{self};
 
 use helix_core::{config::user_syntax_loader, syntax};
 use helix_view::{editor::Config, graphics::Rect, theme, Editor as VEditor};

@@ -5,13 +5,14 @@ use async_trait::async_trait;
 use hashbrown::HashMap;
 
 use helicoid_protocol::{
+    bridge_logic::TcpBridgeToServerMessage,
     caching_shaper::CachingShaper,
     gfx::{
         MetaDrawBlock, NewRenderBlock, PointF32, RenderBlockDescription, RenderBlockId,
         RenderBlockLocation, RenderBlockPath,
     },
     input::{HelicoidToServerMessage, ViewportInfo, VirtualKeycode},
-    tcp_bridge::{TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToServerMessage},
+    tcp_bridge::{TcpBridgeServer, TcpBridgeServerConnectionState},
     text::SmallFontOptions,
     transferbuffer::TransferBuffer,
 };

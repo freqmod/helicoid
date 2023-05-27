@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use helicoid_protocol::{
+    bridge_logic::TcpBridgeToServerMessage,
     caching_shaper::CachingShaper,
     gfx::{
         FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
@@ -13,10 +14,7 @@ use helicoid_protocol::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
         MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
     },
-    tcp_bridge::{
-        TcpBridgeServer, TcpBridgeServerConnectionState, TcpBridgeToClientMessage,
-        TcpBridgeToServerMessage,
-    },
+    tcp_bridge::{TcpBridgeServer, TcpBridgeServerConnectionState},
     text::{FontEdging, FontHinting, ShapableString},
     transferbuffer::TransferBuffer,
 };
