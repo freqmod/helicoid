@@ -16,7 +16,7 @@ use helicoid_protocol::{
         ComplexKeyEvent, HelicoidToServerMessage, KeyModifierStateUpdateEvent, ViewportInfo,
         VirtualKeycode,
     },
-    tcp_bridge::ClientTcpBridge,
+    tcp_bridge_async::ClientTcpBridge,
 };
 use ordered_float::OrderedFloat;
 use skia_safe::Surface;

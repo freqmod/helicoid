@@ -17,15 +17,8 @@ use crate::input::HelicoidToServerMessage;
 use crate::transferbuffer::TransferBuffer;
 use anyhow::{anyhow, Result};
 use bytecheck::CheckBytes;
-use tokio::io::AsyncWriteExt;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{
-    broadcast::{self, Receiver as BReceiver, Sender as BSender},
-    mpsc::{self, Receiver, Sender},
-    oneshot::{self, Receiver as OReceiver, Sender as OSender},
-    Mutex as TMutex,
-};
+
+pub type TBSSerializer = AllocSerializer<0x4000>;
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive_attr(derive(CheckBytes, Debug))]

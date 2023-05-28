@@ -12,7 +12,7 @@ use helicoid_protocol::{
         RenderBlockLocation, RenderBlockPath,
     },
     input::{HelicoidToServerMessage, ViewportInfo, VirtualKeycode},
-    tcp_bridge::{TcpBridgeServer, TcpBridgeServerConnectionState},
+    tcp_bridge_async::{TcpBridgeServer, TcpBridgeServerConnectionState},
     text::SmallFontOptions,
     transferbuffer::TransferBuffer,
 };

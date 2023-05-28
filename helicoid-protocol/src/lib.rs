@@ -7,8 +7,6 @@ pub mod input;
 pub mod shadowblocks;
 pub mod swash_font;
 #[cfg(feature = "tokio")]
-pub mod tcp_bridge;
-#[cfg(feature = "tokio")]
 pub mod tcp_bridge_async;
 pub mod tcp_bridge_sync;
 pub mod text;

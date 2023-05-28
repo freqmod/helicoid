@@ -14,7 +14,7 @@ use helicoid_protocol::{
         CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
         MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
     },
-    tcp_bridge::{TcpBridgeServer, TcpBridgeServerConnectionState},
+    tcp_bridge_async::{TcpBridgeServer, TcpBridgeServerConnectionState},
     text::{FontEdging, FontHinting, ShapableString},
     transferbuffer::TransferBuffer,
 };
