@@ -1,21 +1,15 @@
-use async_trait::async_trait;
-use rkyv::ser::serializers::{
-    AlignedSerializer, AllocScratch, CompositeSerializer, WriteSerializer,
-};
 use rkyv::ser::ScratchSpace;
 use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{AlignedVec, Archive, Deserialize, Infallible, Serialize};
-use std::collections::HashMap;
+use rkyv::{AlignedVec, Archive, Deserialize, Serialize};
+
 use std::io::Write;
 
 use std::marker::PhantomData;
-use std::net::SocketAddr;
-use std::sync::Arc;
 
 use crate::gfx::HelicoidToClientMessage;
 use crate::input::HelicoidToServerMessage;
-use crate::transferbuffer::TransferBuffer;
-use anyhow::{anyhow, Result};
+
+use anyhow::Result;
 use bytecheck::CheckBytes;
 
 pub type TBSSerializer = AllocSerializer<0x4000>;
@@ -81,17 +75,6 @@ impl SerializeWith for TcpBridgeToServerMessage {
             .map_err(|_e| ())?;
         serializer.serialize_value(&self.message).map_err(|_e| ())
     }
-}
-
-#[repr(C, align(16))]
-struct AlignedBuffer {
-    contents: [u8; 0x10000],
-}
-
-enum ReadResult {
-    GotPacket,
-    NoData,
-    StopReading,
 }
 
 const PACKET_HEADER_LENGTH: usize = 4;
@@ -230,7 +213,7 @@ where
                 let result = Self::transform_element(element_data);
                 let current_element_end =
                     PACKET_HEADER_ADJUST + PACKET_HEADER_LENGTH + packet_length;
-                let current_read_data_end = (PACKET_HEADER_ADJUST + self.current_offset);
+                let current_read_data_end = PACKET_HEADER_ADJUST + self.current_offset;
                 if current_read_data_end - current_element_end > 0 {
                     self.recv_buffer.copy_within(
                         current_element_end..current_read_data_end,

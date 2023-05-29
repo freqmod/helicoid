@@ -1,9 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Parser;
 use futures::StreamExt;
 use std::future;
-use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
 use termion::{event::Key, raw::IntoRawMode};
 use termion_input_tokio::TermReadAsync;
 use testserver::HelicoidTestServer;
@@ -51,7 +49,6 @@ fn wait_for_input() {
             loop {
                 ttime::sleep(std::time::Duration::from_secs(1)).await;
             }
-            return;
         }
         log::warn!("Press q to quit");
 

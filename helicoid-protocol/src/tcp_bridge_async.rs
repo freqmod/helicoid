@@ -2,14 +2,12 @@
 managed by Tokio, and connected to the user interface by channels */
 
 use async_trait::async_trait;
+use rkyv::ser::serializers::AllocSerializer;
 use rkyv::ser::serializers::{
     AlignedSerializer, AllocScratch, CompositeSerializer, WriteSerializer,
 };
-use rkyv::ser::ScratchSpace;
-use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{Archive, Deserialize, Infallible, Serialize};
+use rkyv::{Archive, Deserialize, Infallible};
 use std::collections::HashMap;
-use std::io::Write;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,11 +16,8 @@ use crate::bridge_logic::{
     DummyWriter, SerializeWith, TcpBridgeReceiveProcessor, TcpBridgeToClientMessage,
     TcpBridgeToServerMessage,
 };
-use crate::gfx::HelicoidToClientMessage;
-use crate::input::HelicoidToServerMessage;
 use crate::transferbuffer::TransferBuffer;
 use anyhow::{anyhow, Result};
-use bytecheck::CheckBytes;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
@@ -297,10 +292,10 @@ where
     /* Returns true if interations should continue */
     async fn try_read(
         &mut self,
-        buffer: &mut [u8],
-        pkg_offset: &mut usize,
-        pkg_len: &mut usize,
-        buffer_filled: &mut usize,
+        _buffer: &mut [u8],
+        _pkg_offset: &mut usize,
+        _pkg_len: &mut usize,
+        _buffer_filled: &mut usize,
     ) -> Result<ReadResult> {
         loop {
             let read_buffer = self.processor.next_read_buffer();

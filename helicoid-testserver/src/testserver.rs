@@ -1,29 +1,25 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use helicoid_protocol::{
     bridge_logic::TcpBridgeToServerMessage,
     caching_shaper::CachingShaper,
     gfx::{
-        FontPaint, HelicoidToClientMessage, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16,
-        PointF32, RemoteBoxUpdate, RemoteSingleChange, RemoteSingleChangeElement,
+        FontPaint, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16, PointF32,
         RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
         SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon, SimplePaint,
         SimpleRoundRect, SimpleSvg,
     },
-    input::{
-        CursorMovedEvent, HelicoidToServerMessage, ImeEvent, KeyModifierStateUpdateEvent,
-        MouseButtonStateChangeEvent, SimpleKeyTappedEvent, ViewportInfo, VirtualKeycode,
-    },
+    input::{HelicoidToServerMessage, ViewportInfo, VirtualKeycode},
     tcp_bridge_async::{TcpBridgeServer, TcpBridgeServerConnectionState},
     text::{FontEdging, FontHinting, ShapableString},
     transferbuffer::TransferBuffer,
 };
 use ordered_float::OrderedFloat;
-use smallvec::{smallvec, SmallVec};
+use smallvec::smallvec;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::{
     broadcast::{self, Receiver as BReceiver, Sender as BSender},
-    mpsc::{self, Receiver, Sender},
+    mpsc::{Receiver, Sender},
     Mutex as TMutex,
 };
 
@@ -41,8 +37,8 @@ struct ServerStateData {
 }
 
 struct ServerState {
-    pending_message: Option<TcpBridgeToServerMessage>,
-    peer_address: SocketAddr,
+    _pending_message: Option<TcpBridgeToServerMessage>,
+    _peer_address: SocketAddr,
     channel_tx: Sender<Arc<TransferBuffer>>,
     channel_rx: Receiver<TcpBridgeToServerMessage>,
     close_rx: BReceiver<()>,
@@ -76,14 +72,13 @@ impl HelicoidTestServer {
         loop {
             log::trace!("Helicoid test server event loop iterate");
             tokio::select! {
-                result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
+                _result = TcpBridgeServer::wait_for_connection(self.bridge.clone(), &self.listen_address, state_data) =>{
                     /* Currently all event handling is done inside the state */
                     state_data =  ServerStateData { editor: self.editor.clone()};
                 },
                 /* Maybe add select on program close-channel here to close cleanly */
             }
         }
-        log::trace!("Helicoid test server event loop completed");
     }
 }
 impl DummyEditor {
@@ -109,13 +104,13 @@ impl ServerState {
                 self.viewport_size = Some(viewportinfo);
                 self.sync_screen().await?;
             }
-            HelicoidToServerMessage::KeyModifierStateUpdate(keymodifierstateupdateevent) => {}
-            HelicoidToServerMessage::KeyPressedEvent(simplekeytappedevent) => {}
-            HelicoidToServerMessage::MouseButtonStateChange(mousebuttonstatechangeevent) => {}
-            HelicoidToServerMessage::CursorMoved(cursormovedevent) => {}
-            HelicoidToServerMessage::CharReceived(ch) => {}
-            HelicoidToServerMessage::Ime(imeevent) => {}
-            HelicoidToServerMessage::ClipboardEvent(clipboard) => {}
+            HelicoidToServerMessage::KeyModifierStateUpdate(_keymodifierstateupdateevent) => {}
+            HelicoidToServerMessage::KeyPressedEvent(_simplekeytappedevent) => {}
+            HelicoidToServerMessage::MouseButtonStateChange(_mousebuttonstatechangeevent) => {}
+            HelicoidToServerMessage::CursorMoved(_cursormovedevent) => {}
+            HelicoidToServerMessage::CharReceived(_ch) => {}
+            HelicoidToServerMessage::Ime(_imeevent) => {}
+            HelicoidToServerMessage::ClipboardEvent(_clipboard) => {}
             HelicoidToServerMessage::KeyInputEvent(event) => {
                 if event.pressed {
                     let text = match event.virtual_keycode {
@@ -166,7 +161,7 @@ impl ServerState {
         Ok(())
     }
     async fn sync_text(&mut self) -> Result<()> {
-        let mut editor = self.state_data.editor.lock().await;
+        let editor = self.state_data.editor.lock().await;
         let mut shaper = CachingShaper::new(1.0f32, 12.0f32);
         shaper.set_font_key(0, String::from("Anonymous Pro"));
         //shaper.set_font_key(1, String::from("NotoSansMono-Regular"));
@@ -186,7 +181,7 @@ impl ServerState {
             i.font_info.font_parameters.edging = FontEdging::SubpixelAntiAlias;
             i.font_info.font_parameters.size = OrderedFloat(18.0f32);
         });
-        let mut shaped = shaper.shape(&string_to_shape, &None);
+        let shaped = shaper.shape(&string_to_shape, &None);
         //        let mut new_render_blocks = SmallVec::with_capacity(1);
         let new_shaped_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1000).unwrap(),
@@ -210,7 +205,7 @@ impl ServerState {
     }
 
     async fn editor_updated(&mut self) -> Result<()> {
-        let editor = self.state_data.editor.lock();
+        let _editor = self.state_data.editor.lock();
         /* Assess if the update is relevant for the client represented by this server state,
         update internal shadow state and send any relevant updates to the client
         (after unlocking the editor)*/
@@ -238,7 +233,7 @@ impl ServerState {
             i.font_info.font_parameters.edging = FontEdging::SubpixelAntiAlias;
             i.font_info.font_parameters.size = OrderedFloat(18.0f32);
         });
-        let mut shaped = shaper.shape(&string_to_shape, &None);
+        let shaped = shaper.shape(&string_to_shape, &None);
         //        let mut new_render_blocks = SmallVec::with_capacity(1);
         let new_shaped_string_block = NewRenderBlock {
             id: RenderBlockId::normal(1000).unwrap(),
@@ -436,8 +431,8 @@ impl TcpBridgeServerConnectionState for ServerState {
             inner_editor.update_receiver()
         };
         Self {
-            pending_message: None,
-            peer_address,
+            _pending_message: None,
+            _peer_address: peer_address,
             channel_tx,
             channel_rx,
             close_rx,

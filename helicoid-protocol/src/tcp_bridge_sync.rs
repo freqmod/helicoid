@@ -1,30 +1,16 @@
 use anyhow::Result;
-use rkyv::ser::ScratchSpace;
-use rkyv::ser::{serializers::AllocSerializer, Serializer};
-use rkyv::{Archive, Deserialize, Infallible, Serialize};
-use std::io::{Read, Write};
-use std::{
-    marker::PhantomData,
-    net::{SocketAddr, TcpListener, TcpStream},
-    sync::{
-        mpsc::{Receiver, Sender},
-        Arc,
-    },
-};
 
-use hashbrown::HashMap;
+use rkyv::Deserialize;
+use rkyv::{Archive, Infallible};
+use std::io::{Read, Write};
+use std::{marker::PhantomData, net::TcpStream};
+
 use rkyv::ser::serializers::{
     AlignedSerializer, AllocScratch, CompositeSerializer, WriteSerializer,
 };
 
 use crate::bridge_logic::SerializeWith;
-use crate::{
-    bridge_logic::{
-        DummyWriter, TBSSerializer, TcpBridgeReceiveProcessor, TcpBridgeToClientMessage,
-        TcpBridgeToServerMessage,
-    },
-    transferbuffer::TransferBuffer,
-};
+use crate::bridge_logic::{DummyWriter, TBSSerializer, TcpBridgeReceiveProcessor};
 
 pub struct TcpBridgeSend<M> {
     tcp_conn: TcpStream,
@@ -38,40 +24,6 @@ pub struct TcpBridgeReceive<M> {
     processor: TcpBridgeReceiveProcessor<M>,
 }
 
-pub struct ClientTcpBridge {
-    send: TcpBridgeSend<TcpBridgeToServerMessage>,
-    receive: TcpBridgeReceive<TcpBridgeToClientMessage>,
-}
-
-pub struct TcpBridgeServer<S> {
-    _listener: Option<TcpListener>,
-    _connections: HashMap<SocketAddr, TcpBridgeServerConnection<S>>,
-}
-
-#[allow(dead_code)]
-pub struct TcpBridgeServerConnection<S> {
-    bridge: ServerSingleTcpBridge,
-    connection_state: S,
-}
-
-pub struct ServerSingleTcpBridge {
-    send: TcpBridgeSend<Arc<TransferBuffer>>,
-    receive: TcpBridgeReceive<TcpBridgeToServerMessage>,
-}
-/*
-pub trait TcpBridgeServerConnectionState: Send {
-    type StateData: Send + 'static;
-    async fn new_state(
-        peer_address: SocketAddr,
-        channel_tx: Sender<Arc<TransferBuffer>>,
-        channel_rx: Receiver<TcpBridgeToServerMessage>,
-        close_rx: BReceiver<()>,
-        state_data: Self::StateData,
-    ) -> Self;
-    async fn initialize(&mut self) -> Result<()>;
-    async fn event_loop(&mut self) -> Result<()>;
-}
-*/
 pub fn connect_to_server<R, S>(
     addr: &String,
 ) -> Result<(TcpBridgeReceive<R>, TcpBridgeSend<S>), std::io::Error>
@@ -135,7 +87,7 @@ impl<M> TcpBridgeSend<M>
 where
     M: SerializeWith,
 {
-    fn new(writer: TcpStream) -> Result<Self, std::io::Error> {
+    pub fn new(writer: TcpStream) -> Result<Self, std::io::Error> {
         //writer.set_nonblocking(true)?;
         Ok(Self {
             tcp_conn: writer,
@@ -144,7 +96,7 @@ where
             send_type: PhantomData,
         })
     }
-    fn send(&mut self, message: &mut M) -> Result<(), TcpBridgeSendError> {
+    pub fn send(&mut self, message: &mut M) -> Result<(), TcpBridgeSendError> {
         let mut serializer = self.serializer.take().unwrap();
         let mut dummy_serializer = self.dummy_serializer.take().unwrap();
         message

@@ -389,11 +389,12 @@ fn create_window_with_gl_context(
         .with_maximized(maximized)
         .with_transparent(true);
 
-    let _frame_decoration = true; //cmd_line_settings.frame;
+    #[cfg(not(target_os = "macos"))]
+    let frame_decoration = true; //cmd_line_settings.frame;
 
     // There is only two options for windows & linux, no need to match more options.
     #[cfg(not(target_os = "macos"))]
-    let mut winit_window_builder = winit_window_builder.with_decorations(frame_decoration); // == Frame::Full);
+    let winit_window_builder = winit_window_builder.with_decorations(frame_decoration); // == Frame::Full);
 
     let template = ConfigTemplateBuilder::new()
         .with_alpha_size(8)
