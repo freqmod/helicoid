@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-tokio = ["dep:tokio"]
+tokio = ["dep:tokio", "dep:futures"]
 
 [dependencies]
 parking_lot = "0.12.0"
 log = "0.4.16"
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}
-half = {version = "2.1", features=["serde", "bytemuck"]}
+#half = {version = "2.1", features=["serde", "bytemuck"]}
 bytecheck = { version = "0.6.9", features = [] }
 rkyv = { version = "0.8", features = ["validation", "smallvec", "bytecheck"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
@@ -23,6 +23,6 @@ anyhow = {version="1.0.68"}
 num_enum = {version= "0.5.7"}
 tokio = { version = "1", features = ["full"] , optional = true}
 async-trait={version ="0.1.60"}
-futures = { version = "0.3.25" }
+futures = { version = "0.3.25", optional= true }
 hashbrown = {version = "0.13.2"}
 ahash = { version = "0.8.3"}

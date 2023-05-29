@@ -3,9 +3,7 @@ the depedenencies that are introduced */
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-
 use std::fmt::{self, Debug};
-
 
 use bytecheck::CheckBytes;
 
@@ -49,7 +47,7 @@ pub struct SmallFontOptions {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct ShapedTextGlyph {
     glyph: u16,
-    y: u16, /* This is an f16, but to make rkyv happy use u16 */
+    y: OrderedFloat<f32>,
     x: OrderedFloat<f32>,
 }
 
@@ -62,25 +60,25 @@ pub struct ShapedStringMetadata {
     pub substring_length: u16, // In (UTF-8) bytes
     pub font_info: SmallFontOptions,
     pub paint: FontPaint,
-    pub advance_x: u16,
-    pub advance_y: u16,
-    pub baseline_y: u16,
+    pub advance_x: OrderedFloat<f32>,
+    pub advance_y: OrderedFloat<f32>,
+    pub baseline_y: OrderedFloat<f32>,
 }
 
 impl ShapedStringMetadata {
     pub fn set_advance(&mut self, x: f32, y: f32, bl_y: f32) {
-        self.advance_x = half::f16::from_f32(x).to_bits();
-        self.advance_y = half::f16::from_f32(y).to_bits();
-        self.baseline_y = half::f16::from_f32(bl_y).to_bits();
+        self.advance_x = OrderedFloat(x);
+        self.advance_y = OrderedFloat(y);
+        self.baseline_y = OrderedFloat(bl_y);
     }
     pub fn advance_x(&self) -> f32 {
-        half::f16::from_bits(self.advance_x).to_f32()
+        f32::from(self.advance_x)
     }
     pub fn advance_y(&self) -> f32 {
-        half::f16::from_bits(self.advance_y).to_f32()
+        f32::from(self.advance_y)
     }
     pub fn baseline_y(&self) -> f32 {
-        half::f16::from_bits(self.baseline_y).to_f32()
+        f32::from(self.baseline_y)
     }
 }
 
@@ -103,7 +101,7 @@ impl ShapedTextGlyph {
         *self.x
     }
     pub fn y(&self) -> f32 {
-        half::f16::from_bits(self.y).to_f32()
+        f32::from(self.y)
     }
     pub fn glyph(&self) -> u16 {
         self.glyph
@@ -112,7 +110,7 @@ impl ShapedTextGlyph {
         Self {
             glyph,
             x: OrderedFloat(x),
-            y: half::f16::from_f32(y).to_bits(),
+            y: OrderedFloat(y),
         }
     }
 }
@@ -132,9 +130,9 @@ impl ShapableString {
             substring_length: text.len() as u16,
             font_info: Default::default(),
             paint: FontPaint::default(),
-            advance_x: 0,
-            advance_y: 0,
-            baseline_y: 0,
+            advance_x: OrderedFloat(0f32),
+            advance_y: OrderedFloat(0f32),
+            baseline_y: OrderedFloat(0f32),
         };
         ShapableString {
             text,
@@ -161,9 +159,9 @@ impl ShapableString {
                 color,
                 ..Default::default()
             },
-            advance_x: 0,
-            advance_y: 0,
-            baseline_y: 0,
+            advance_x: OrderedFloat(0f32),
+            advance_y: OrderedFloat(0f32),
+            baseline_y: OrderedFloat(0f32),
         };
         self.push_str(text, simple_run);
     }

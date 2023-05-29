@@ -420,9 +420,9 @@ impl CachingShaper {
                     substring_length: (cluster_index - last_result_metadata_start) as u16,
                     font_info: last_result_metadata.take().unwrap(),
                     paint: FontPaint::default(),
-                    advance_x: 0,
-                    advance_y: 0,
-                    baseline_y: 0,
+                    advance_x: OrderedFloat(0f32),
+                    advance_y: OrderedFloat(0f32),
+                    baseline_y: OrderedFloat(0f32),
                 });
                 last_result_metadata = Some(font_info.clone());
                 last_result_metadata_start = cluster_index;
@@ -434,9 +434,9 @@ impl CachingShaper {
                 substring_length: (results.len() - last_result_metadata_start) as u16,
                 font_info: last_result_metadata.take().unwrap(),
                 paint: FontPaint::default(),
-                advance_x: 0,
-                advance_y: 0,
-                baseline_y: 0,
+                advance_x: OrderedFloat(0f32),
+                advance_y: OrderedFloat(0f32),
+                baseline_y: OrderedFloat(0f32),
             });
         }
 

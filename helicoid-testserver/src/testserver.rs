@@ -4,10 +4,9 @@ use helicoid_protocol::{
     bridge_logic::TcpBridgeToServerMessage,
     caching_shaper::CachingShaper,
     gfx::{
-        FontPaint, MetaDrawBlock, NewRenderBlock, PathVerb, PointF16, PointF32,
-        RenderBlockDescription, RenderBlockId, RenderBlockLocation, RenderBlockPath,
-        SimpleDrawBlock, SimpleDrawElement, SimpleDrawPath, SimpleDrawPolygon, SimplePaint,
-        SimpleRoundRect, SimpleSvg,
+        FontPaint, MetaDrawBlock, NewRenderBlock, PathVerb, PointF32, RenderBlockDescription,
+        RenderBlockId, RenderBlockLocation, RenderBlockPath, SimpleDrawBlock, SimpleDrawElement,
+        SimpleDrawPath, SimpleDrawPolygon, SimplePaint, SimpleRoundRect, SimpleSvg,
     },
     input::{HelicoidToServerMessage, ViewportInfo, VirtualKeycode},
     tcp_bridge_async::{TcpBridgeServer, TcpBridgeServerConnectionState},
@@ -252,7 +251,7 @@ impl ServerState {
             id: RenderBlockId::normal(1).unwrap(),
             contents: RenderBlockDescription::MetaBox(MetaDrawBlock {
                 extent: PointF32::new(1500.0, 1500.0),
-                //extent: PointF16::new(500.0, 500.0),
+                //extent: PointF32::new(500.0, 500.0),
                 buffered: false,
                 alpha: None,
                 sub_blocks: smallvec![RenderBlockLocation {
@@ -281,44 +280,44 @@ impl ServerState {
         let polygon = SimpleDrawPolygon {
             paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAABB55DD), Some(5.0)),
             draw_elements: smallvec![
-                PointF16::new(0.0, 0.0),
-                PointF16::new(150.0, 0.0),
-                PointF16::new(200.7, 300.9),
-                PointF16::new(150.3, 150.6),
-                PointF16::new(70.1, 20.5),
+                PointF32::new(0.0, 0.0),
+                PointF32::new(150.0, 0.0),
+                PointF32::new(200.7, 300.9),
+                PointF32::new(150.3, 150.6),
+                PointF32::new(70.1, 20.5),
             ],
             closed: true,
         };
         let rrect = SimpleRoundRect {
             paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAA3311DD), Some(5.0)),
-            topleft: PointF16::new(50.0, 60.0),
-            bottomright: PointF16::new(100.0, 80.0),
-            roundedness: PointF16::new(5.0, 5.5),
+            topleft: PointF32::new(50.0, 60.0),
+            bottomright: PointF32::new(100.0, 80.0),
+            roundedness: PointF32::new(5.0, 5.5),
         };
         let path = SimpleDrawPath {
             paint: SimplePaint::new(Some(0xFFAABBCC), Some(0xAABB99DD), Some(5.0)),
             draw_elements: smallvec![
                 (
                     PathVerb::Move,
-                    PointF16::new(250.0, 250.0),
+                    PointF32::new(250.0, 250.0),
                     Default::default(),
                     Default::default()
                 ),
                 (
                     PathVerb::Cubic,
-                    PointF16::new(500.0, 500.0),
-                    PointF16::new(100.0, 200.0),
-                    PointF16::new(700.0, 800.0),
+                    PointF32::new(500.0, 500.0),
+                    PointF32::new(100.0, 200.0),
+                    PointF32::new(700.0, 800.0),
                 ),
                 (
                     PathVerb::Quad,
-                    PointF16::new(400.0, 900.0),
-                    PointF16::new(300.0, 800.0),
+                    PointF32::new(400.0, 900.0),
+                    PointF32::new(300.0, 800.0),
                     Default::default(),
                 ),
                 (
                     PathVerb::Line,
-                    PointF16::new(100.0, 300.0),
+                    PointF32::new(100.0, 300.0),
                     Default::default(),
                     Default::default(),
                 ),
@@ -386,9 +385,9 @@ impl ServerState {
                     )),
                     SimpleDrawElement::RoundRect(SimpleRoundRect {
                         paint: overlay_paint,
-                        topleft: PointF16::new(50.0, 60.0),
-                        bottomright: PointF16::new(800.0, 450.0),
-                        roundedness: PointF16::new(20.0, 30.0),
+                        topleft: PointF32::new(50.0, 60.0),
+                        bottomright: PointF32::new(800.0, 450.0),
+                        roundedness: PointF32::new(20.0, 30.0),
                     })
                 ],
             }),

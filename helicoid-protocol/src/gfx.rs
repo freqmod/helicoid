@@ -9,7 +9,6 @@ use num_enum::IntoPrimitive;
 use ordered_float::OrderedFloat;
 use rkyv::{Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::fmt;
 
 pub const SVG_RESOURCE_NAME_LEN: usize = 32;
 
@@ -105,8 +104,8 @@ pub enum SimpleBlendMode {
 pub struct SimplePaint {
     pub line_color: u32,
     pub fill_color: u32,
-    line_width: u16,             // half float
-    background_blur_amount: u16, // half float
+    line_width: OrderedFloat<f32>,
+    background_blur_amount: OrderedFloat<f32>,
     pub line_style: SimpleLineStyle,
     pub blend: SimpleBlendMode,
 }
@@ -120,7 +119,7 @@ pub struct FontPaint {
     pub color: u32,
     pub blend: SimpleBlendMode,
 }
-
+/*
 #[derive(Hash, Eq, Copy, Clone, PartialEq, Archive, Serialize, Deserialize, CheckBytes)]
 #[archive(compare(PartialEq))]
 #[archive_attr(derive(CheckBytes, Debug))]
@@ -128,7 +127,7 @@ pub struct PointF16 {
     x: u16, // half float
     y: u16, // half float
 }
-
+*/
 #[derive(
     Hash, Copy, Clone, PartialEq, Eq, Default, Debug, Archive, Serialize, Deserialize, CheckBytes,
 )]
@@ -176,7 +175,7 @@ pub enum PathVerb {
 #[archive_attr(derive(Debug))]
 pub struct SimpleDrawPath {
     pub paint: SimplePaint,
-    pub draw_elements: SmallVec<[(PathVerb, PointF16, PointF16, PointF16); 16]>,
+    pub draw_elements: SmallVec<[(PathVerb, PointF32, PointF32, PointF32); 16]>,
 }
 
 /// Shorthand for draw path for simple polygons: The first element is move,
@@ -185,7 +184,7 @@ pub struct SimpleDrawPath {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleDrawPolygon {
     pub paint: SimplePaint,
-    pub draw_elements: SmallVec<[PointF16; 16]>,
+    pub draw_elements: SmallVec<[PointF32; 16]>,
     pub closed: bool,
 }
 /// This element just fill the whole surface with the paint
@@ -200,9 +199,9 @@ pub struct SimpleFill {
 #[archive_attr(derive(CheckBytes, Debug))]
 pub struct SimpleRoundRect {
     pub paint: SimplePaint,
-    pub topleft: PointF16,
-    pub bottomright: PointF16,
-    pub roundedness: PointF16,
+    pub topleft: PointF32,
+    pub bottomright: PointF32,
+    pub roundedness: PointF32,
 }
 
 #[derive(Debug, Hash, Eq, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -306,23 +305,25 @@ impl SimplePaint {
         Self {
             line_color: line_color.unwrap_or(0),
             fill_color: fill_color.unwrap_or(0),
-            line_width: half::f16::from_f32(line_width.unwrap_or(0f32)).to_bits(),
+            line_width: line_width
+                .map(|w| OrderedFloat(w))
+                .unwrap_or(OrderedFloat(0f32)),
             line_style: SimpleLineStyle::None,
-            background_blur_amount: half::f16::from_f32(0f32).to_bits(),
+            background_blur_amount: OrderedFloat(0f32),
             blend: SimpleBlendMode::SrcOver,
         }
     }
     pub fn set_line_width(&mut self, line_width: f32) {
-        self.line_width = half::f16::from_f32(line_width).to_bits();
+        self.line_width = OrderedFloat(line_width);
     }
     pub fn line_width(&self) -> f32 {
-        half::f16::from_bits(self.line_width).to_f32()
+        f32::from(self.line_width)
     }
     pub fn set_background_blur_amount(&mut self, background_blur_amount: f32) {
-        self.background_blur_amount = half::f16::from_f32(background_blur_amount).to_bits();
+        self.background_blur_amount = OrderedFloat(background_blur_amount);
     }
     pub fn background_blur_amount(&self) -> f32 {
-        half::f16::from_bits(self.background_blur_amount).to_f32()
+        f32::from(self.background_blur_amount)
     }
 }
 impl SimpleDrawElement {
@@ -330,6 +331,7 @@ impl SimpleDrawElement {
         Self::Fill(SimpleFill { paint })
     }
 }
+/*
 impl PointF16 {
     pub fn new(x: f32, y: f32) -> Self {
         Self {
@@ -356,7 +358,7 @@ impl fmt::Debug for PointF16 {
             .field("y", &self.y())
             .finish()
     }
-}
+}*/
 impl PointF32 {
     pub fn new(x: f32, y: f32) -> Self {
         Self {
@@ -371,7 +373,7 @@ impl PointF32 {
         f32::from(self.y)
     }
 }
-impl From<PointF32> for PointF16 {
+/*impl From<PointF32> for PointF16 {
     fn from(value: PointF32) -> Self {
         PointF16::new(value.x(), value.y())
     }
@@ -382,7 +384,7 @@ impl From<PointF16> for PointF32 {
         PointF32::new(value.x(), value.y())
     }
 }
-
+*/
 impl PointU32 {
     pub fn floor<P: Into<PointF32>>(p: P) -> Self {
         let p32: PointF32 = p.into();
@@ -408,12 +410,12 @@ impl PointU32 {
         self.y
     }
 }
-
+/*
 impl From<PointU32> for PointF16 {
     fn from(value: PointU32) -> Self {
         PointF16::new(value.x() as f32, value.y() as f32)
     }
-}
+}*/
 
 impl PointU16 {
     pub fn floor<P: Into<PointF32>>(p: P) -> Self {
