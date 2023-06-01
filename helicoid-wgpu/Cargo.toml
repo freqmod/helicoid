@@ -1,0 +1,19 @@
+[package]
+name = "helicoid-wgpu"
+version = "0.1.0"
+authors = ["Frederik Vestre <freqmod@gmail.com"]
+workspace = ".."
+edition = "2021"
+
+[[bin]]
+name = "wgpu"
+path = "src/main.rs"
+
+[dependencies]
+lyon = { git = "https://github.com/nical/lyon", features = ["extra"] }
+env_logger = "0.9.0"
+
+wgpu = "0.16"
+winit = "0.28"
+futures = "0.3.5"
+bytemuck = "1.13.0"

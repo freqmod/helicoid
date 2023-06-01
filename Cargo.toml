@@ -4,12 +4,14 @@ members = [
     "helicoid-protocol",
     "helicoid-helixserver",
     "helicoid-testserver",
-    "helicoid-eguiclient",
+    "helicoid-gpurender",
+    "helicoid-wgpu",
 ]
 
 default-members = [
     "helicoid-client"
 ]
+resolver = "2"
 
 [patch.crates-io]
 rkyv = { git = "https://github.com/rkyv/rkyv.git"}
