@@ -8,6 +8,8 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 
 use lyon::algorithms::{rounded_polygon, walk};
 
+pub mod fontcache;
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
