@@ -16,13 +16,13 @@ more with long edges (to avoid narrow blocks adjacent to eachother with similar 
 use std::{collections::HashMap, hash::Hash};
 
 pub type TextureCoordinateInt = u16;
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct TextureCoordinate2D {
     pub x: TextureCoordinateInt,
     pub y: TextureCoordinateInt,
 }
 
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct PackedTexture {
     pub origin: TextureCoordinate2D,
     pub extent: TextureCoordinate2D,
@@ -118,7 +118,7 @@ where
         Self::raw_insert_inner(&mut self.rects, rect, Self::best_candidate_index)
     }
 
-    fn fast_candidate_index(
+    fn _fast_candidate_index(
         rects: &mut Vec<PackedTexture>,
         rect: TextureCoordinate2D,
     ) -> Option<usize> {
@@ -274,6 +274,8 @@ where
 
         res
     }
+
+    #[cfg(test)]
     pub(crate) fn drain_remaining(&mut self) -> Vec<PackedTexture> {
         let mut new = Vec::new();
         std::mem::swap(&mut new, &mut self.rects);
@@ -301,7 +303,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use svg::node::element::path::Data;
+
     use svg::node::element::Rectangle;
     use svg::Document;
 
@@ -451,9 +453,9 @@ mod tests {
     }
     #[test]
     fn similar() {
-        let mut cache = PackedTextureCache::<()>::new(TextureCoordinate2D { x: 128, y: 128 });
+        let mut cache = PackedTextureCache::<()>::new(TextureCoordinate2D { x: 128, y: 92 });
         let mut added = Vec::new();
-        for i in 0..48 {
+        for i in 0..33 {
             added.push(
                 cache
                     .raw_insert(TextureCoordinate2D {
@@ -466,5 +468,25 @@ mod tests {
         let remaining = cache.drain_remaining();
         write_colored_packed(PathBuf::from("similarused.svg"), cache.extent(), &added);
         write_colored_packed(PathBuf::from("similartest.svg"), cache.extent(), &remaining);
+    }
+    #[test]
+    fn keyed() {
+        let mut cache = PackedTextureCache::<u64>::new(TextureCoordinate2D { x: 128, y: 127 });
+
+        let mut added = Vec::new();
+        for i in 0..25 {
+            added.push(
+                cache
+                    .insert(i, TextureCoordinate2D { x: 22, y: 20 })
+                    .unwrap()
+                    .clone(),
+            );
+        }
+        for i in 0..25 {
+            let inserted = cache
+                .insert(i, TextureCoordinate2D { x: 22, y: 20 })
+                .unwrap();
+            assert_eq!(inserted.origin, added[i as usize].origin);
+        }
     }
 }
