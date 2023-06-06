@@ -12,6 +12,7 @@ env_logger = "0.9.0"
 winit = "0.28"
 bytemuck = "1.13.0"
 cosmic-text= {version="0.8.0"}
+wgpu = "0.16"
 
 [dev-dependencies]
 svg = {version="0.13.1"}

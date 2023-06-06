@@ -13,7 +13,7 @@ find blocks that are adjacent where splitting them differentliy would lead to a 
 more with long edges (to avoid narrow blocks adjacent to eachother with similar length)*/
 // (c) 2023 Frederik M. J. Vestre License: BSD, MIT or Apache 2
 
-use std::{collections::HashMap, hash::Hash};
+use std::{cmp::Ordering, collections::HashMap, hash::Hash};
 
 pub type TextureCoordinateInt = u16;
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq, Hash)]
@@ -26,6 +26,18 @@ pub struct TextureCoordinate2D {
 pub struct PackedTexture {
     pub origin: TextureCoordinate2D,
     pub extent: TextureCoordinate2D,
+}
+
+pub fn insert_order(a: &TextureCoordinate2D, b: &TextureCoordinate2D) -> Ordering {
+    let min_a = a.x.min(a.y);
+    let min_b = b.x.min(b.y);
+    let min_cmp = min_a.cmp(&min_b);
+    let o = if min_cmp == Ordering::Equal {
+        a.squared().cmp(&b.squared())
+    } else {
+        min_cmp
+    };
+    o.reverse()
 }
 
 #[derive(Clone, Default, Debug)]
@@ -450,6 +462,25 @@ mod tests {
         let remaining = cache.drain_remaining();
         write_colored_packed(PathBuf::from("unihused2.svg"), cache.extent(), &added);
         write_colored_packed(PathBuf::from("unihtest2.svg"), cache.extent(), &remaining);
+    }
+    #[test]
+    fn uniform_height_sorted2() {
+        let mut cache = PackedTextureCache::<()>::new(TextureCoordinate2D { x: 128, y: 128 });
+        let mut added = Vec::new();
+        let mut src = Vec::new();
+        for i in 0..54 {
+            src.push(TextureCoordinate2D {
+                x: 5 + (i % 20),
+                y: 20,
+            });
+        }
+        src.sort_by(insert_order);
+        for s in src.iter() {
+            added.push(cache.raw_insert(s.clone()).unwrap());
+        }
+        let remaining = cache.drain_remaining();
+        write_colored_packed(PathBuf::from("unihuseds2.svg"), cache.extent(), &added);
+        write_colored_packed(PathBuf::from("unihtests2.svg"), cache.extent(), &remaining);
     }
     #[test]
     fn similar() {
