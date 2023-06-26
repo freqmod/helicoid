@@ -11,3 +11,13 @@ use lyon::algorithms::{rounded_polygon, walk};
 pub mod fontcache;
 pub mod text_renderer;
 pub mod texture_atlases;
+
+struct WgpuState {
+    surface: wgpu::Surface,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    size: winit::dpi::PhysicalSize<u32>,
+    // NEW!
+    render_pipeline: wgpu::RenderPipeline,
+}
