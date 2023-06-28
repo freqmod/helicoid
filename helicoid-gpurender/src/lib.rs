@@ -11,6 +11,7 @@ use lyon::algorithms::{rounded_polygon, walk};
 pub mod fontcache;
 pub mod text_renderer;
 pub mod texture_atlases;
+pub mod texture_map;
 
 struct WgpuState {
     surface: wgpu::Surface,

@@ -1,4 +1,4 @@
-use crate::fontcache::{PackedTextureCache, TextureCoordinate2D};
+use crate::texture_map::{PackedTextureCache, TextureCoordinate2D};
 use std::{collections::HashMap, hash::Hash};
 use wgpu::{Extent3d, ImageDataLayout, Origin2d, Texture};
 
@@ -62,14 +62,13 @@ where
     pub fn insert_single(
         &mut self,
         key: K,
-        data: &[u8],
         extent: wgpu::Extent3d,
     ) -> Result<AtlasLocation, InsertResult> {
         if self.contents.contains_key(&key) {
             return Err(InsertResult::AlreadyPresent);
         }
         for (idx, atlas) in self.atlases.iter_mut().enumerate() {
-            match atlas.insert_single(key.clone(), data, extent) {
+            match atlas.insert_single(key.clone(), extent) {
                 Ok(mut location) => {
                     location.atlas = idx;
                     return Ok(location);
@@ -113,7 +112,6 @@ where
     pub fn insert_single(
         &mut self,
         key: K,
-        data: &[u8],
         extent: wgpu::Extent3d,
     ) -> Result<AtlasLocation, InsertResult> {
         if let Some(packed_texture) = self.manager.insert(key, to_texture_coordinate(&extent)) {
@@ -122,21 +120,38 @@ where
                 origin: origin_from_texture_coordinate(&packed_texture.origin),
                 extent: extent_from_texture_coordinate(&packed_texture.extent),
             };
-            self.copy_data(&location.origin, &location.extent, data);
             Ok(location)
         } else {
             Err(InsertResult::NoMoreSpace)
         }
     }
+    pub fn insert_multiple(
+        &mut self,
+        keys: &[K],
+        extents: &[wgpu::Extent3d],
+    ) -> Result<AtlasLocation, InsertResult> {
+        /*         if let Some(packed_texture) = self.manager.insert(key, to_texture_coordinate(&extent)) {
+            let location = AtlasLocation {
+                atlas: 0,
+                origin: origin_from_texture_coordinate(&packed_texture.origin),
+                extent: extent_from_texture_coordinate(&packed_texture.extent),
+            };
+            Ok(location)
+        } else*/
+        {
+            Err(InsertResult::NoMoreSpace)
+        }
+    }
 
-    fn copy_data(&mut self, origin: &wgpu::Origin2d, extent_in: &wgpu::Extent3d, data: &[u8]) {
+    fn copy_data(&mut self, location: &AtlasLocation, data: &[u8]) {
         let out_layout = self.backed_up_texture.data_layout();
         let stride_out = out_layout.bytes_per_row.unwrap();
         let bytes_per_pixel = stride_out / self.backed_up_texture.extent().width;
-        let offset_out =
-            out_layout.offset as u32 + (origin.y * stride_out) + origin.x * bytes_per_pixel;
-        let stride_in = extent_in.width * bytes_per_pixel;
-        let rows = extent_in.height;
+        let offset_out = out_layout.offset as u32
+            + (location.origin.y * stride_out)
+            + location.origin.x * bytes_per_pixel;
+        let stride_in = location.extent.width * bytes_per_pixel;
+        let rows = location.extent.height;
 
         let out_host_data = self.backed_up_texture.host_data_mut();
         for row in 0..rows {
@@ -146,6 +161,57 @@ where
                     &data[(row * stride_in) as usize..((row + 1) * stride_in) as usize],
                 );
         }
+    }
+    pub fn tile_data_mut<'a>(
+        &'a mut self,
+        location: &AtlasLocation,
+    ) -> TextureAtlasTileView<'a, K> {
+        let out_layout = self.backed_up_texture.data_layout();
+        let stride_out = out_layout.bytes_per_row.unwrap();
+        let bytes_per_pixel = stride_out / self.backed_up_texture.extent().width;
+        let offset_out = out_layout.offset as u32
+            + (location.origin.y * stride_out)
+            + location.origin.x * bytes_per_pixel;
+        TextureAtlasTileView {
+            atlas: self,
+            stride_out,
+            stride_in: location.extent.width,
+            bytes_per_pixel,
+            offset_out,
+            rows: location.extent.height,
+        }
+    }
+}
+
+pub struct TextureAtlasTileView<'a, K>
+where
+    K: PartialEq + Eq + Hash,
+{
+    atlas: &'a mut TextureAtlas<K>,
+    stride_out: u32,
+    stride_in: u32,
+    bytes_per_pixel: u32,
+    offset_out: u32,
+    rows: u32,
+}
+
+impl<'a, K> TextureAtlasTileView<'a, K>
+where
+    K: PartialEq + Eq + Hash,
+{
+    pub fn row(&mut self, row: u16) -> &mut [u8] {
+        let out_host_data = self.atlas.backed_up_texture.host_data_mut();
+        &mut out_host_data[(self.offset_out + row as u32 * self.stride_out) as usize
+            ..(self.offset_out + (self.stride_in)) as usize]
+    }
+    pub fn rows(&self) -> u32 {
+        self.rows
+    }
+    pub fn columns(&self) -> u32 {
+        self.stride_out / self.bytes_per_pixel
+    }
+    pub fn bytes_per_pixel(&self) -> u32 {
+        self.bytes_per_pixel
     }
 }
 
