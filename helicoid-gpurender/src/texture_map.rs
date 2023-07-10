@@ -13,7 +13,11 @@ find blocks that are adjacent where splitting them differentliy would lead to a 
 more with long edges (to avoid narrow blocks adjacent to eachother with similar length)*/
 // (c) 2023 Frederik M. J. Vestre License: BSD, MIT or Apache 2
 
-use std::{cmp::Ordering, collections::HashMap, hash::Hash};
+use std::{
+    cmp::Ordering,
+    collections::{hash_map::Keys, HashMap},
+    hash::Hash,
+};
 
 pub type TextureCoordinateInt = u16;
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq, Hash)]
@@ -40,7 +44,7 @@ pub fn insert_order(a: &TextureCoordinate2D, b: &TextureCoordinate2D) -> Orderin
     o.reverse()
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackedTextureCache<K>
 where
     K: PartialEq + Eq + Hash,
@@ -62,6 +66,20 @@ where
             }],
             cached: HashMap::new(),
         }
+    }
+    pub fn reset(&mut self) {
+        self.rects.clear();
+        self.cached.clear();
+        self.rects.push(PackedTexture {
+            origin: TextureCoordinate2D::zero(),
+            extent: self.extent,
+        });
+    }
+    pub fn num_elements(&self) -> usize {
+        self.cached.len()
+    }
+    pub fn keys(&self) -> Keys<K, PackedTexture> {
+        self.cached.keys()
     }
     pub fn extent(&self) -> TextureCoordinate2D {
         self.extent
@@ -175,11 +193,9 @@ where
     where
         F: Fn(&mut Vec<PackedTexture>, TextureCoordinate2D) -> Option<usize>,
     {
-        //        let candidate_idx = Self::fast_candidate_index(rects, rect);
         let candidate_idx = candidate_idx_func(rects, rect);
         let Some(candidate_idx) = candidate_idx  else {
-
-                        /* No space found */
+            /* No space found */
             return None;
         };
         let candidate = rects[candidate_idx];
@@ -281,8 +297,6 @@ where
             }
             result
         });
-        // Sort is more optimal, but slower
-        //rects.sort_unstable_by(|a, b| b.extent.squared().cmp(&a.extent.squared()));
 
         res
     }

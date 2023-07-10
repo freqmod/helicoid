@@ -1,14 +1,16 @@
-use crate::texture_map::{PackedTextureCache, TextureCoordinate2D};
-use std::{collections::HashMap, hash::Hash};
+use crate::texture_map::{self, PackedTextureCache, TextureCoordinate2D};
+use std::{cmp::Ordering, collections::HashMap, hash::Hash, ops::Range};
 use wgpu::{Extent3d, ImageDataLayout, Origin2d, Texture};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct AtlasLocation {
-    pub atlas: usize,
+    pub atlas: u8,
     pub origin: Origin2d,
     pub extent: Extent3d,
+    pub generation: i32,
 }
 
+#[derive(Debug)]
 pub struct TextureInfo {
     pub texture: Texture,
     pub view: wgpu::TextureView,
@@ -16,6 +18,7 @@ pub struct TextureInfo {
 }
 
 //https://sotrh.github.io/learn-wgpu/beginner/tutorial5-textures/#loading-an-image-from-a-file
+#[derive(Debug)]
 pub struct BackedUpTexture {
     host_data: Vec<u8>,
     gpu: Option<TextureInfo>,
@@ -26,7 +29,27 @@ pub struct BackedUpTexture {
     label: Option<String>,
 }
 
-struct TextureAtlas<K>
+impl Hash for BackedUpTexture {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.host_data.hash(state);
+        self.gpu_outdated.hash(state);
+        self.extent.hash(state);
+        self.format.hash(state);
+        self.label.hash(state);
+    }
+}
+impl PartialEq for BackedUpTexture {
+    fn eq(&self, other: &Self) -> bool {
+        self.host_data.eq(&other.host_data)
+            && self.gpu_outdated.eq(&other.gpu_outdated)
+            && self.extent.eq(&other.extent)
+            && self.format.eq(&other.format)
+            && self.label.eq(&other.label)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TextureAtlas<K>
 where
     K: PartialEq + Eq + Hash,
 {
@@ -40,12 +63,25 @@ where
 {
     atlases: Vec<TextureAtlas<K>>,
     contents: HashMap<K, AtlasLocation>,
+    current_generation: i32,
+    last_eviction_generation: i32,
 }
 
+#[derive(Debug)]
 pub enum InsertResult {
     AlreadyPresent,
     NoMoreSpace,
 }
+
+impl<K> Default for TextureAtlases<K>
+where
+    K: PartialEq + Eq + Hash + Clone,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K> TextureAtlases<K>
 where
     K: PartialEq + Eq + Hash + Clone,
@@ -54,10 +90,114 @@ where
         Self {
             atlases: Vec::new(),
             contents: HashMap::new(),
+            current_generation: 0,
+            last_eviction_generation: 0,
         }
     }
-    pub fn look_up(&self, key: &K) -> Option<AtlasLocation> {
-        None
+    pub fn increment_generation(&mut self) {
+        self.current_generation = self.current_generation.wrapping_add(1);
+    }
+
+    pub fn valid_generation_range(&self) -> Option<Range<i32>> {
+        if self.last_eviction_generation < self.current_generation {
+            Some(Range {
+                start: self.last_eviction_generation,
+                end: self.current_generation,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn valid_generations_raw(&self) -> (i32, i32) {
+        (self.last_eviction_generation, self.current_generation)
+    }
+
+    pub fn evict_outdated<R, D>(&mut self, data: &mut D, redraw: R)
+    where
+        R: Fn(&mut D, &K, &AtlasLocation, &mut TextureAtlas<K>),
+    {
+        let mut current_generations = Vec::with_capacity(self.contents.len());
+        let mut atlases_dirty = Vec::with_capacity(self.atlases.len());
+        atlases_dirty.resize(self.atlases.len(), false);
+        for (key, location) in self.contents.iter() {
+            current_generations.push((key.clone(), location.clone()));
+        }
+        // sort generations, evict the oldest
+        current_generations.sort_by_key(|e| e.1.generation);
+        /* Evict the first 20% of the generations (this heuristics can be improved) */
+        let evict_limit = (current_generations.len() * 8) / 100;
+        for (key, location) in current_generations.iter().take(evict_limit) {
+            self.contents.remove(key);
+            atlases_dirty[location.atlas as usize] = true;
+        }
+        /* Reset the dirty atlases */
+        for (idx, dirty) in atlases_dirty.iter().enumerate() {
+            if *dirty {
+                self.atlases[idx].manager.reset();
+            }
+        }
+
+        /* Add the non evicted elements for the modified atlases back */
+        let num_re_add: usize = self
+            .contents
+            .iter()
+            .map(|(_, loc)| {
+                if atlases_dirty[loc.atlas as usize] {
+                    1
+                } else {
+                    0
+                }
+            })
+            .sum();
+        let mut contents_to_add = Vec::with_capacity(num_re_add);
+
+        for (key, location) in self.contents.iter() {
+            if atlases_dirty[location.atlas as usize] {
+                contents_to_add.push((key.clone(), location.clone()));
+            }
+        }
+        contents_to_add.sort_by(|a, b| insert_order(&a.1.extent, &b.1.extent));
+        /* Fill in items that are in atlases that are dirty again */
+        let mut current_free_index = 0;
+        'addloop: for (key, loc) in contents_to_add {
+            while current_free_index < self.atlases.len() {
+                match self.atlases[current_free_index].insert_single(
+                    key.clone(),
+                    loc.extent,
+                    self.current_generation,
+                ) {
+                    Ok(loc) => {
+                        redraw(data, &key, &loc, &mut self.atlases[current_free_index]);
+                        *self.contents.get_mut(&key).unwrap() = loc;
+                        continue 'addloop;
+                    }
+                    Err(e) => match e {
+                        InsertResult::AlreadyPresent => {
+                            panic!("This should not happen")
+                        }
+                        InsertResult::NoMoreSpace => {
+                            current_free_index += 1;
+                        }
+                    },
+                }
+            }
+            unimplemented!("If no atlases have space make a new one and insert the element there?")
+        }
+        /* Do / how do we ensure that all elements that are cached in the rebuilt
+        atlases use the new location.  */
+    }
+
+    pub fn look_up(&mut self, key: &K) -> Option<&AtlasLocation> {
+        if let Some(value) = self.contents.get_mut(key) {
+            value.generation = self.current_generation;
+            Some(value)
+        } else {
+            None
+        }
+    }
+    pub fn peek(&self, key: &K) -> Option<&AtlasLocation> {
+        self.contents.get(key)
     }
     pub fn insert_single(
         &mut self,
@@ -68,9 +208,9 @@ where
             return Err(InsertResult::AlreadyPresent);
         }
         for (idx, atlas) in self.atlases.iter_mut().enumerate() {
-            match atlas.insert_single(key.clone(), extent) {
+            match atlas.insert_single(key.clone(), extent, self.current_generation) {
                 Ok(mut location) => {
-                    location.atlas = idx;
+                    location.atlas = idx as u8;
                     return Ok(location);
                 }
                 Err(e) => { /* Do nothing, wait for next interation in for */ }
@@ -79,6 +219,19 @@ where
         /* TODO: If this code is reached it was not space in the existing atlases, so make another one */
 
         Err(InsertResult::NoMoreSpace)
+    }
+    pub fn tile_data_mut<'a>(
+        &'a mut self,
+        location: &AtlasLocation,
+    ) -> Option<TextureAtlasTileView<'a, K>> {
+        if let Some(atlas) = self.atlases.get_mut(location.atlas as usize) {
+            Some(atlas.tile_data_mut(location))
+        } else {
+            None
+        }
+    }
+    pub fn atlas(&mut self, location: &AtlasLocation) -> Option<&mut TextureAtlas<K>> {
+        self.atlases.get_mut(location.atlas as usize)
     }
 }
 
@@ -105,6 +258,10 @@ fn origin_from_texture_coordinate(extent: &TextureCoordinate2D) -> wgpu::Origin2
     }
 }
 
+pub fn insert_order(a: &wgpu::Extent3d, b: &wgpu::Extent3d) -> Ordering {
+    texture_map::insert_order(&to_texture_coordinate(a), &to_texture_coordinate(b))
+}
+
 impl<K> TextureAtlas<K>
 where
     K: PartialEq + Eq + Hash,
@@ -113,32 +270,17 @@ where
         &mut self,
         key: K,
         extent: wgpu::Extent3d,
+        current_generation: i32,
     ) -> Result<AtlasLocation, InsertResult> {
         if let Some(packed_texture) = self.manager.insert(key, to_texture_coordinate(&extent)) {
             let location = AtlasLocation {
                 atlas: 0,
                 origin: origin_from_texture_coordinate(&packed_texture.origin),
                 extent: extent_from_texture_coordinate(&packed_texture.extent),
+                generation: current_generation,
             };
             Ok(location)
         } else {
-            Err(InsertResult::NoMoreSpace)
-        }
-    }
-    pub fn insert_multiple(
-        &mut self,
-        keys: &[K],
-        extents: &[wgpu::Extent3d],
-    ) -> Result<AtlasLocation, InsertResult> {
-        /*         if let Some(packed_texture) = self.manager.insert(key, to_texture_coordinate(&extent)) {
-            let location = AtlasLocation {
-                atlas: 0,
-                origin: origin_from_texture_coordinate(&packed_texture.origin),
-                extent: extent_from_texture_coordinate(&packed_texture.extent),
-            };
-            Ok(location)
-        } else*/
-        {
             Err(InsertResult::NoMoreSpace)
         }
     }

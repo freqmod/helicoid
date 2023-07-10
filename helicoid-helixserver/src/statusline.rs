@@ -4,23 +4,17 @@ use crate::{
 };
 
 use helicoid_protocol::{
-    gfx::{
-        PointF32, RenderBlockId,
-        RenderBlockLocation,
-    },
+    gfx::{PointF32, RenderBlockId, RenderBlockLocation},
     shadowblocks::{
         ContainerBlockLogic, ShadowMetaBlock, ShadowMetaContainerBlock,
         ShadowMetaContainerBlockInner, ShadowMetaTextBlock,
     },
-    text::{ShapableString},
+    text::ShapableString,
 };
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::{document::Mode, editor::StatusLineElement, Document, Editor};
 use ordered_float::OrderedFloat;
-use std::{
-    hash::{BuildHasher, Hash, Hasher},
-};
-
+use std::hash::{BuildHasher, Hash, Hasher};
 
 const STATUSLINE_CHILD_ID_LEFT: u16 = 0x10;
 const STATUSLINE_CHILD_ID_CENTER: u16 = 0x11;
@@ -169,6 +163,7 @@ impl StatusLineModel {
                 StatusLineElement::Spacer => {}
                 StatusLineElement::VersionControl => {}
                 StatusLineElement::WindowIdentifiers => {}
+                StatusLineElement::Register => {}
             }
         }
     }
