@@ -94,6 +94,10 @@ where
             last_eviction_generation: 0,
         }
     }
+    pub fn add_atlas(&mut self, size: Extent3d) {
+        self.atlases
+            .push(TextureAtlas::new(to_texture_coordinate(&size)));
+    }
     pub fn increment_generation(&mut self) {
         self.current_generation = self.current_generation.wrapping_add(1);
     }
@@ -178,6 +182,7 @@ where
                         }
                         InsertResult::NoMoreSpace => {
                             current_free_index += 1;
+                            println!("CFI: {}", current_free_index);
                         }
                     },
                 }
@@ -211,6 +216,8 @@ where
             match atlas.insert_single(key.clone(), extent, self.current_generation) {
                 Ok(mut location) => {
                     location.atlas = idx as u8;
+                    let old = self.contents.insert(key, location.clone());
+                    debug_assert!(old.is_none());
                     return Ok(location);
                 }
                 Err(e) => { /* Do nothing, wait for next interation in for */ }
@@ -266,6 +273,12 @@ impl<K> TextureAtlas<K>
 where
     K: PartialEq + Eq + Hash,
 {
+    pub fn new(extent: TextureCoordinate2D) -> Self {
+        TextureAtlas {
+            manager: PackedTextureCache::new(extent),
+            backed_up_texture: BackedUpTexture::with_extent(&extent),
+        }
+    }
     pub fn insert_single(
         &mut self,
         key: K,
@@ -343,8 +356,12 @@ where
 {
     pub fn row(&mut self, row: u16) -> &mut [u8] {
         let out_host_data = self.atlas.backed_up_texture.host_data_mut();
-        &mut out_host_data[(self.offset_out + row as u32 * self.stride_out) as usize
-            ..(self.offset_out + (self.stride_in)) as usize]
+        /*println!(
+            "O: {} R: {} So: {} Si: {}",
+            self.offset_out, row, self.stride_out, self.stride_in
+        );*/
+        &mut out_host_data[(self.offset_out + (row as u32 * self.stride_out)) as usize
+            ..(self.offset_out + (row as u32 * self.stride_out) + self.stride_in) as usize]
     }
     pub fn rows(&self) -> u32 {
         self.rows
@@ -370,6 +387,19 @@ impl BackedUpTexture {
                 height: 0,
                 depth_or_array_layers: 0,
             },
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        }
+    }
+    pub fn with_extent(extent: &TextureCoordinate2D) -> Self {
+        let mut host_data = Vec::with_capacity(extent.x as usize * extent.y as usize * 32);
+        host_data.resize(extent.x as usize * extent.y as usize * 32, 0);
+        Self {
+            host_data,
+            gpu: None,
+            gpu_outdated: true,
+            layout: ImageDataLayout::default(),
+            label: None,
+            extent: extent_from_texture_coordinate(extent),
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
         }
     }

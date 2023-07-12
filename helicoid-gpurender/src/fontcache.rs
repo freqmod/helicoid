@@ -1,6 +1,7 @@
 use std::{borrow::BorrowMut, cell::RefCell};
 
 use cosmic_text::{CacheKey, SubpixelBin, SwashCache};
+use lyon::geom::euclid::num::Ceil;
 use swash::{
     scale::{Render, ScaleContext, Source, StrikeWith},
     zeno::{Format, Vector},
@@ -53,6 +54,46 @@ where
             cache: TextureAtlases::default(),
         }
     }
+    fn placement_for_glyph(
+        font: &FontRef<'_>,
+        cache_key: &SwashCacheKey,
+    ) -> swash::zeno::Placement {
+        /* TODO: Is it possible to get the exent of a rendered glyph without actually rendering it? */
+        /* Use swash / cosmic text to runder to the texture */
+        let mut context = ScaleContext::new(); // TODO: Move to class? for caching
+                                               // Build the scaler
+                                               /*println!(
+                                                   "Font scaler size: {}",
+                                                   f32::from_bits(cache_key.font_size_bits)
+                                               );*/
+        let mut scaler = context
+            .builder(*font)
+            .size(f32::from_bits(cache_key.font_size_bits))
+            .hint(true)
+            .build();
+
+        // Compute the fractional offset-- you'll likely want to quantize this
+        // in a real renderer
+        let offset = Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float());
+
+        // Select our source order
+        let image = Render::new(&[
+            // Color outline with the first palette
+            Source::ColorOutline(0),
+            // Color bitmap with best fit selection mode
+            Source::ColorBitmap(StrikeWith::BestFit),
+            // Standard scalable outline
+            Source::Outline,
+        ])
+        // Select a subpixel format
+        .format(Format::Alpha)
+        // Apply the fractional offset
+        .offset(offset)
+        // Render the image
+        .render(&mut scaler, cache_key.glyph_id)
+        .unwrap();
+        image.placement
+    }
     pub fn update_cache<K, I>(&mut self, keys: I)
     where
         K: Into<SwashCacheKey> + Clone,
@@ -63,24 +104,36 @@ where
         let metrics = font_ref.glyph_metrics(&[]);
         key_meta.extend(keys.map(|k| {
             let key: SwashCacheKey = Into::into(k.clone());
+            //let scaled_metrics = metrics.scale(f32::from_bits(key.font_size_bits));
+            let placement = Self::placement_for_glyph(&font_ref, &key);
+            /*println!(
+                "Metrics: I:{} W:{} H:{}",
+                key.glyph_id,
+                scaled_metrics.advance_width(key.glyph_id),
+                scaled_metrics.advance_height(key.glyph_id)
+            );*/
+
             (
                 key,
                 Extent3d {
-                    width: metrics.advance_width(key.glyph_id).ceil() as u32, // These sizes are likely too big
-                    height: metrics.advance_height(key.glyph_id).ceil() as u32,
+                    width: placement.width, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
+                    height: placement.height, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
                     depth_or_array_layers: 0,
                 },
             )
         }));
+        //println!("Cache keys: {:?}", key_meta);
         self.cache.increment_generation();
         key_meta.sort_by(|a, b| texture_atlases::insert_order(&a.1, &b.1));
         for (key, extent) in key_meta.iter() {
             match self.cache.insert_single(key.clone(), extent.clone()) {
                 Ok(location) => {
+                    //println!("Inserted: {:?}", &key);
                     /* Render font data info the cache */
                     self.render_to_location(&key, &location);
                 }
                 Err(e) => {
+                    println!("Insert-err: {:?} {:?}", &key, e);
                     match e {
                         texture_atlases::InsertResult::NoMoreSpace => {
                             self.cache
@@ -91,7 +144,7 @@ where
                                     self.render_to_location(&key, &location);
                                 }
                                 Err(e) => {
-                                    panic!("Handle no more space after eviction")
+                                    panic!("Handle no more space after eviction: {:?}", e)
                                 }
                             }
                         }
@@ -130,6 +183,10 @@ where
         /* Use swash / cosmic text to runder to the texture */
         let mut context = ScaleContext::new(); // TODO: Move to class? for caching
                                                // Build the scaler
+                                               /*println!(
+                                                   "Font scaler size: {}",
+                                                   f32::from_bits(cache_key.font_size_bits)
+                                               );*/
         let mut scaler = context
             .builder(*font)
             .size(f32::from_bits(cache_key.font_size_bits))
@@ -157,15 +214,24 @@ where
         .render(&mut scaler, cache_key.glyph_id)
         .unwrap();
 
-        let width = image.placement.width;
-        let height = image.placement.height;
+        let width = (image.placement.width as i32) as u32;
+        let height = (image.placement.height as i32) as u32;
         // TODO: Do we need to take placement offset into account?
 
+        /*println!(
+            "Render to loc placement: {}, {:?} W:{} H:{}",
+            cache_key.glyph_id, image.placement, width, height
+        );*/
         let mut data_view = atlas.tile_data_mut(location);
         for y in 0..height {
-            data_view
-                .row(y as u16)
-                .copy_from_slice(&image.data[(y * width) as usize..((y + 1) * width) as usize]);
+            let row = data_view.row(y as u16);
+            let copy_width = (width as usize).min(row.len()) as u32;
+            if copy_width != width || copy_width != row.len() as u32 {
+                println!("Render: {}=={} {}", row.len(), width, copy_width)
+            }
+            row[0..copy_width as usize].copy_from_slice(
+                &image.data[(y * width) as usize..((y * width) + copy_width) as usize],
+            );
         }
     }
 
@@ -185,7 +251,7 @@ where
                 Err(e) => match e {
                     RenderRunError::CharacterMissingInAtlas => {
                         /* This will result in many duplicate keys being added,
-                        but duplicates are ignored, and deduping takes resources */
+                        but duplicates are ignored, and deduping takes (alloc) resources */
                         self.update_cache(rs.elements.iter().map(|e| e.key.clone()));
                         rr.fill_render_run(
                             rs,
@@ -199,6 +265,12 @@ where
                 },
             }
         })
+    }
+    pub fn owner(&self) -> &O {
+        &self.font
+    }
+    pub fn owner_mut(&mut self) -> &mut O {
+        &mut self.font
     }
 }
 
@@ -238,9 +310,11 @@ pub struct RenderedRun {
     gpu_vertices: Option<wgpu::Buffer>,
 }
 
+#[derive(Debug, Default)]
 pub struct RenderSpec {
     elements: Vec<RenderSpecElement>,
 }
+#[derive(Debug)]
 pub struct RenderSpecElement {
     key: SwashCacheKey,
     offset: Origin2d,
@@ -335,10 +409,82 @@ impl RenderedRun {
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */
+                    println!("Missing in atlas: {:?}", element.key);
                     return Err(RenderRunError::CharacterMissingInAtlas);
                 }
             }
         }
+        println!("Host vertices: {:?}", host_vertices_tmp);
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::{env, path::PathBuf};
+
+    use crate::swash_font::SwashFont;
+
+    use super::*;
+
+    pub fn base_asset_path() -> PathBuf {
+        env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("assets")
+    }
+    #[test]
+    fn render_string_with_font() {
+        //        let
+        let font_scale_f: f32 = 12.0; //2.0;
+        println!(
+            "FP: {:?} : Sf: {} B:{} ",
+            &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
+            font_scale_f,
+            font_scale_f.to_bits()
+        );
+        let font = SwashFont::from_path(
+            &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
+            0,
+        )
+        .unwrap();
+        let mut font_cache = FontCache::new(font);
+        let mut spec = RenderSpec::default();
+        font_cache.cache.add_atlas(Extent3d {
+            width: 1024,
+            height: 1024,
+            depth_or_array_layers: 0,
+        });
+
+        let char_width = font_cache
+            .owner()
+            .swash_font()
+            .metrics(&[])
+            .scale(font_scale_f)
+            .average_width;
+
+        for x in 0..200 {
+            spec.elements.push(RenderSpecElement {
+                key: SwashCacheKey {
+                    glyph_id: 120 + x as u16,
+                    font_size_bits: font_scale_f.to_bits(),
+                    x_bin: SubpixelBin::Zero,
+                    y_bin: SubpixelBin::Zero,
+                },
+                offset: Origin2d {
+                    x: char_width as u32 * x,
+                    y: 0,
+                },
+            })
+        }
+        // TODO: Fill render spec with some default (statically shaped) data
+        let run = font_cache.render_run(&spec);
+        println!("Run: {:?}", run)
     }
 }

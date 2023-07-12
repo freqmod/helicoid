@@ -182,6 +182,12 @@ where
                 }
             }
         }
+        /*println!(
+            "No Best candidate found: {} R: {:?}",
+            rects.len(),
+            candidate_rect
+        );*/
+
         return best_rect_idx;
     }
     /* Algorithm based on rectpack 2D https://github.com/TeamHypersomnia/rectpack2D */
@@ -422,7 +428,7 @@ mod tests {
             cache.unused_space()
         );*/
         let remaining = cache.drain_remaining();
-        println!("Cache info: {:?}", remaining);
+        //println!("Cache info: {:?}", remaining);
         write_colored_packed(PathBuf::from("simpleused.svg"), cache.extent(), &added);
         write_colored_packed(PathBuf::from("simpletest.svg"), cache.extent(), &remaining);
     }

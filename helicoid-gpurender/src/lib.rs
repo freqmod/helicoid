@@ -9,6 +9,7 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 use lyon::algorithms::{rounded_polygon, walk};
 
 pub mod fontcache;
+pub mod swash_font;
 pub mod text_renderer;
 pub mod texture_atlases;
 pub mod texture_map;
