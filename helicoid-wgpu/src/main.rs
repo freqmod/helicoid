@@ -15,7 +15,7 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 
 use lyon::algorithms::{rounded_polygon, walk};
 
-use wgpu::CompositeAlphaMode;
+use wgpu::{CompositeAlphaMode, Extent3d, Origin2d};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -27,6 +27,16 @@ use wgpu::util::DeviceExt;
 use futures::executor::block_on;
 use std::ops::Rem;
 use std::time::{Duration, Instant};
+
+use helicoid_gpurender::{
+    fontcache::{
+        FontCache, FontOwner, RenderPoint, RenderSpec, RenderSpecElement, RenderSquare,
+        SubpixelBin, SwashCacheKey,
+    },
+    swash_font::SwashFont,
+};
+use std::{env, path::PathBuf};
+use swash::{CacheKey, FontRef};
 
 //use log;
 
@@ -94,6 +104,56 @@ unsafe impl bytemuck::Zeroable for BgPoint {}
 const DEFAULT_WINDOW_WIDTH: f32 = 800.0;
 const DEFAULT_WINDOW_HEIGHT: f32 = 800.0;
 
+pub fn base_asset_path() -> PathBuf {
+    env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("assets")
+}
+
+fn create_font_cache() -> FontCache<SwashFont> {
+    println!("BAP: {:?}", base_asset_path());
+    let font = SwashFont::from_path(
+        &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
+        0,
+    )
+    .unwrap();
+    let mut font_cache = FontCache::new(font);
+    let mut spec = RenderSpec::default();
+    font_cache.add_atlas(Extent3d {
+        width: 1024,
+        height: 1024,
+        depth_or_array_layers: 0,
+    });
+    font_cache
+}
+
+fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
+    let char_width = font.metrics(&[]).scale(scale).average_width as usize;
+    let mut spec = RenderSpec::default();
+    let charmap = font.charmap();
+
+    for (i, char) in text.chars().into_iter().enumerate() {
+        spec.add_element(RenderSpecElement {
+            key: SwashCacheKey {
+                glyph_id: charmap.map(char) as u16,
+                font_size_bits: scale.to_bits(),
+                x_bin: SubpixelBin::Zero,
+                y_bin: SubpixelBin::Zero,
+            },
+            offset: Origin2d {
+                x: (char_width * i) as u32,
+                y: 0,
+            },
+        })
+    }
+    spec
+}
 /// Creates a texture that uses MSAA and fits a given swap chain
 fn create_multisampled_framebuffer(
     device: &wgpu::Device,
@@ -263,6 +323,7 @@ fn main() {
         stroke_width: 1.0,
         target_stroke_width: 1.0,
         draw_background: true,
+        draw_text: String::from("Textbackground"),
         window_size: PhysicalSize::new(DEFAULT_WINDOW_WIDTH as u32, DEFAULT_WINDOW_HEIGHT as u32),
         size_changed: true,
         render: false,
@@ -298,6 +359,18 @@ fn main() {
         None,
     ))
     .unwrap();
+
+    // Create a text font cache and prepare a rendered string
+    let mut font_cache = create_font_cache();
+    let text_spec = if scene.draw_text.is_empty() {
+        None
+    } else {
+        Some(simple_shape_str(
+            &scene.draw_text,
+            &font_cache.owner().swash_font(),
+            12f32,
+        ))
+    };
 
     let vbo = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: None,
@@ -380,8 +453,16 @@ fn main() {
                 },
                 count: None,
             },
-        ],
+        ], //
     });
+
+    let mut text_render_run = if let Some(text_spec) = text_spec.as_ref() {
+        Some(font_cache.render_run(&device, &text_spec).unwrap())
+    } else {
+        None
+    };
+
+    //        Some(font_cache.render_run(&text_spec).unwrap())
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Bind group"),
         layout: &bind_group_layout,
@@ -396,6 +477,26 @@ fn main() {
             },
         ],
     });
+
+    let text_bind_group = if let Some(render_run) = text_render_run.as_ref() {
+        let buffer = render_run.gpu_vertices.as_ref().unwrap();
+        Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Text Bind group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(buffer.as_entire_buffer_binding()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(prims_ubo.as_entire_buffer_binding()),
+                },
+            ],
+        }))
+    } else {
+        None
+    };
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[&bind_group_layout],
@@ -485,6 +586,49 @@ fn main() {
             entry_point: "main",
             buffers: &[wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<Point>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[wgpu::VertexAttribute {
+                    offset: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                    shader_location: 0,
+                }],
+            }],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: bg_fs_module,
+            entry_point: "main",
+            targets: &[Some(wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            front_face: wgpu::FrontFace::Ccw,
+            strip_index_format: None,
+            cull_mode: None,
+            unclipped_depth: false,
+            conservative: false,
+        },
+        depth_stencil: depth_stencil_state.clone(),
+        multisample: wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+    });
+
+    let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: bg_vs_module,
+            entry_point: "main",
+            buffers: &[wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<RenderPoint>() as u64,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &[wgpu::VertexAttribute {
                     offset: 0,
@@ -669,6 +813,9 @@ fn main() {
 
         queue.write_buffer(&prims_ubo, 0, bytemuck::cast_slice(&cpu_primitives));
 
+        if let Some(text_render_run) = text_render_run.as_mut() {
+            text_render_run.queue_write_buffer(&queue);
+        }
         {
             // A resolve target is only supported if the attachment actually uses anti-aliasing
             // So if sample_count == 1 then we must render directly to the surface's buffer
@@ -720,6 +867,16 @@ fn main() {
             if scene.draw_background {
                 pass.set_pipeline(&bg_pipeline);
                 pass.set_bind_group(0, &bind_group, &[]);
+                pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
+                pass.set_vertex_buffer(0, bg_vbo.slice(..));
+
+                pass.draw_indexed(0..6, 0, 0..1);
+            }
+
+            if !scene.draw_text.is_empty() {
+                pass.set_pipeline(&text_pipeline);
+                let tmp_text_bind_group = text_bind_group.as_ref().unwrap();
+                pass.set_bind_group(0, tmp_text_bind_group, &[]);
                 pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
                 pass.set_vertex_buffer(0, bg_vbo.slice(..));
 
@@ -784,6 +941,7 @@ struct SceneParams {
     stroke_width: f32,
     target_stroke_width: f32,
     draw_background: bool,
+    draw_text: String,
     window_size: PhysicalSize<u32>,
     size_changed: bool,
     render: bool,

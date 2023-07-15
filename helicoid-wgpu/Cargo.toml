@@ -11,6 +11,10 @@ path = "src/main.rs"
 
 [dependencies]
 lyon = { git = "https://github.com/nical/lyon", features = ["extra"] }
+
+helicoid-gpurender = { path = "../helicoid-gpurender" }
+swash = {version="0.1.8"}
+
 env_logger = "0.9.0"
 
 wgpu = "0.16"

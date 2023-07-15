@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, cell::RefCell};
 
-use cosmic_text::{CacheKey, SubpixelBin, SwashCache};
+use cosmic_text::{CacheKey, SwashCache};
 use lyon::geom::euclid::num::Ceil;
 use swash::{
     scale::{Render, ScaleContext, Source, StrikeWith},
@@ -26,6 +26,33 @@ where
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum SubpixelBin {
+    Zero,
+    One,
+    Two,
+    Three,
+}
+impl From<cosmic_text::SubpixelBin> for SubpixelBin {
+    fn from(bin: cosmic_text::SubpixelBin) -> Self {
+        match bin {
+            cosmic_text::SubpixelBin::Zero => Self::Zero,
+            cosmic_text::SubpixelBin::One => Self::One,
+            cosmic_text::SubpixelBin::Two => Self::Two,
+            cosmic_text::SubpixelBin::Three => Self::Three,
+        }
+    }
+}
+impl SubpixelBin {
+    pub fn as_float(&self) -> f32 {
+        match self {
+            Self::Zero => 0.0,
+            Self::One => 0.25,
+            Self::Two => 0.5,
+            Self::Three => 0.75,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SwashCacheKey {
     pub glyph_id: u16,
     pub font_size_bits: u32,
@@ -38,8 +65,8 @@ impl From<CacheKey> for SwashCacheKey {
         SwashCacheKey {
             glyph_id: key.glyph_id,
             font_size_bits: key.font_size_bits,
-            x_bin: key.x_bin,
-            y_bin: key.y_bin,
+            x_bin: SubpixelBin::from(key.x_bin),
+            y_bin: SubpixelBin::from(key.y_bin),
         }
     }
 }
@@ -53,6 +80,9 @@ where
             font,
             cache: TextureAtlases::default(),
         }
+    }
+    pub fn add_atlas(&mut self, extent: Extent3d) {
+        self.cache.add_atlas(extent);
     }
     fn placement_for_glyph(
         font: &FontRef<'_>,
@@ -235,36 +265,27 @@ where
         }
     }
 
-    pub fn render_run(&mut self, rs: &RenderSpec) -> Result<RenderedRun, RenderRunError> {
+    pub fn render_run(
+        &mut self,
+        dev: &wgpu::Device,
+        rs: &RenderSpec,
+    ) -> Result<RenderedRun, RenderRunError> {
         /* Create a rendered run with lookups corresponding to all font elements */
         let mut rr = RenderedRun::default();
         rr.reset();
-        RENDER_LIST_HOST.with(|host_vertices_tmp_cell| {
-            let mut host_vertices_tmp = host_vertices_tmp_cell.borrow_mut();
-            match rr.fill_render_run(
-                rs,
-                &mut self.font.swash_font(),
-                &mut (*host_vertices_tmp),
-                &mut self.cache,
-            ) {
-                Ok(_) => Ok(rr),
-                Err(e) => match e {
-                    RenderRunError::CharacterMissingInAtlas => {
-                        /* This will result in many duplicate keys being added,
-                        but duplicates are ignored, and deduping takes (alloc) resources */
-                        self.update_cache(rs.elements.iter().map(|e| e.key.clone()));
-                        rr.fill_render_run(
-                            rs,
-                            &mut self.font.swash_font(),
-                            &mut (*host_vertices_tmp),
-                            &mut self.cache,
-                        )
+        match rr.fill_render_run(rs, dev, &mut self.font.swash_font(), &mut self.cache) {
+            Ok(_) => Ok(rr),
+            Err(e) => match e {
+                RenderRunError::CharacterMissingInAtlas => {
+                    /* This will result in many duplicate keys being added,
+                    but duplicates are ignored, and deduping takes (alloc) resources */
+                    self.update_cache(rs.elements.iter().map(|e| e.key.clone()));
+                    rr.fill_render_run(rs, dev, &mut self.font.swash_font(), &mut self.cache)
                         .unwrap();
-                        Ok(rr)
-                    }
-                },
-            }
-        })
+                    Ok(rr)
+                }
+            },
+        }
     }
     pub fn owner(&self) -> &O {
         &self.font
@@ -287,6 +308,9 @@ pub struct RenderPoint {
     sy: u32,
 }
 
+unsafe impl bytemuck::Pod for RenderPoint {}
+unsafe impl bytemuck::Zeroable for RenderPoint {}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RenderSquare {
@@ -301,13 +325,17 @@ pub struct RenderSquare {
     bottom_left2: RenderPoint,
 }
 
+unsafe impl bytemuck::Pod for RenderSquare {}
+unsafe impl bytemuck::Zeroable for RenderSquare {}
+
 /* NB: It is up to the caller to use the rendered run with the correct atlas.
 If a wrong atlas is used the wrong characters may be displayed */
 #[derive(Debug, Default)]
 pub struct RenderedRun {
     first_char_generation: Option<i32>,
     last_char_generation: Option<i32>,
-    gpu_vertices: Option<wgpu::Buffer>,
+    pub gpu_vertices: Option<wgpu::Buffer>,
+    pub host_vertices: Vec<RenderSquare>,
 }
 
 #[derive(Debug, Default)]
@@ -316,8 +344,8 @@ pub struct RenderSpec {
 }
 #[derive(Debug)]
 pub struct RenderSpecElement {
-    key: SwashCacheKey,
-    offset: Origin2d,
+    pub key: SwashCacheKey,
+    pub offset: Origin2d,
 }
 
 impl RenderSpec {
@@ -327,6 +355,12 @@ impl RenderSpec {
         keys.sort();
         keys.dedup();
         keys
+    }
+    pub fn add_element(&mut self, element: RenderSpecElement) {
+        self.elements.push(element);
+    }
+    pub fn len(&self) -> usize {
+        self.elements.len()
     }
 }
 impl RenderSquare {
@@ -375,22 +409,38 @@ impl RenderedRun {
     pub fn reset(&mut self) {
         self.first_char_generation = None;
         self.last_char_generation = None;
-        self.gpu_vertices = None; // TODO: Consider if we can reuse the buffer allocation
+        self.host_vertices.clear();
+    }
+
+    fn ensure_buffer(&mut self, dev: &wgpu::Device, spec_elements: usize) {
+        let bufsize = (spec_elements * std::mem::size_of::<RenderSquare>()) as u64;
+        if let Some(buffer) = self.gpu_vertices.as_ref() {
+            if buffer.size() >= bufsize {
+                return;
+            }
+        }
+        // If there is no existing big enough buffer, create another one
+        self.gpu_vertices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Text globals buffer"),
+            size: bufsize,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
     }
 
     pub fn fill_render_run(
         &mut self,
         spec: &RenderSpec,
-        font: &mut FontRef<'_>,
-        host_vertices_tmp: &mut Vec<RenderSquare>, // Temp memory used for transferring to GPU
+        dev: &wgpu::Device,
+        _font: &mut FontRef<'_>,
         atlas: &mut TextureAtlases<SwashCacheKey>,
     ) -> Result<(), RenderRunError> {
         /* Assume that all elements are in the atlas.
         If one or more elements are missing, an error is returned. */
 
         self.reset();
-        host_vertices_tmp.clear();
-        host_vertices_tmp.try_reserve(spec.elements.len()).unwrap();
+        self.ensure_buffer(dev, spec.len());
+        self.host_vertices.try_reserve(spec.elements.len()).unwrap();
 
         for element in spec.elements.iter() {
             match atlas.look_up(&element.key) {
@@ -405,7 +455,8 @@ impl RenderedRun {
                     } else {
                         self.last_char_generation = Some(location.generation);
                     }
-                    host_vertices_tmp.push(RenderSquare::from_spec_element(element, location));
+                    self.host_vertices
+                        .push(RenderSquare::from_spec_element(element, location));
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */
@@ -414,8 +465,16 @@ impl RenderedRun {
                 }
             }
         }
-        println!("Host vertices: {:?}", host_vertices_tmp);
         Ok(())
+    }
+    pub fn queue_write_buffer(&mut self, queue: &wgpu::Queue) {
+        let Some(gpu_vertices ) = self.gpu_vertices.as_mut() else {return};
+
+        queue.write_buffer(
+            &gpu_vertices,
+            0,
+            bytemuck::cast_slice(self.host_vertices.as_slice()),
+        );
     }
 }
 #[cfg(test)]
@@ -484,7 +543,8 @@ mod tests {
             })
         }
         // TODO: Fill render spec with some default (statically shaped) data
-        let run = font_cache.render_run(&spec);
-        println!("Run: {:?}", run)
+        //let run = font_cache.render_run(&spec).unwrap();
+        //assert_eq!(run.gpu_vertices.len(), spec.elements.len());
+        //println!("Run: {:?}", run);
     }
 }
