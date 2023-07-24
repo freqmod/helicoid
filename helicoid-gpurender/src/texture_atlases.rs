@@ -1,6 +1,6 @@
 use crate::texture_map::{self, PackedTextureCache, TextureCoordinate2D};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, ops::Range};
-use wgpu::{Extent3d, ImageDataLayout, Origin2d, Sampler, Texture};
+use wgpu::{Extent3d, ImageDataLayout, Origin2d, Sampler, Texture, TextureViewDescriptor};
 
 const RGBA_BPP: usize = 4;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -217,7 +217,11 @@ where
         atlases use the new location.  */
     }
 
-    pub fn look_up(&mut self, key: &K) -> Option<&AtlasLocation> {
+    pub fn look_up(&mut self, key: &K) -> Option<AtlasLocation> {
+        self.look_up_ref(key).map(|l| *l)
+    }
+
+    pub fn look_up_ref(&mut self, key: &K) -> Option<&AtlasLocation> {
         if let Some(value) = self.contents.get_mut(key) {
             value.generation = self.current_generation;
             Some(value)
@@ -225,6 +229,7 @@ where
             None
         }
     }
+
     pub fn peek(&self, key: &K) -> Option<&AtlasLocation> {
         self.contents.get(key)
     }
@@ -334,7 +339,7 @@ where
         }
     }
 
-    fn copy_data(&mut self, location: &AtlasLocation, data: &[u8]) {
+    pub fn copy_data(&mut self, location: &AtlasLocation, data: &[u8]) {
         let out_layout = self.backed_up_texture.data_layout();
         let stride_out = out_layout.bytes_per_row.unwrap();
         let bytes_per_pixel = stride_out / self.backed_up_texture.extent().width;
@@ -353,6 +358,7 @@ where
                 );
         }
     }
+
     pub fn tile_data_mut<'a>(
         &'a mut self,
         location: &AtlasLocation,
@@ -366,7 +372,7 @@ where
         TextureAtlasTileView {
             atlas: self,
             stride_out,
-            stride_in: location.extent.width,
+            stride_in: location.extent.width * bytes_per_pixel,
             bytes_per_pixel,
             offset_out,
             rows: location.extent.height,
@@ -377,6 +383,12 @@ where
     }
     pub fn sampler(&self) -> Option<&Sampler> {
         self.backed_up_texture.gpu.as_ref().map(|ti| &ti.sampler)
+    }
+    pub fn update_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        self.backed_up_texture.update_texture(device, queue);
+    }
+    pub fn backed_up_texture(&self) -> &BackedUpTexture {
+        &self.backed_up_texture
     }
 }
 
@@ -455,7 +467,7 @@ impl BackedUpTexture {
             texture_info.texture.width() as usize
                 * texture_info.texture.width() as usize
                 * RGBA_BPP,
-            0,
+            192,
         );
         /*        let view = texture_info
         .texture
@@ -499,9 +511,9 @@ impl BackedUpTexture {
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Nearest,
             mipmap_filter: wgpu::FilterMode::Nearest,
@@ -516,15 +528,27 @@ impl BackedUpTexture {
     }
 
     pub fn data_layout(&self) -> ImageDataLayout {
-        match self.format {
+        let dl = match self.format {
             wgpu::TextureFormat::R8Unorm
             | wgpu::TextureFormat::R8Snorm
             | wgpu::TextureFormat::R8Uint
             | wgpu::TextureFormat::R8Sint
-            | wgpu::TextureFormat::Rg8Unorm
+            | wgpu::TextureFormat::Stencil8 => wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(self.extent.width),
+                rows_per_image: Some(self.extent.height),
+            },
+            wgpu::TextureFormat::Rg8Unorm
             | wgpu::TextureFormat::Rg8Snorm
             | wgpu::TextureFormat::Rg8Uint
-            | wgpu::TextureFormat::Rg8Sint
+            | wgpu::TextureFormat::Rg8Sint => wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(2 * self.extent.width),
+                rows_per_image: Some(self.extent.height),
+            },
+            wgpu::TextureFormat::Rgba32Uint
+            | wgpu::TextureFormat::Rgba32Sint
+            | wgpu::TextureFormat::Rgba32Float
             | wgpu::TextureFormat::Rgba8Unorm
             | wgpu::TextureFormat::Rgba8UnormSrgb
             | wgpu::TextureFormat::Rgba8Snorm
@@ -532,14 +556,6 @@ impl BackedUpTexture {
             | wgpu::TextureFormat::Rgba8Sint
             | wgpu::TextureFormat::Bgra8Unorm
             | wgpu::TextureFormat::Bgra8UnormSrgb
-            | wgpu::TextureFormat::Stencil8 => wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(self.extent.width),
-                rows_per_image: Some(self.extent.height),
-            },
-            wgpu::TextureFormat::Rgba32Uint
-            | wgpu::TextureFormat::Rgba32Sint
-            | wgpu::TextureFormat::Rgba32Float
             | wgpu::TextureFormat::Depth16Unorm => wgpu::ImageDataLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * self.extent.width),
@@ -548,17 +564,19 @@ impl BackedUpTexture {
             _ => {
                 panic!("Trying to create backed up texture with unsupported format")
             }
-        }
+        };
+        dl
     }
     pub fn extent(&self) -> &wgpu::Extent3d {
         &self.extent
     }
     pub fn update_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        if !self.gpu_outdated {
+        /*        if !self.gpu_outdated {
             debug_assert!(self.gpu.is_some());
             return;
-        }
+        }*/
         self.ensure_texture_parameters(device);
+        //println!("Writing texture");
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 aspect: wgpu::TextureAspect::All,

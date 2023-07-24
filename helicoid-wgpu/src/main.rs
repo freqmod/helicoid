@@ -15,7 +15,7 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 
 use lyon::algorithms::{rounded_polygon, walk};
 
-use wgpu::{CompositeAlphaMode, Extent3d, Origin2d};
+use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, TextureViewDescriptor};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -500,19 +500,29 @@ fn main() {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(globals_buffer_byte_size),
+                        min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
-            ], //
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
         });
 
     let mut text_render_run = if let Some(text_spec) = text_spec.as_ref() {
@@ -564,6 +574,21 @@ fn main() {
                                 .unwrap(),
                         ),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(
+                            &font_cache
+                                .atlas_ref(
+                                    &helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(
+                                        0,
+                                    ),
+                                )
+                                .unwrap()
+                                .texture()
+                                .unwrap()
+                                .create_view(&TextureViewDescriptor::default()),
+                        ),
+                    },
                 ],
             }),
         )
@@ -573,6 +598,11 @@ fn main() {
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+        label: None,
+    });
+    let text_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        bind_group_layouts: &[&text_bind_group_layout],
         push_constant_ranges: &[],
         label: None,
     });
@@ -696,19 +726,11 @@ fn main() {
 
     let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: None,
-        layout: Some(&pipeline_layout),
+        layout: Some(&text_pipeline_layout),
         vertex: wgpu::VertexState {
             module: text_vs_module,
             entry_point: "main",
-            buffers: &[wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<RenderPoint>() as u64,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[wgpu::VertexAttribute {
-                    offset: 0,
-                    format: wgpu::VertexFormat::Float32x2,
-                    shader_location: 0,
-                }],
-            }],
+            buffers: &[],
         },
         fragment: Some(wgpu::FragmentState {
             module: text_fs_module,
@@ -949,16 +971,28 @@ fn main() {
             //if !scene.draw_text.is_empty() {
             //if true {
             if let Some(text_render_run) = text_render_run.as_ref() {
+                /*println!(
+                    "Host data: {:?}",
+                    &font_cache
+                        .atlas(&helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(0))
+                        .unwrap()
+                        .backed_up_texture()
+                        .host_data()[0..1024]
+                );*/
+                font_cache
+                    .atlas(&helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(0))
+                    .unwrap()
+                    .update_texture(&device, &queue);
+
                 pass.set_pipeline(&text_pipeline);
                 let tmp_text_bind_group = text_bind_group.as_ref().unwrap();
                 let text_vbo = text_render_run.gpu_vertices.as_ref().unwrap();
                 let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
-                pass.set_bind_group(1, tmp_text_bind_group, &[]);
-                pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
+                pass.set_bind_group(0, tmp_text_bind_group, &[]);
+                pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.set_vertex_buffer(0, text_vbo.slice(..));
-
                 pass.draw_indexed(
-                    0..(buffer_indices.size() as u32 / std::mem::size_of::<u16>() as u32),
+                    0..(buffer_indices.size() as u32 / std::mem::size_of::<u32>() as u32),
                     0,
                     0..1,
                 );

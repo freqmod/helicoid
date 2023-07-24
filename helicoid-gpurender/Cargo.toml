@@ -13,7 +13,7 @@ winit = "0.28"
 bytemuck = "1.13.0"
 cosmic-text = {version="0.8.0"}
 swash = {version="0.1.8"}
-wgpu = "0.16"
+wgpu = "0.17"
 
 [dev-dependencies]
 svg = {version="0.13.1"}

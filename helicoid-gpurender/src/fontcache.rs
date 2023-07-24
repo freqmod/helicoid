@@ -7,13 +7,15 @@ use swash::{
     zeno::{Format, Vector},
     FontRef,
 };
-use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, SamplerDescriptor};
+use wgpu::{
+    CompositeAlphaMode, Extent3d, Origin2d, SamplerDescriptor, TextureFormat, TextureViewDimension,
+};
 
 use crate::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
 pub trait FontOwner {
     fn swash_font(&self) -> FontRef<'_>;
 }
-
+const POINTS_PER_SQUARE: usize = 4;
 thread_local! {
     static RENDER_LIST_HOST: RefCell<Vec<RenderSquare>> = RefCell::new(Vec::new());
 }
@@ -88,18 +90,31 @@ where
         sampler: wgpu::Sampler,
     ) */
     pub fn add_atlas(&mut self, dev: &wgpu::Device, extent: Extent3d) {
-        let surface_desc = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            format: wgpu::TextureFormat::Bgra8Unorm,
-            width: extent.width,
-            height: extent.height,
-            present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: CompositeAlphaMode::Auto,
-            view_formats: vec![],
-        };
-        let texture = Self::create_texture(dev, &surface_desc);
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = dev.create_sampler(&SamplerDescriptor::default());
+        let texture = Self::create_texture(
+            dev,
+            extent.width,
+            extent.height,
+            TextureFormat::Rgba8UnormSrgb,
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("Simple font cache view"),
+            format: Some(TextureFormat::Rgba8UnormSrgb),
+            dimension: Some(TextureViewDimension::D2),
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: Some(1),
+            base_array_layer: 0,
+            array_layer_count: Some(1),
+        });
+        let sampler = dev.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
         self.cache.add_atlas(texture, view, sampler);
     }
     fn placement_for_glyph(
@@ -250,12 +265,12 @@ where
             // Color outline with the first palette
             Source::ColorOutline(0),
             // Color bitmap with best fit selection mode
-            Source::ColorBitmap(StrikeWith::BestFit),
+            Source::ColorBitmap(StrikeWith::ExactSize),
             // Standard scalable outline
             Source::Outline,
         ])
         // Select a subpixel format
-        .format(Format::Alpha)
+        .format(Format::Subpixel)
         // Apply the fractional offset
         .offset(offset)
         // Render the image
@@ -266,20 +281,28 @@ where
         let height = (image.placement.height as i32) as u32;
         // TODO: Do we need to take placement offset into account?
 
-        /*println!(
+        println!(
             "Render to loc placement: {}, {:?} W:{} H:{}",
             cache_key.glyph_id, image.placement, width, height
-        );*/
+        );
         let mut data_view = atlas.tile_data_mut(location);
+        let bpp = 4usize;
         for y in 0..height {
             let row = data_view.row(y as u16);
-            let copy_width = (width as usize).min(row.len()) as u32;
-            if copy_width != width || copy_width != row.len() as u32 {
-                println!("Render: {}=={} {}", row.len(), width, copy_width)
+            let copy_width = (bpp * width as usize).min(row.len()) as u32;
+            if copy_width != (bpp as u32) * width || copy_width != (row.len()) as u32 {
+                println!(
+                    "Render: {}=={} {}",
+                    row.len(),
+                    bpp as u32 * width,
+                    copy_width
+                );
             }
             row[0..copy_width as usize].copy_from_slice(
-                &image.data[(y * width) as usize..((y * width) + copy_width) as usize],
+                &image.data[(y * bpp as u32 * width) as usize
+                    ..((y * bpp as u32 * width) + copy_width) as usize],
             );
+            println!("Rendered: {:?}", &row[0..copy_width as usize]);
         }
     }
 
@@ -312,19 +335,24 @@ where
         &mut self.font
     }
     /// Creates a texture that can be used for an atlas
-    fn create_texture(device: &wgpu::Device, desc: &wgpu::SurfaceConfiguration) -> wgpu::Texture {
+    fn create_texture(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: TextureFormat,
+    ) -> wgpu::Texture {
         let frame_descriptor = &wgpu::TextureDescriptor {
             label: Some("Frame descriptor"),
             size: wgpu::Extent3d {
-                width: desc.width,
-                height: desc.height,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: desc.format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         };
 
@@ -343,7 +371,7 @@ pub enum RenderRunError {
     CharacterMissingInAtlas,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RenderPoint {
     dx: u32,
     dy: u32,
@@ -351,6 +379,16 @@ pub struct RenderPoint {
     sy: u32,
 }
 
+impl std::fmt::Debug for RenderPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RenderPoint")
+            .field("dx", &f32::from_bits(self.dx))
+            .field("dy", &f32::from_bits(self.dy))
+            .field("sx", &f32::from_bits(self.sx))
+            .field("sy", &f32::from_bits(self.sy))
+            .finish()
+    }
+}
 unsafe impl bytemuck::Pod for RenderPoint {}
 unsafe impl bytemuck::Zeroable for RenderPoint {}
 
@@ -380,7 +418,7 @@ pub struct RenderedRun {
     pub gpu_vertices: Option<wgpu::Buffer>,
     pub gpu_indices: Option<wgpu::Buffer>,
     pub host_vertices: Vec<RenderSquare>,
-    pub host_indices: Vec<u16>,
+    pub host_indices: Vec<u32>,
 }
 
 #[derive(Debug, Default)]
@@ -409,43 +447,50 @@ impl RenderSpec {
     }
 }
 impl RenderSquare {
-    pub fn from_spec_element(element: &RenderSpecElement, atlas: &AtlasLocation) -> Self {
+    pub fn from_spec_element(
+        element: &RenderSpecElement,
+        atlas: &AtlasLocation,
+        texture_width: u32,
+        texture_height: u32,
+    ) -> Self {
+        let tw = texture_width as f32;
+        let th = texture_height as f32;
         Self {
             top_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
                 dy: (element.offset.y as f32).to_bits(),
-                sx: (atlas.origin.x as f32).to_bits(),
-                sy: (atlas.origin.y as f32).to_bits(),
+                sx: (atlas.origin.x as f32 / tw).to_bits(),
+                sy: (atlas.origin.y as f32 / th).to_bits(),
             },
             bottom_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
                 dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
-                sx: (atlas.origin.x as f32).to_bits(),
-                sy: ((atlas.origin.y + atlas.extent.height) as f32).to_bits(),
+                sx: (atlas.origin.x as f32 / tw).to_bits(),
+                sy: ((atlas.origin.y + atlas.extent.height) as f32 / tw).to_bits(),
             },
             top_right1: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
                 dy: ((element.offset.y) as f32).to_bits(),
-                sx: ((atlas.origin.x + atlas.extent.width) as f32).to_bits(),
-                sy: ((atlas.origin.y) as f32).to_bits(),
+                sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
+                sy: ((atlas.origin.y) as f32 / th).to_bits(),
             },
             top_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
                 dy: ((element.offset.y) as f32).to_bits(),
-                sx: ((atlas.origin.x + atlas.extent.width) as f32).to_bits(),
-                sy: ((atlas.origin.y) as f32).to_bits(),
+                sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
+                sy: ((atlas.origin.y) as f32 / th).to_bits(),
             },
             bottom_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
                 dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
-                sx: ((atlas.origin.x + atlas.extent.width) as f32).to_bits(),
-                sy: ((atlas.origin.y + atlas.extent.height) as f32).to_bits(),
+                sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
+                sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
             },
             bottom_left2: RenderPoint {
                 dx: ((element.offset.x) as f32).to_bits(),
                 dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
-                sx: ((atlas.origin.x) as f32).to_bits(),
-                sy: ((atlas.origin.y + atlas.extent.height) as f32).to_bits(),
+                sx: ((atlas.origin.x) as f32 / tw).to_bits(),
+                sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
             },
         }
     }
@@ -460,7 +505,8 @@ impl RenderedRun {
 
     fn ensure_buffer(&mut self, dev: &wgpu::Device, spec_elements: usize) {
         let bufsize_vertices = (spec_elements * std::mem::size_of::<RenderSquare>()) as u64;
-        let bufsize_indices = (spec_elements * std::mem::size_of::<u32>()) as u64;
+        let bufsize_indices =
+            (POINTS_PER_SQUARE * spec_elements * std::mem::size_of::<u32>()) as u64;
         if let Some(buffer) = self.gpu_vertices.as_ref() {
             if buffer.size() >= bufsize_vertices {
                 return;
@@ -475,7 +521,7 @@ impl RenderedRun {
         self.gpu_vertices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Text globals vertex buffer"),
             size: bufsize_vertices,
-            usage: wgpu::BufferUsages::UNIFORM
+            usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::VERTEX,
             mapped_at_creation: false,
@@ -483,7 +529,7 @@ impl RenderedRun {
         self.gpu_indices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Text globals index buffer"),
             size: bufsize_indices,
-            usage: wgpu::BufferUsages::UNIFORM
+            usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::INDEX,
             mapped_at_creation: false,
@@ -518,9 +564,19 @@ impl RenderedRun {
                     } else {
                         self.last_char_generation = Some(location.generation);
                     }
-                    self.host_vertices
-                        .push(RenderSquare::from_spec_element(element, location));
-                    self.host_indices.push(idx as u16);
+                    let texture = atlas.atlas_ref(&location).unwrap().texture();
+                    let spec_element = RenderSquare::from_spec_element(
+                        element,
+                        &location,
+                        texture.map(|t| t.width()).unwrap_or(1),
+                        texture.map(|t| t.height()).unwrap_or(1),
+                    );
+                    println!("SE ({:?}): {:?}", location, spec_element);
+                    self.host_vertices.push(spec_element);
+                    self.host_indices.push(((idx * 4) + 0) as u32);
+                    self.host_indices.push(((idx * 4) + 1) as u32);
+                    self.host_indices.push(((idx * 4) + 2) as u32);
+                    self.host_indices.push(((idx * 4) + 3) as u32);
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */
@@ -534,7 +590,7 @@ impl RenderedRun {
     pub fn queue_write_buffer(&mut self, queue: &wgpu::Queue) {
         let Some(gpu_vertices ) = self.gpu_vertices.as_mut() else {return};
         let Some(gpu_indices) = self.gpu_indices.as_mut() else {return};
-
+        // TODO: Skip if not updated?
         queue.write_buffer(
             &gpu_vertices,
             0,
