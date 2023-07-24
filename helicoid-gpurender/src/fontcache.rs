@@ -15,7 +15,7 @@ use crate::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
 pub trait FontOwner {
     fn swash_font(&self) -> FontRef<'_>;
 }
-const POINTS_PER_SQUARE: usize = 4;
+const POINTS_PER_SQUARE: usize = 6;
 thread_local! {
     static RENDER_LIST_HOST: RefCell<Vec<RenderSquare>> = RefCell::new(Vec::new());
 }
@@ -573,10 +573,10 @@ impl RenderedRun {
                     );
                     println!("SE ({:?}): {:?}", location, spec_element);
                     self.host_vertices.push(spec_element);
-                    self.host_indices.push(((idx * 4) + 0) as u32);
-                    self.host_indices.push(((idx * 4) + 1) as u32);
-                    self.host_indices.push(((idx * 4) + 2) as u32);
-                    self.host_indices.push(((idx * 4) + 3) as u32);
+                    for x in 0..POINTS_PER_SQUARE {
+                        self.host_indices
+                            .push(((idx * POINTS_PER_SQUARE) + x) as u32);
+                    }
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */

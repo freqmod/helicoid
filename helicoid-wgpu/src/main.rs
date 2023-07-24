@@ -351,7 +351,7 @@ fn main() {
         stroke_width: 1.0,
         target_stroke_width: 1.0,
         draw_background: true,
-        draw_text: String::from("Textbackground"),
+        draw_text: String::from("Text buffer"),
         window_size: PhysicalSize::new(DEFAULT_WINDOW_WIDTH as u32, DEFAULT_WINDOW_HEIGHT as u32),
         size_changed: true,
         render: false,
