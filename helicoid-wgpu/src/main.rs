@@ -25,6 +25,7 @@ use winit::window::{Window, WindowBuilder};
 use wgpu::util::DeviceExt;
 
 use futures::executor::block_on;
+use std::mem;
 use std::ops::Rem;
 use std::time::{Duration, Instant};
 
@@ -116,8 +117,7 @@ pub fn base_asset_path() -> PathBuf {
         .join("assets")
 }
 
-fn create_font_cache() -> FontCache<SwashFont> {
-    println!("BAP: {:?}", base_asset_path());
+fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
     let font = SwashFont::from_path(
         &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
         0,
@@ -125,11 +125,14 @@ fn create_font_cache() -> FontCache<SwashFont> {
     .unwrap();
     let mut font_cache = FontCache::new(font);
     let mut spec = RenderSpec::default();
-    font_cache.add_atlas(Extent3d {
-        width: 1024,
-        height: 1024,
-        depth_or_array_layers: 0,
-    });
+    font_cache.add_atlas(
+        dev,
+        Extent3d {
+            width: 1024,
+            height: 1024,
+            depth_or_array_layers: 0,
+        },
+    );
     font_cache
 }
 
@@ -177,6 +180,31 @@ fn create_multisampled_framebuffer(
 
     device
         .create_texture(multisampled_frame_descriptor)
+        .create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+/// Creates a texture that can be used for an atlas
+fn create_simple_texture(
+    device: &wgpu::Device,
+    desc: &wgpu::SurfaceConfiguration,
+) -> wgpu::TextureView {
+    let frame_descriptor = &wgpu::TextureDescriptor {
+        label: Some("Frame descriptor"),
+        size: wgpu::Extent3d {
+            width: desc.width,
+            height: desc.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: desc.format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    };
+
+    device
+        .create_texture(frame_descriptor)
         .create_view(&wgpu::TextureViewDescriptor::default())
 }
 
@@ -361,7 +389,7 @@ fn main() {
     .unwrap();
 
     // Create a text font cache and prepare a rendered string
-    let mut font_cache = create_font_cache();
+    let mut font_cache = create_font_cache(&device);
     let text_spec = if scene.draw_text.is_empty() {
         None
     } else {
@@ -429,6 +457,14 @@ fn main() {
         label: Some("Background fs"),
         source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/background.fs.wgsl").into()),
     });
+    let text_vs_module = &device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Text vs"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.vs.wgsl").into()),
+    });
+    let text_fs_module = &device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Text fs"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.fs.wgsl").into()),
+    });
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Bind group layout"),
@@ -456,6 +492,29 @@ fn main() {
         ], //
     });
 
+    let text_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Text Bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(globals_buffer_byte_size),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    count: None,
+                },
+            ], //
+        });
+
     let mut text_render_run = if let Some(text_spec) = text_spec.as_ref() {
         Some(font_cache.render_run(&device, &text_spec).unwrap())
     } else {
@@ -479,21 +538,35 @@ fn main() {
     });
 
     let text_bind_group = if let Some(render_run) = text_render_run.as_ref() {
-        let buffer = render_run.gpu_vertices.as_ref().unwrap();
-        Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Text Bind group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(buffer.as_entire_buffer_binding()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer(prims_ubo.as_entire_buffer_binding()),
-                },
-            ],
-        }))
+        let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
+        Some(
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Text Bind group"),
+                layout: &text_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(
+                            buffer_vertices.as_entire_buffer_binding(),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(
+                            font_cache
+                                .atlas_ref(
+                                    &helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(
+                                        0,
+                                    ),
+                                )
+                                .unwrap()
+                                .sampler()
+                                .unwrap(),
+                        ),
+                    },
+                ],
+            }),
+        )
     } else {
         None
     };
@@ -625,7 +698,7 @@ fn main() {
         label: None,
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
-            module: bg_vs_module,
+            module: text_vs_module,
             entry_point: "main",
             buffers: &[wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<RenderPoint>() as u64,
@@ -638,7 +711,7 @@ fn main() {
             }],
         },
         fragment: Some(wgpu::FragmentState {
-            module: bg_fs_module,
+            module: text_fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
                 format: wgpu::TextureFormat::Bgra8Unorm,
@@ -860,9 +933,9 @@ fn main() {
             pass.set_index_buffer(ibo.slice(..), wgpu::IndexFormat::Uint16);
             pass.set_vertex_buffer(0, vbo.slice(..));
 
-            pass.draw_indexed(fill_range.clone(), 0, 0..num_instances);
+            /*pass.draw_indexed(fill_range.clone(), 0, 0..num_instances);
             pass.draw_indexed(stroke_range.clone(), 0, 0..1);
-            pass.draw_indexed(arrow_range.clone(), 0, 0..(arrow_count as u32));
+            pass.draw_indexed(arrow_range.clone(), 0, 0..(arrow_count as u32));*/
 
             if scene.draw_background {
                 pass.set_pipeline(&bg_pipeline);
@@ -873,14 +946,22 @@ fn main() {
                 pass.draw_indexed(0..6, 0, 0..1);
             }
 
-            if !scene.draw_text.is_empty() {
+            //if !scene.draw_text.is_empty() {
+            //if true {
+            if let Some(text_render_run) = text_render_run.as_ref() {
                 pass.set_pipeline(&text_pipeline);
                 let tmp_text_bind_group = text_bind_group.as_ref().unwrap();
-                pass.set_bind_group(0, tmp_text_bind_group, &[]);
-                pass.set_index_buffer(bg_ibo.slice(..), wgpu::IndexFormat::Uint16);
-                pass.set_vertex_buffer(0, bg_vbo.slice(..));
+                let text_vbo = text_render_run.gpu_vertices.as_ref().unwrap();
+                let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
+                pass.set_bind_group(1, tmp_text_bind_group, &[]);
+                pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
+                pass.set_vertex_buffer(0, text_vbo.slice(..));
 
-                pass.draw_indexed(0..6, 0, 0..1);
+                pass.draw_indexed(
+                    0..(buffer_indices.size() as u32 / std::mem::size_of::<u16>() as u32),
+                    0,
+                    0..1,
+                );
             }
         }
 

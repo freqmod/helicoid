@@ -7,7 +7,7 @@ use swash::{
     zeno::{Format, Vector},
     FontRef,
 };
-use wgpu::{Extent3d, Origin2d};
+use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, SamplerDescriptor};
 
 use crate::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
 pub trait FontOwner {
@@ -81,8 +81,26 @@ where
             cache: TextureAtlases::default(),
         }
     }
-    pub fn add_atlas(&mut self, extent: Extent3d) {
-        self.cache.add_atlas(extent);
+    /*pub fn add_atlas(
+        &mut self,
+        texture: wgpu::Texture,
+        view: wgpu::TextureView,
+        sampler: wgpu::Sampler,
+    ) */
+    pub fn add_atlas(&mut self, dev: &wgpu::Device, extent: Extent3d) {
+        let surface_desc = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            width: extent.width,
+            height: extent.height,
+            present_mode: wgpu::PresentMode::AutoVsync,
+            alpha_mode: CompositeAlphaMode::Auto,
+            view_formats: vec![],
+        };
+        let texture = Self::create_texture(dev, &surface_desc);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = dev.create_sampler(&SamplerDescriptor::default());
+        self.cache.add_atlas(texture, view, sampler);
     }
     fn placement_for_glyph(
         font: &FontRef<'_>,
@@ -293,6 +311,31 @@ where
     pub fn owner_mut(&mut self) -> &mut O {
         &mut self.font
     }
+    /// Creates a texture that can be used for an atlas
+    fn create_texture(device: &wgpu::Device, desc: &wgpu::SurfaceConfiguration) -> wgpu::Texture {
+        let frame_descriptor = &wgpu::TextureDescriptor {
+            label: Some("Frame descriptor"),
+            size: wgpu::Extent3d {
+                width: desc.width,
+                height: desc.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: desc.format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        };
+
+        device.create_texture(frame_descriptor)
+    }
+    pub fn atlas(&mut self, location: &AtlasLocation) -> Option<&mut TextureAtlas<SwashCacheKey>> {
+        self.cache.atlas(location)
+    }
+    pub fn atlas_ref(&self, location: &AtlasLocation) -> Option<&TextureAtlas<SwashCacheKey>> {
+        self.cache.atlas_ref(location)
+    }
 }
 
 #[derive(Debug)]
@@ -335,7 +378,9 @@ pub struct RenderedRun {
     first_char_generation: Option<i32>,
     last_char_generation: Option<i32>,
     pub gpu_vertices: Option<wgpu::Buffer>,
+    pub gpu_indices: Option<wgpu::Buffer>,
     pub host_vertices: Vec<RenderSquare>,
+    pub host_indices: Vec<u16>,
 }
 
 #[derive(Debug, Default)]
@@ -367,40 +412,40 @@ impl RenderSquare {
     pub fn from_spec_element(element: &RenderSpecElement, atlas: &AtlasLocation) -> Self {
         Self {
             top_left1: RenderPoint {
-                dx: element.offset.x,
-                dy: element.offset.y,
-                sx: atlas.origin.x,
-                sy: atlas.origin.y,
+                dx: (element.offset.x as f32).to_bits(),
+                dy: (element.offset.y as f32).to_bits(),
+                sx: (atlas.origin.x as f32).to_bits(),
+                sy: (atlas.origin.y as f32).to_bits(),
             },
             bottom_left1: RenderPoint {
-                dx: element.offset.x,
-                dy: element.offset.y + atlas.extent.height,
-                sx: atlas.origin.x,
-                sy: atlas.origin.y + atlas.extent.height,
+                dx: (element.offset.x as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                sx: (atlas.origin.x as f32).to_bits(),
+                sy: ((atlas.origin.y + atlas.extent.height) as f32).to_bits(),
             },
             top_right1: RenderPoint {
-                dx: element.offset.x + atlas.extent.width,
-                dy: element.offset.y,
-                sx: atlas.origin.x + atlas.extent.width,
-                sy: atlas.origin.y,
+                dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
+                dy: ((element.offset.y) as f32).to_bits(),
+                sx: ((atlas.origin.x + atlas.extent.width) as f32).to_bits(),
+                sy: ((atlas.origin.y) as f32).to_bits(),
             },
             top_right2: RenderPoint {
-                dx: element.offset.x + atlas.extent.width,
-                dy: element.offset.y,
-                sx: atlas.origin.x + atlas.extent.width,
-                sy: atlas.origin.y,
+                dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
+                dy: ((element.offset.y) as f32).to_bits(),
+                sx: ((atlas.origin.x + atlas.extent.width) as f32).to_bits(),
+                sy: ((atlas.origin.y) as f32).to_bits(),
             },
             bottom_right2: RenderPoint {
-                dx: element.offset.x + atlas.extent.width,
-                dy: element.offset.y + atlas.extent.height,
-                sx: atlas.origin.x + atlas.extent.width,
-                sy: atlas.origin.y + atlas.extent.height,
+                dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                sx: ((atlas.origin.x + atlas.extent.width) as f32).to_bits(),
+                sy: ((atlas.origin.y + atlas.extent.height) as f32).to_bits(),
             },
             bottom_left2: RenderPoint {
-                dx: element.offset.x,
-                dy: element.offset.y + atlas.extent.height,
-                sx: atlas.origin.x,
-                sy: atlas.origin.y + atlas.extent.height,
+                dx: ((element.offset.x) as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                sx: ((atlas.origin.x) as f32).to_bits(),
+                sy: ((atlas.origin.y + atlas.extent.height) as f32).to_bits(),
             },
         }
     }
@@ -410,20 +455,37 @@ impl RenderedRun {
         self.first_char_generation = None;
         self.last_char_generation = None;
         self.host_vertices.clear();
+        self.host_indices.clear();
     }
 
     fn ensure_buffer(&mut self, dev: &wgpu::Device, spec_elements: usize) {
-        let bufsize = (spec_elements * std::mem::size_of::<RenderSquare>()) as u64;
+        let bufsize_vertices = (spec_elements * std::mem::size_of::<RenderSquare>()) as u64;
+        let bufsize_indices = (spec_elements * std::mem::size_of::<u32>()) as u64;
         if let Some(buffer) = self.gpu_vertices.as_ref() {
-            if buffer.size() >= bufsize {
+            if buffer.size() >= bufsize_vertices {
+                return;
+            }
+        }
+        if let Some(buffer) = self.gpu_indices.as_ref() {
+            if buffer.size() >= bufsize_indices {
                 return;
             }
         }
         // If there is no existing big enough buffer, create another one
         self.gpu_vertices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Text globals buffer"),
-            size: bufsize,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            label: Some("Text globals vertex buffer"),
+            size: bufsize_vertices,
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        }));
+        self.gpu_indices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Text globals index buffer"),
+            size: bufsize_indices,
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::INDEX,
             mapped_at_creation: false,
         }));
     }
@@ -441,8 +503,9 @@ impl RenderedRun {
         self.reset();
         self.ensure_buffer(dev, spec.len());
         self.host_vertices.try_reserve(spec.elements.len()).unwrap();
+        self.host_indices.try_reserve(spec.elements.len()).unwrap();
 
-        for element in spec.elements.iter() {
+        for (idx, element) in spec.elements.iter().enumerate() {
             match atlas.look_up(&element.key) {
                 Some(location) => {
                     if let Some(first_char_generation) = self.first_char_generation.as_mut() {
@@ -457,6 +520,7 @@ impl RenderedRun {
                     }
                     self.host_vertices
                         .push(RenderSquare::from_spec_element(element, location));
+                    self.host_indices.push(idx as u16);
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */
@@ -469,11 +533,17 @@ impl RenderedRun {
     }
     pub fn queue_write_buffer(&mut self, queue: &wgpu::Queue) {
         let Some(gpu_vertices ) = self.gpu_vertices.as_mut() else {return};
+        let Some(gpu_indices) = self.gpu_indices.as_mut() else {return};
 
         queue.write_buffer(
             &gpu_vertices,
             0,
             bytemuck::cast_slice(self.host_vertices.as_slice()),
+        );
+        queue.write_buffer(
+            &gpu_indices,
+            0,
+            bytemuck::cast_slice(self.host_indices.as_slice()),
         );
     }
 }
@@ -481,7 +551,7 @@ impl RenderedRun {
 mod tests {
     use std::{env, path::PathBuf};
 
-    use crate::swash_font::SwashFont;
+    use crate::{swash_font::SwashFont, texture_map::TextureCoordinate2D};
 
     use super::*;
 
@@ -515,11 +585,9 @@ mod tests {
         .unwrap();
         let mut font_cache = FontCache::new(font);
         let mut spec = RenderSpec::default();
-        font_cache.cache.add_atlas(Extent3d {
-            width: 1024,
-            height: 1024,
-            depth_or_array_layers: 0,
-        });
+        font_cache
+            .cache
+            .add_textureless_atlas(TextureCoordinate2D { x: 1024, y: 1024 });
 
         let char_width = font_cache
             .owner()

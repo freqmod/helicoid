@@ -1,7 +1,8 @@
 use crate::texture_map::{self, PackedTextureCache, TextureCoordinate2D};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, ops::Range};
-use wgpu::{Extent3d, ImageDataLayout, Origin2d, Texture};
+use wgpu::{Extent3d, ImageDataLayout, Origin2d, Sampler, Texture};
 
+const RGBA_BPP: usize = 4;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct AtlasLocation {
     pub atlas: u8,
@@ -48,6 +49,16 @@ impl PartialEq for BackedUpTexture {
     }
 }
 
+impl AtlasLocation {
+    pub fn atlas_only(atlas: u8) -> Self {
+        Self {
+            atlas,
+            origin: Origin2d::ZERO,
+            extent: Default::default(),
+            generation: 0,
+        }
+    }
+}
 #[derive(Debug, PartialEq)]
 pub struct TextureAtlas<K>
 where
@@ -94,9 +105,22 @@ where
             last_eviction_generation: 0,
         }
     }
-    pub fn add_atlas(&mut self, size: Extent3d) {
+    pub fn add_atlas(
+        &mut self,
+        texture: wgpu::Texture,
+        view: wgpu::TextureView,
+        sampler: wgpu::Sampler,
+    ) {
+        let texture_info = TextureInfo {
+            texture,
+            view,
+            sampler,
+        };
         self.atlases
-            .push(TextureAtlas::new(to_texture_coordinate(&size)));
+            .push(TextureAtlas::with_texture_info(texture_info));
+    }
+    pub(crate) fn add_textureless_atlas(&mut self, extent: TextureCoordinate2D) {
+        self.atlases.push(TextureAtlas::new(extent));
     }
     pub fn increment_generation(&mut self) {
         self.current_generation = self.current_generation.wrapping_add(1);
@@ -240,6 +264,9 @@ where
     pub fn atlas(&mut self, location: &AtlasLocation) -> Option<&mut TextureAtlas<K>> {
         self.atlases.get_mut(location.atlas as usize)
     }
+    pub fn atlas_ref(&self, location: &AtlasLocation) -> Option<&TextureAtlas<K>> {
+        self.atlases.get(location.atlas as usize)
+    }
 }
 
 fn to_texture_coordinate(extent: &wgpu::Extent3d) -> TextureCoordinate2D {
@@ -277,6 +304,15 @@ where
         TextureAtlas {
             manager: PackedTextureCache::new(extent),
             backed_up_texture: BackedUpTexture::with_extent(&extent),
+        }
+    }
+    pub fn with_texture_info(texture: TextureInfo) -> Self {
+        TextureAtlas {
+            manager: PackedTextureCache::new(TextureCoordinate2D {
+                x: texture.texture.width() as u16,
+                y: texture.texture.height() as u16,
+            }),
+            backed_up_texture: BackedUpTexture::with_texture(texture),
         }
     }
     pub fn insert_single(
@@ -336,6 +372,12 @@ where
             rows: location.extent.height,
         }
     }
+    pub fn texture(&self) -> Option<&Texture> {
+        self.backed_up_texture.gpu.as_ref().map(|ti| &ti.texture)
+    }
+    pub fn sampler(&self) -> Option<&Sampler> {
+        self.backed_up_texture.gpu.as_ref().map(|ti| &ti.sampler)
+    }
 }
 
 pub struct TextureAtlasTileView<'a, K>
@@ -391,8 +433,8 @@ impl BackedUpTexture {
         }
     }
     pub fn with_extent(extent: &TextureCoordinate2D) -> Self {
-        let mut host_data = Vec::with_capacity(extent.x as usize * extent.y as usize * 32);
-        host_data.resize(extent.x as usize * extent.y as usize * 32, 0);
+        let mut host_data = Vec::with_capacity(extent.x as usize * extent.y as usize * RGBA_BPP);
+        host_data.resize(extent.x as usize * extent.y as usize * RGBA_BPP, 0);
         Self {
             host_data,
             gpu: None,
@@ -400,6 +442,37 @@ impl BackedUpTexture {
             layout: ImageDataLayout::default(),
             label: None,
             extent: extent_from_texture_coordinate(extent),
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        }
+    }
+    pub fn with_texture(texture_info: TextureInfo) -> Self {
+        let mut host_data = Vec::with_capacity(
+            texture_info.texture.width() as usize
+                * texture_info.texture.width() as usize
+                * RGBA_BPP,
+        );
+        host_data.resize(
+            texture_info.texture.width() as usize
+                * texture_info.texture.width() as usize
+                * RGBA_BPP,
+            0,
+        );
+        /*        let view = texture_info
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());*/
+        let width = texture_info.texture.width();
+        let height = texture_info.texture.height();
+        Self {
+            host_data,
+            gpu: Some(texture_info),
+            gpu_outdated: true,
+            layout: ImageDataLayout::default(),
+            label: None,
+            extent: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
         }
     }
