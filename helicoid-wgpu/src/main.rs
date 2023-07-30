@@ -426,6 +426,7 @@ fn main() {
         window_size: PhysicalSize::new(DEFAULT_WINDOW_WIDTH as u32, DEFAULT_WINDOW_HEIGHT as u32),
         size_changed: true,
         render: false,
+        changed: true,
     };
 
     let event_loop = EventLoop::new();
@@ -930,6 +931,7 @@ fn main() {
         }
 
         scene.render = false;
+        scene.changed = false;
 
         let frame = match surface.get_current_texture() {
             Ok(texture) => texture,
@@ -1159,6 +1161,7 @@ struct SceneParams {
     window_size: PhysicalSize<u32>,
     size_changed: bool,
     render: bool,
+    changed: bool,
 }
 
 fn update_inputs(
@@ -1172,7 +1175,9 @@ fn update_inputs(
             scene.render = true;
         }
         Event::RedrawEventsCleared => {
-            window.request_redraw();
+            if scene.changed {
+                window.request_redraw();
+            }
         }
         Event::WindowEvent {
             event: WindowEvent::Destroyed,
@@ -1205,43 +1210,46 @@ fn update_inputs(
                     ..
                 },
             ..
-        } => match key {
-            KeyCode::Escape => {
-                *control_flow = ControlFlow::Exit;
-                return false;
+        } => {
+            scene.changed = true;
+            match key {
+                KeyCode::Escape => {
+                    *control_flow = ControlFlow::Exit;
+                    return false;
+                }
+                KeyCode::PageDown => {
+                    scene.target_zoom *= 0.8;
+                }
+                KeyCode::PageUp => {
+                    scene.target_zoom *= 1.25;
+                }
+                KeyCode::ArrowLeft => {
+                    scene.target_scroll.x -= 50.0 / scene.target_zoom;
+                }
+                KeyCode::ArrowRight => {
+                    scene.target_scroll.x += 50.0 / scene.target_zoom;
+                }
+                KeyCode::ArrowUp => {
+                    scene.target_scroll.y -= 50.0 / scene.target_zoom;
+                }
+                KeyCode::ArrowDown => {
+                    scene.target_scroll.y += 50.0 / scene.target_zoom;
+                }
+                KeyCode::KeyP => {
+                    scene.show_points = !scene.show_points;
+                }
+                KeyCode::KeyB => {
+                    scene.draw_background = !scene.draw_background;
+                }
+                KeyCode::KeyA => {
+                    scene.target_stroke_width /= 0.8;
+                }
+                KeyCode::KeyZ => {
+                    scene.target_stroke_width *= 0.8;
+                }
+                _key => {}
             }
-            KeyCode::PageDown => {
-                scene.target_zoom *= 0.8;
-            }
-            KeyCode::PageUp => {
-                scene.target_zoom *= 1.25;
-            }
-            KeyCode::ArrowLeft => {
-                scene.target_scroll.x -= 50.0 / scene.target_zoom;
-            }
-            KeyCode::ArrowRight => {
-                scene.target_scroll.x += 50.0 / scene.target_zoom;
-            }
-            KeyCode::ArrowUp => {
-                scene.target_scroll.y -= 50.0 / scene.target_zoom;
-            }
-            KeyCode::ArrowDown => {
-                scene.target_scroll.y += 50.0 / scene.target_zoom;
-            }
-            KeyCode::KeyP => {
-                scene.show_points = !scene.show_points;
-            }
-            KeyCode::KeyB => {
-                scene.draw_background = !scene.draw_background;
-            }
-            KeyCode::KeyA => {
-                scene.target_stroke_width /= 0.8;
-            }
-            KeyCode::KeyZ => {
-                scene.target_stroke_width *= 0.8;
-            }
-            _key => {}
-        },
+        }
         _evt => {
             //println!("{:?}", _evt);
         }
@@ -1253,7 +1261,8 @@ fn update_inputs(
     scene.stroke_width =
         scene.stroke_width + (scene.target_stroke_width - scene.stroke_width) / 5.0;
 
-    *control_flow = ControlFlow::Poll;
+    //    *control_flow = ControlFlow::Poll;
+    *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(500));
 
     true
 }
