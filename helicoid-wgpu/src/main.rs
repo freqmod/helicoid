@@ -1,3 +1,5 @@
+use cosmic_text::fontdb::{FaceInfo, Language, ID};
+use cosmic_text::{Attrs, Buffer as TextBuffer, Font, FontSystem, Metrics, Shaping, Weight};
 /*
 (c) Frederik Vestre - Licensed under MPL (like the rest of helicoid).
 
@@ -28,6 +30,7 @@ use wgpu::util::DeviceExt;
 use futures::executor::block_on;
 use std::mem;
 use std::ops::Rem;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use helicoid_gpurender::{
@@ -137,8 +140,75 @@ fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
     font_cache
 }
 
+fn font_system_from_swash(font: &FontRef) -> FontSystem {
+    let mut data = Vec::with_capacity(font.data.len());
+    data.extend_from_slice(font.data);
+    FontSystem::new_with_fonts([cosmic_text::fontdb::Source::Binary(Arc::new(data))].into_iter())
+}
+
+fn face_info_from_swash(font: &FontRef) -> FaceInfo {
+    let mut data = Vec::with_capacity(font.data.len());
+    data.extend_from_slice(font.data);
+    FaceInfo {
+        id: ID::dummy(),
+        source: cosmic_text::fontdb::Source::Binary(Arc::new(data)),
+        index: 0,
+        families: vec![(String::from(""), Language::Unknown)],
+        post_script_name: String::from(""),
+        style: cosmic_text::Style::Normal,
+        weight: Weight::NORMAL,
+        stretch: cosmic_text::Stretch::Normal,
+        monospaced: false,
+    }
+}
+
+fn cosmic_shape_str(text: &str, font_system: &mut FontSystem, scale: f32) -> RenderSpec {
+    // Text metrics indicate the font size and line height of a buffer
+    let metrics = Metrics::new(scale, scale + 2.0);
+
+    // A Buffer provides shaping and layout for a UTF-8 string, create one per text widget
+    let mut buffer = TextBuffer::new(font_system, metrics);
+
+    // Borrow buffer together with the font system for more convenient method calls
+    let mut buffer = buffer.borrow_with(font_system);
+
+    // Set a size for the text buffer, in pixels
+    buffer.set_size(80.0, 25.0);
+
+    // Attributes indicate what font to choose
+    let attrs = Attrs::new();
+
+    // Add some text!
+    buffer.set_text(text, attrs, Shaping::Advanced);
+
+    // Perform shaping as desired
+    buffer.shape_until_scroll();
+    let mut spec = RenderSpec::default();
+
+    for run in buffer.layout_runs() {
+        for glyph in run.glyphs {
+            let physical = glyph.physical((glyph.x_offset, glyph.y_offset), 1.0);
+            spec.add_element(RenderSpecElement {
+                key: SwashCacheKey {
+                    glyph_id: physical.cache_key.glyph_id,
+                    font_size_bits: physical.cache_key.font_size_bits,
+                    x_bin: physical.cache_key.x_bin.into(),
+                    y_bin: physical.cache_key.y_bin.into(),
+                },
+                offset: Origin2d {
+                    x: physical.x as u32,
+                    y: physical.y as u32 + (run.line_y.round() as u32),
+                },
+            })
+        }
+    }
+
+    spec
+}
 fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
-    let char_width = font.metrics(&[]).scale(scale).average_width.ceil() as usize;
+    let scaled_metrics = font.metrics(&[]).scale(scale);
+    let char_width =
+        (scaled_metrics.average_width + scaled_metrics.vertical_leading).ceil() as usize;
     let mut spec = RenderSpec::default();
     let charmap = font.charmap();
 
@@ -352,7 +422,7 @@ fn main() {
         stroke_width: 1.0,
         target_stroke_width: 1.0,
         draw_background: true,
-        draw_text: String::from("Text buffer"),
+        draw_text: String::from("Test rust shaping bla"),
         window_size: PhysicalSize::new(DEFAULT_WINDOW_WIDTH as u32, DEFAULT_WINDOW_HEIGHT as u32),
         size_changed: true,
         render: false,
@@ -394,11 +464,14 @@ fn main() {
     let text_spec = if scene.draw_text.is_empty() {
         None
     } else {
+        let mut font_system = font_system_from_swash(&font_cache.owner().swash_font());
+        Some(cosmic_shape_str(&scene.draw_text, &mut font_system, 20f32))
+        /*
         Some(simple_shape_str(
             &scene.draw_text,
             &font_cache.owner().swash_font(),
             12f32,
-        ))
+        ))*/
     };
 
     let vbo = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -653,7 +726,7 @@ fn main() {
             module: fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8Unorm,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -702,7 +775,7 @@ fn main() {
             module: bg_fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8Unorm,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -737,8 +810,19 @@ fn main() {
             module: text_fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                blend: None,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                blend: Some(wgpu::BlendState {
+                    color: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::One,
+                        dst_factor: wgpu::BlendFactor::Zero,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                    alpha: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::SrcAlpha,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -751,11 +835,22 @@ fn main() {
             unclipped_depth: false,
             conservative: false,
         },
-        depth_stencil: depth_stencil_state,
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Greater,
+            stencil: wgpu::StencilState {
+                front: wgpu::StencilFaceState::IGNORE,
+                back: wgpu::StencilFaceState::IGNORE,
+                read_mask: 0,
+                write_mask: 0,
+            },
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState {
             count: sample_count,
             mask: !0,
-            alpha_to_coverage_enabled: false,
+            alpha_to_coverage_enabled: true,
         },
         multiview: None,
     });
@@ -764,7 +859,7 @@ fn main() {
 
     let mut surface_desc = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: wgpu::TextureFormat::Bgra8Unorm,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::AutoVsync,

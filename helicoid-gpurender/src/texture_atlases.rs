@@ -1,4 +1,4 @@
-use crate::texture_map::{self, PackedTextureCache, TextureCoordinate2D};
+use crate::texture_map::{self, PackedTextureCache, TextureCoordinate2D, TextureCoordinateInt};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, ops::Range};
 use wgpu::{Extent3d, ImageDataLayout, Origin2d, Sampler, Texture, TextureViewDescriptor};
 
@@ -6,8 +6,10 @@ const RGBA_BPP: usize = 4;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct AtlasLocation {
     pub atlas: u8,
-    pub origin: Origin2d,
-    pub extent: Extent3d,
+    /* Keeps track of how much of the area of the location that is used for padding between atlas entries */
+    pub padding: u8,
+    pub origin: Origin2d, // Includes padding
+    pub extent: Extent3d, // Includes padding
     pub generation: i32,
 }
 
@@ -53,9 +55,28 @@ impl AtlasLocation {
     pub fn atlas_only(atlas: u8) -> Self {
         Self {
             atlas,
+            padding: 0,
             origin: Origin2d::ZERO,
             extent: Default::default(),
             generation: 0,
+        }
+    }
+    /* This function converts the location to a location without any padding.
+    Origin and extent is transformed so it refers to the non padded area */
+    pub fn apply_padding(&self) -> Self {
+        Self {
+            atlas: self.atlas,
+            padding: 0,
+            origin: Origin2d {
+                x: self.origin.x + self.padding as u32,
+                y: self.origin.y + self.padding as u32,
+            },
+            extent: Extent3d {
+                width: self.extent.width - self.padding as u32 * 2,
+                height: self.extent.height - self.padding as u32 * 2,
+                depth_or_array_layers: self.extent.depth_or_array_layers,
+            },
+            generation: self.generation,
         }
     }
 }
@@ -193,10 +214,17 @@ where
                 match self.atlases[current_free_index].insert_single(
                     key.clone(),
                     loc.extent,
+                    loc.padding,
                     self.current_generation,
                 ) {
                     Ok(loc) => {
-                        redraw(data, &key, &loc, &mut self.atlases[current_free_index]);
+                        self.clear_location(&loc);
+                        redraw(
+                            data,
+                            &key,
+                            &loc.apply_padding(),
+                            &mut self.atlases[current_free_index],
+                        );
                         *self.contents.get_mut(&key).unwrap() = loc;
                         continue 'addloop;
                     }
@@ -218,36 +246,36 @@ where
     }
 
     pub fn look_up(&mut self, key: &K) -> Option<AtlasLocation> {
-        self.look_up_ref(key).map(|l| *l)
-    }
-
-    pub fn look_up_ref(&mut self, key: &K) -> Option<&AtlasLocation> {
         if let Some(value) = self.contents.get_mut(key) {
             value.generation = self.current_generation;
-            Some(value)
+            Some(value.apply_padding())
         } else {
             None
         }
     }
 
-    pub fn peek(&self, key: &K) -> Option<&AtlasLocation> {
+    pub fn peek(&self, key: &K) -> Option<AtlasLocation> {
+        self.contents.get(key).map(|l| l.apply_padding())
+    }
+    pub fn peek_unpadded(&self, key: &K) -> Option<&AtlasLocation> {
         self.contents.get(key)
     }
     pub fn insert_single(
         &mut self,
         key: K,
         extent: wgpu::Extent3d,
+        padding: u8,
     ) -> Result<AtlasLocation, InsertResult> {
         if self.contents.contains_key(&key) {
             return Err(InsertResult::AlreadyPresent);
         }
         for (idx, atlas) in self.atlases.iter_mut().enumerate() {
-            match atlas.insert_single(key.clone(), extent, self.current_generation) {
+            match atlas.insert_single(key.clone(), extent, padding, self.current_generation) {
                 Ok(mut location) => {
                     location.atlas = idx as u8;
                     let old = self.contents.insert(key, location.clone());
                     debug_assert!(old.is_none());
-                    return Ok(location);
+                    return Ok(location.apply_padding());
                 }
                 Err(e) => { /* Do nothing, wait for next interation in for */ }
             }
@@ -255,6 +283,17 @@ where
         /* TODO: If this code is reached it was not space in the existing atlases, so make another one */
 
         Err(InsertResult::NoMoreSpace)
+    }
+    pub fn clear_location(&mut self, location: &AtlasLocation) -> bool {
+        if let Some(atlas) = self.atlases.get_mut(location.atlas as usize) {
+            let mut data_mut = atlas.tile_data_mut(location);
+            for row in 0..data_mut.rows() {
+                data_mut.row(row as u16).fill(0);
+            }
+            true
+        } else {
+            false
+        }
     }
     pub fn tile_data_mut<'a>(
         &'a mut self,
@@ -320,15 +359,24 @@ where
             backed_up_texture: BackedUpTexture::with_texture(texture),
         }
     }
+    /* Padding is applied internally to avoid any neighbour related artifacts */
     pub fn insert_single(
         &mut self,
         key: K,
         extent: wgpu::Extent3d,
+        padding: u8,
         current_generation: i32,
     ) -> Result<AtlasLocation, InsertResult> {
-        if let Some(packed_texture) = self.manager.insert(key, to_texture_coordinate(&extent)) {
+        if let Some(packed_texture) = self.manager.insert(
+            key,
+            to_texture_coordinate(&extent).padded(
+                2 * padding as TextureCoordinateInt,
+                2 * padding as TextureCoordinateInt,
+            ),
+        ) {
             let location = AtlasLocation {
                 atlas: 0,
+                padding,
                 origin: origin_from_texture_coordinate(&packed_texture.origin),
                 extent: extent_from_texture_coordinate(&packed_texture.extent),
                 generation: current_generation,
@@ -338,27 +386,30 @@ where
             Err(InsertResult::NoMoreSpace)
         }
     }
+    /*
+    TODO: Not adapted for padding, consider writing a function that uses
+    tile_data_mut internally instead.
 
-    pub fn copy_data(&mut self, location: &AtlasLocation, data: &[u8]) {
-        let out_layout = self.backed_up_texture.data_layout();
-        let stride_out = out_layout.bytes_per_row.unwrap();
-        let bytes_per_pixel = stride_out / self.backed_up_texture.extent().width;
-        let offset_out = out_layout.offset as u32
-            + (location.origin.y * stride_out)
-            + location.origin.x * bytes_per_pixel;
-        let stride_in = location.extent.width * bytes_per_pixel;
-        let rows = location.extent.height;
+        pub fn copy_data(&mut self, location: &AtlasLocation, data: &[u8]) {
+            let out_layout = self.backed_up_texture.data_layout();
+            let stride_out = out_layout.bytes_per_row.unwrap();
+            let bytes_per_pixel = stride_out / self.backed_up_texture.extent().width;
+            let offset_out = out_layout.offset as u32
+                + (location.origin.y * stride_out)
+                + location.origin.x * bytes_per_pixel;
+            let stride_in = location.extent.width * bytes_per_pixel;
+            let rows = location.extent.height;
 
-        let out_host_data = self.backed_up_texture.host_data_mut();
-        for row in 0..rows {
-            out_host_data[(offset_out + row * stride_out) as usize
-                ..(offset_out + row * stride_out + stride_in) as usize]
-                .copy_from_slice(
-                    &data[(row * stride_in) as usize..((row + 1) * stride_in) as usize],
-                );
+            let out_host_data = self.backed_up_texture.host_data_mut();
+            for row in 0..rows {
+                out_host_data[(offset_out + row * stride_out) as usize
+                    ..(offset_out + row * stride_out + stride_in) as usize]
+                    .copy_from_slice(
+                        &data[(row * stride_in) as usize..((row + 1) * stride_in) as usize],
+                    );
+            }
         }
-    }
-
+    */
     pub fn tile_data_mut<'a>(
         &'a mut self,
         location: &AtlasLocation,
@@ -376,6 +427,7 @@ where
             bytes_per_pixel,
             offset_out,
             rows: location.extent.height,
+            padding: location.padding,
         }
     }
     pub fn texture(&self) -> Option<&Texture> {
@@ -402,6 +454,7 @@ where
     bytes_per_pixel: u32,
     offset_out: u32,
     rows: u32,
+    padding: u8,
 }
 
 impl<'a, K> TextureAtlasTileView<'a, K>
@@ -409,13 +462,15 @@ where
     K: PartialEq + Eq + Hash,
 {
     pub fn row(&mut self, row: u16) -> &mut [u8] {
+        let paded_row = row + self.padding as u16;
+        let fixed_offset = self.offset_out + self.padding as u32;
         let out_host_data = self.atlas.backed_up_texture.host_data_mut();
         /*println!(
             "O: {} R: {} So: {} Si: {}",
             self.offset_out, row, self.stride_out, self.stride_in
         );*/
-        &mut out_host_data[(self.offset_out + (row as u32 * self.stride_out)) as usize
-            ..(self.offset_out + (row as u32 * self.stride_out) + self.stride_in) as usize]
+        &mut out_host_data[(fixed_offset + (paded_row as u32 * self.stride_out)) as usize
+            ..(fixed_offset + (paded_row as u32 * self.stride_out) + self.stride_in) as usize]
     }
     pub fn rows(&self) -> u32 {
         self.rows
@@ -467,7 +522,7 @@ impl BackedUpTexture {
             texture_info.texture.width() as usize
                 * texture_info.texture.width() as usize
                 * RGBA_BPP,
-            192,
+            0,
         );
         /*        let view = texture_info
         .texture
@@ -511,10 +566,10 @@ impl BackedUpTexture {
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()

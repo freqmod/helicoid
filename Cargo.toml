@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "helicoid-client",
+#    "helicoid-client",
     "helicoid-protocol",
     "helicoid-helixserver",
     "helicoid-testserver",
@@ -9,14 +9,14 @@ members = [
 ]
 
 default-members = [
-    "helicoid-client"
+    "helicoid-wgpu"
 ]
 resolver = "2"
 
 [patch.crates-io]
 rkyv = { git = "https://github.com/rkyv/rkyv.git"}
 ordered-float = { git = "https://github.com/freqmod/rust-ordered-float.git"}
-winit = { git = "https://github.com/freqmod/winit.git", branch="keys"}
+#winit = { git = "https://github.com/freqmod/winit.git", branch="keys"}
 
 # Needed by helix repo crates (helix-core etc.)
 [workspace.dependencies]

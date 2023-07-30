@@ -15,6 +15,7 @@ use crate::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
 pub trait FontOwner {
     fn swash_font(&self) -> FontRef<'_>;
 }
+const BPP: usize = 4;
 const POINTS_PER_SQUARE: usize = 6;
 thread_local! {
     static RENDER_LIST_HOST: RefCell<Vec<RenderSquare>> = RefCell::new(Vec::new());
@@ -189,7 +190,10 @@ where
         self.cache.increment_generation();
         key_meta.sort_by(|a, b| texture_atlases::insert_order(&a.1, &b.1));
         for (key, extent) in key_meta.iter() {
-            match self.cache.insert_single(key.clone(), extent.clone()) {
+            match self
+                .cache
+                .insert_single(key.clone(), extent.clone(), BPP as u8)
+            {
                 Ok(location) => {
                     //println!("Inserted: {:?}", &key);
                     /* Render font data info the cache */
@@ -201,7 +205,10 @@ where
                         texture_atlases::InsertResult::NoMoreSpace => {
                             self.cache
                                 .evict_outdated(&mut self.font.swash_font(), &Self::redraw);
-                            match self.cache.insert_single(key.clone(), extent.clone()) {
+                            match self
+                                .cache
+                                .insert_single(key.clone(), extent.clone(), BPP as u8)
+                            {
                                 Ok(location) => {
                                     /* Render font data info the cache */
                                     self.render_to_location(&key, &location);
@@ -286,21 +293,20 @@ where
             cache_key.glyph_id, image.placement, width, height
         );
         let mut data_view = atlas.tile_data_mut(location);
-        let bpp = 4usize;
         for y in 0..height {
             let row = data_view.row(y as u16);
-            let copy_width = (bpp * width as usize).min(row.len()) as u32;
-            if copy_width != (bpp as u32) * width || copy_width != (row.len()) as u32 {
+            let copy_width = (BPP * width as usize).min(row.len()) as u32;
+            if copy_width != (BPP as u32) * width || copy_width != (row.len()) as u32 {
                 println!(
                     "Render: {}=={} {}",
                     row.len(),
-                    bpp as u32 * width,
+                    BPP as u32 * width,
                     copy_width
                 );
             }
             row[0..copy_width as usize].copy_from_slice(
-                &image.data[(y * bpp as u32 * width) as usize
-                    ..((y * bpp as u32 * width) + copy_width) as usize],
+                &image.data[(y * BPP as u32 * width) as usize
+                    ..((y * BPP as u32 * width) + copy_width) as usize],
             );
             println!("Rendered: {:?}", &row[0..copy_width as usize]);
         }

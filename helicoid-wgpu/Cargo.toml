@@ -14,6 +14,7 @@ lyon = { git = "https://github.com/nical/lyon", features = ["extra"] }
 
 helicoid-gpurender = { path = "../helicoid-gpurender" }
 swash = {version="0.1.8"}
+cosmic-text = {version="0.9.0"}
 
 env_logger = "0.9.0"
 

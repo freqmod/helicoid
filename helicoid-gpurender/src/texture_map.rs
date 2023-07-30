@@ -318,11 +318,23 @@ impl TextureCoordinate2D {
     pub fn zero() -> Self {
         Self { x: 0, y: 0 }
     }
-    fn bigger(&self, other: &Self) -> bool {
+    pub fn bigger(&self, other: &Self) -> bool {
         self.x >= other.x && self.y >= other.y
     }
-    fn squared(&self) -> usize {
+    pub fn squared(&self) -> usize {
         self.x as usize * self.y as usize
+    }
+    pub fn padded(&self, x_offset: TextureCoordinateInt, y_offset: TextureCoordinateInt) -> Self {
+        Self {
+            x: self.x + x_offset,
+            y: self.y + y_offset,
+        }
+    }
+    pub fn shrinked(&self, x_offset: TextureCoordinateInt, y_offset: TextureCoordinateInt) -> Self {
+        Self {
+            x: self.x + x_offset,
+            y: self.y + y_offset,
+        }
     }
 }
 impl PackedTexture {
