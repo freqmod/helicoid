@@ -180,8 +180,8 @@ where
             (
                 key,
                 Extent3d {
-                    width: placement.width, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
-                    height: placement.height, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
+                    width: (placement.left + placement.width as i32) as u32, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
+                    height: (placement.top + placement.height as i32) as u32, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
                     depth_or_array_layers: 0,
                 },
             )
@@ -284,6 +284,8 @@ where
         .render(&mut scaler, cache_key.glyph_id)
         .unwrap();
 
+        let left = BPP as u32 * (image.placement.left.abs() as i32) as u32;
+        let top = 0; //(image.placement.top.abs() as i32) as u32;
         let width = (image.placement.width as i32) as u32;
         let height = (image.placement.height as i32) as u32;
         // TODO: Do we need to take placement offset into account?
@@ -293,7 +295,7 @@ where
             cache_key.glyph_id, image.placement, width, height
         );
         let mut data_view = atlas.tile_data_mut(location);
-        for y in 0..height {
+        for y in top..height {
             let row = data_view.row(y as u16);
             let copy_width = (BPP * width as usize).min(row.len()) as u32;
             if copy_width != (BPP as u32) * width || copy_width != (row.len()) as u32 {
@@ -305,10 +307,10 @@ where
                 );
             }
             row[0..copy_width as usize].copy_from_slice(
-                &image.data[(y * BPP as u32 * width) as usize
-                    ..((y * BPP as u32 * width) + copy_width) as usize],
+                &image.data[(left + (y * BPP as u32 * width)) as usize
+                    ..(left + ((y * BPP as u32 * width) + copy_width)) as usize],
             );
-            println!("Rendered: {:?}", &row[0..copy_width as usize]);
+            //println!("Rendered: {:?}", &row[0..copy_width as usize]);
         }
     }
 
@@ -424,7 +426,7 @@ pub struct RenderedRun {
     pub gpu_vertices: Option<wgpu::Buffer>,
     pub gpu_indices: Option<wgpu::Buffer>,
     pub host_vertices: Vec<RenderSquare>,
-    pub host_indices: Vec<u32>,
+    pub host_indices: Vec<u16>,
 }
 
 #[derive(Debug, Default)]
@@ -529,9 +531,7 @@ impl RenderedRun {
         self.gpu_vertices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Text globals vertex buffer"),
             size: bufsize_vertices,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
             mapped_at_creation: false,
         }));
         self.gpu_indices = Some(dev.create_buffer(&wgpu::BufferDescriptor {
@@ -583,7 +583,7 @@ impl RenderedRun {
                     self.host_vertices.push(spec_element);
                     for x in 0..POINTS_PER_SQUARE {
                         self.host_indices
-                            .push(((idx * POINTS_PER_SQUARE) + x) as u32);
+                            .push(((idx * POINTS_PER_SQUARE) + x) as u16);
                     }
                 }
                 None => {

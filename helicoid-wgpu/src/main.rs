@@ -173,16 +173,16 @@ fn cosmic_shape_str(text: &str, font_system: &mut FontSystem, scale: f32) -> Ren
     let mut buffer = buffer.borrow_with(font_system);
 
     // Set a size for the text buffer, in pixels
-    buffer.set_size(80.0, 25.0);
+    buffer.set_size(150.0, 100.0);
 
     // Attributes indicate what font to choose
     let attrs = Attrs::new();
 
     // Add some text!
-    buffer.set_text(text, attrs, Shaping::Advanced);
+    buffer.set_text(text, attrs, Shaping::Basic);
 
     // Perform shaping as desired
-    buffer.shape_until_scroll();
+    buffer.shape_until(10);
     let mut spec = RenderSpec::default();
 
     for run in buffer.layout_runs() {
@@ -197,7 +197,7 @@ fn cosmic_shape_str(text: &str, font_system: &mut FontSystem, scale: f32) -> Ren
                 },
                 offset: Origin2d {
                     x: physical.x as u32,
-                    y: physical.y as u32 + (run.line_y.round() as u32),
+                    y: physical.y as u32 + (run.line_y as u32),
                 },
             })
         }
@@ -570,24 +570,24 @@ fn main() {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Text Bind group layout"),
             entries: &[
-                wgpu::BindGroupLayoutEntry {
+                /*                wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
-                },
+                },*/
                 wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 2,
+                    binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -630,12 +630,6 @@ fn main() {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::Buffer(
-                            buffer_vertices.as_entire_buffer_binding(),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
                         resource: wgpu::BindingResource::Sampler(
                             font_cache
                                 .atlas_ref(
@@ -649,7 +643,7 @@ fn main() {
                         ),
                     },
                     wgpu::BindGroupEntry {
-                        binding: 2,
+                        binding: 1,
                         resource: wgpu::BindingResource::TextureView(
                             &font_cache
                                 .atlas_ref(
@@ -706,7 +700,7 @@ fn main() {
                 attributes: &[
                     wgpu::VertexAttribute {
                         offset: 0,
-                        format: wgpu::VertexFormat::Float32x2,
+                        format: wgpu::VertexFormat::Float32x4,
                         shader_location: 0,
                     },
                     wgpu::VertexAttribute {
@@ -804,7 +798,15 @@ fn main() {
         vertex: wgpu::VertexState {
             module: text_vs_module,
             entry_point: "main",
-            buffers: &[],
+            buffers: &[wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<RenderPoint>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[wgpu::VertexAttribute {
+                    offset: 0,
+                    format: wgpu::VertexFormat::Float32x4,
+                    shader_location: 0,
+                }],
+            }],
         },
         fragment: Some(wgpu::FragmentState {
             module: text_fs_module,
@@ -1086,10 +1088,10 @@ fn main() {
                 let text_vbo = text_render_run.gpu_vertices.as_ref().unwrap();
                 let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
                 pass.set_bind_group(0, tmp_text_bind_group, &[]);
-                pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
                 pass.set_vertex_buffer(0, text_vbo.slice(..));
                 pass.draw_indexed(
-                    0..(buffer_indices.size() as u32 / std::mem::size_of::<u32>() as u32),
+                    0..(buffer_indices.size() as u32 / std::mem::size_of::<u16>() as u32),
                     0,
                     0..1,
                 );

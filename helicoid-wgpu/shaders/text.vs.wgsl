@@ -3,7 +3,7 @@ struct RenderPoint {
     s_pos: vec2<f32>,
 };
 
-@group(0) @binding(0) var<storage> render_points: array<RenderPoint>;
+//@group(0) @binding(0) var<uniform> render_points: texture_2d<f32>;
 
 struct VertexOutput {
     @location(0) t_position: vec2<f32>,
@@ -11,11 +11,13 @@ struct VertexOutput {
 };
 
 @vertex
-fn main(@builtin(vertex_index) render_idx: u32) -> VertexOutput {
-    var render_point = render_points[render_idx];
-    var v_position = vec4<f32>((render_point.v_pos/40.0) - 0.9, 0.0000002, 1.0);
+fn main(@location(0) position: vec4<f32>) -> VertexOutput {
+    var v_pos = position.xy;
+    var t_pos = position.zw;
+    var v_position = vec4<f32>((v_pos/500.0) - 0.9, 0.0000002, 1.0);
+//    var v_position = vec4<f32>((render_point.v_pos/40.0) - 0.9, 0.0000002, 1.0);
     return VertexOutput(
-        render_point.s_pos,
-        v_position
+        t_pos,
+        v_position,
     );
 }
