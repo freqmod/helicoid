@@ -453,42 +453,44 @@ impl RenderSquare {
         texture_width: u32,
         texture_height: u32,
     ) -> Self {
+        /* NB: The y coordinates in this square match the wgpu coordinate system,
+        which means they are bottom to top */
         let tw = texture_width as f32;
         let th = texture_height as f32;
         Self {
             top_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
-                dy: (element.offset.y as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: (atlas.origin.x as f32 / tw).to_bits(),
                 sy: (atlas.origin.y as f32 / th).to_bits(),
             },
             bottom_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
-                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                dy: (element.offset.y as f32).to_bits(),
                 sx: (atlas.origin.x as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / tw).to_bits(),
             },
             top_right1: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
-                dy: ((element.offset.y) as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y) as f32 / th).to_bits(),
             },
             top_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
-                dy: ((element.offset.y) as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y) as f32 / th).to_bits(),
             },
             bottom_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
-                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                dy: ((element.offset.y) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
             },
             bottom_left2: RenderPoint {
                 dx: ((element.offset.x) as f32).to_bits(),
-                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                dy: ((element.offset.y) as f32).to_bits(),
                 sx: ((atlas.origin.x) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
             },

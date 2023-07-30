@@ -17,8 +17,9 @@ use lyon::algorithms::{rounded_polygon, walk};
 
 use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, TextureViewDescriptor};
 use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::keyboard::KeyCode;
 use winit::window::{Window, WindowBuilder};
 
 // For create_buffer_init()
@@ -137,7 +138,7 @@ fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
 }
 
 fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
-    let char_width = font.metrics(&[]).scale(scale).average_width as usize;
+    let char_width = font.metrics(&[]).scale(scale).average_width.ceil() as usize;
     let mut spec = RenderSpec::default();
     let charmap = font.charmap();
 
@@ -791,6 +792,7 @@ fn main() {
         }
 
         if scene.size_changed {
+            println!("Scene changed: Size: {:?}", scene.window_size);
             scene.size_changed = false;
             let physical = scene.window_size;
             surface_desc.width = physical.width;
@@ -1090,54 +1092,55 @@ fn update_inputs(
             event: WindowEvent::Resized(size),
             ..
         } => {
+            println!("Window evt: {:?}", event);
             scene.window_size = size;
             scene.size_changed = true
         }
         Event::WindowEvent {
             event:
                 WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
+                    event:
+                        KeyEvent {
                             state: ElementState::Pressed,
-                            virtual_keycode: Some(key),
+                            physical_key: key,
                             ..
                         },
                     ..
                 },
             ..
         } => match key {
-            VirtualKeyCode::Escape => {
+            KeyCode::Escape => {
                 *control_flow = ControlFlow::Exit;
                 return false;
             }
-            VirtualKeyCode::PageDown => {
+            KeyCode::PageDown => {
                 scene.target_zoom *= 0.8;
             }
-            VirtualKeyCode::PageUp => {
+            KeyCode::PageUp => {
                 scene.target_zoom *= 1.25;
             }
-            VirtualKeyCode::Left => {
+            KeyCode::ArrowLeft => {
                 scene.target_scroll.x -= 50.0 / scene.target_zoom;
             }
-            VirtualKeyCode::Right => {
+            KeyCode::ArrowRight => {
                 scene.target_scroll.x += 50.0 / scene.target_zoom;
             }
-            VirtualKeyCode::Up => {
+            KeyCode::ArrowUp => {
                 scene.target_scroll.y -= 50.0 / scene.target_zoom;
             }
-            VirtualKeyCode::Down => {
+            KeyCode::ArrowDown => {
                 scene.target_scroll.y += 50.0 / scene.target_zoom;
             }
-            VirtualKeyCode::P => {
+            KeyCode::KeyP => {
                 scene.show_points = !scene.show_points;
             }
-            VirtualKeyCode::B => {
+            KeyCode::KeyB => {
                 scene.draw_background = !scene.draw_background;
             }
-            VirtualKeyCode::A => {
+            KeyCode::KeyA => {
                 scene.target_stroke_width /= 0.8;
             }
-            VirtualKeyCode::Z => {
+            KeyCode::KeyZ => {
                 scene.target_stroke_width *= 0.8;
             }
             _key => {}
