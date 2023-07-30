@@ -24,6 +24,7 @@ pub struct FontCache<O>
 where
     O: FontOwner,
 {
+    context: ScaleContext,
     font: O,
     cache: TextureAtlases<SwashCacheKey>,
 }
@@ -80,6 +81,7 @@ where
 {
     pub fn new(font: O) -> Self {
         Self {
+            context: ScaleContext::new(),
             font,
             cache: TextureAtlases::default(),
         }
@@ -119,17 +121,17 @@ where
         self.cache.add_atlas(texture, view, sampler);
     }
     fn placement_for_glyph(
+        context: &mut ScaleContext,
         font: &FontRef<'_>,
         cache_key: &SwashCacheKey,
     ) -> swash::zeno::Placement {
         /* TODO: Is it possible to get the exent of a rendered glyph without actually rendering it? */
         /* Use swash / cosmic text to runder to the texture */
-        let mut context = ScaleContext::new(); // TODO: Move to class? for caching
-                                               // Build the scaler
-                                               /*println!(
-                                                   "Font scaler size: {}",
-                                                   f32::from_bits(cache_key.font_size_bits)
-                                               );*/
+        // Build the scaler
+        /*println!(
+            "Font scaler size: {}",
+            f32::from_bits(cache_key.font_size_bits)
+        );*/
         let mut scaler = context
             .builder(*font)
             .size(f32::from_bits(cache_key.font_size_bits))
@@ -165,11 +167,11 @@ where
     {
         let mut key_meta = Vec::with_capacity(keys.len());
         let font_ref = self.font.swash_font();
-        let metrics = font_ref.glyph_metrics(&[]);
+        let context = &mut self.context;
         key_meta.extend(keys.map(|k| {
             let key: SwashCacheKey = Into::into(k.clone());
             //let scaled_metrics = metrics.scale(f32::from_bits(key.font_size_bits));
-            let placement = Self::placement_for_glyph(&font_ref, &key);
+            let placement = Self::placement_for_glyph(context, &font_ref, &key);
             /*println!(
                 "Metrics: I:{} W:{} H:{}",
                 key.glyph_id,
@@ -180,8 +182,8 @@ where
             (
                 key,
                 Extent3d {
-                    width: (placement.left + placement.width as i32) as u32, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
-                    height: (placement.top + placement.height as i32) as u32, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
+                    width: (placement.width as i32) as u32, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
+                    height: (placement.height as i32) as u32, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
                     depth_or_array_layers: 0,
                 },
             )
@@ -284,8 +286,6 @@ where
         .render(&mut scaler, cache_key.glyph_id)
         .unwrap();
 
-        let left = BPP as u32 * (image.placement.left.abs() as i32) as u32;
-        let top = 0; //(image.placement.top.abs() as i32) as u32;
         let width = (image.placement.width as i32) as u32;
         let height = (image.placement.height as i32) as u32;
         // TODO: Do we need to take placement offset into account?
@@ -295,9 +295,10 @@ where
             cache_key.glyph_id, image.placement, width, height
         );
         let mut data_view = atlas.tile_data_mut(location);
-        for y in top..height {
+        for y in 0..height {
             let row = data_view.row(y as u16);
-            let copy_width = (BPP * width as usize).min(row.len()) as u32;
+            //            let copy_width = (BPP * width as usize).min(row.len()) as u32;
+            let copy_width = (BPP * width as usize) as u32;
             if copy_width != (BPP as u32) * width || copy_width != (row.len()) as u32 {
                 println!(
                     "Render: {}=={} {}",
@@ -307,10 +308,20 @@ where
                 );
             }
             row[0..copy_width as usize].copy_from_slice(
-                &image.data[(left + (y * BPP as u32 * width)) as usize
-                    ..(left + ((y * BPP as u32 * width) + copy_width)) as usize],
+                &image.data[(y * BPP as u32 * width) as usize
+                    ..((y * BPP as u32 * width) + copy_width) as usize],
             );
             //println!("Rendered: {:?}", &row[0..copy_width as usize]);
+        }
+    }
+    pub fn offset_glyphs(&mut self, rs: &mut RenderSpec) {
+        let font_ref = &mut self.font.swash_font();
+        for elm in rs.elements.iter_mut() {
+            let placement = Self::placement_for_glyph(&mut self.context, &font_ref, &elm.key);
+            // Are placement scaled differently trough the graphics pipeline than the pixels in the texture?
+
+            elm.offset.x = (elm.offset.x as i32 - placement.left).max(0) as u32;
+            elm.offset.y = (elm.offset.y as i32 + placement.top).max(0) as u32;
         }
     }
 

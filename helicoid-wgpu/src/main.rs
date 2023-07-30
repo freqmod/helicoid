@@ -162,7 +162,12 @@ fn face_info_from_swash(font: &FontRef) -> FaceInfo {
     }
 }
 
-fn cosmic_shape_str(text: &str, font_system: &mut FontSystem, scale: f32) -> RenderSpec {
+fn cosmic_shape_str(
+    init_offset: Origin2d,
+    text: &str,
+    font_system: &mut FontSystem,
+    scale: f32,
+) -> RenderSpec {
     // Text metrics indicate the font size and line height of a buffer
     let metrics = Metrics::new(scale, scale + 2.0);
 
@@ -173,7 +178,7 @@ fn cosmic_shape_str(text: &str, font_system: &mut FontSystem, scale: f32) -> Ren
     let mut buffer = buffer.borrow_with(font_system);
 
     // Set a size for the text buffer, in pixels
-    buffer.set_size(150.0, 100.0);
+    buffer.set_size(180.0, 100.0);
 
     // Attributes indicate what font to choose
     let attrs = Attrs::new();
@@ -196,8 +201,8 @@ fn cosmic_shape_str(text: &str, font_system: &mut FontSystem, scale: f32) -> Ren
                     y_bin: physical.cache_key.y_bin.into(),
                 },
                 offset: Origin2d {
-                    x: physical.x as u32,
-                    y: physical.y as u32 + (run.line_y as u32),
+                    x: init_offset.x + physical.x as u32,
+                    y: init_offset.y + physical.y as u32 + (run.line_y as u32),
                 },
             })
         }
@@ -462,11 +467,16 @@ fn main() {
 
     // Create a text font cache and prepare a rendered string
     let mut font_cache = create_font_cache(&device);
-    let text_spec = if scene.draw_text.is_empty() {
+    let mut text_spec = if scene.draw_text.is_empty() {
         None
     } else {
         let mut font_system = font_system_from_swash(&font_cache.owner().swash_font());
-        Some(cosmic_shape_str(&scene.draw_text, &mut font_system, 20f32))
+        Some(cosmic_shape_str(
+            Origin2d { x: 40, y: 40 },
+            &scene.draw_text,
+            &mut font_system,
+            20f32,
+        ))
         /*
         Some(simple_shape_str(
             &scene.draw_text,
@@ -600,7 +610,8 @@ fn main() {
             ],
         });
 
-    let mut text_render_run = if let Some(text_spec) = text_spec.as_ref() {
+    let mut text_render_run = if let Some(text_spec) = text_spec.as_mut() {
+        font_cache.offset_glyphs(text_spec);
         Some(font_cache.render_run(&device, &text_spec).unwrap())
     } else {
         None
