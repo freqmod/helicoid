@@ -160,18 +160,15 @@ where
         .unwrap();
         image.placement
     }
-    pub fn update_cache<K, I>(&mut self, keys: I)
+    pub fn update_cache<'a, I>(&mut self, elements: I)
     where
-        K: Into<SwashCacheKey> + Clone,
-        I: ExactSizeIterator<Item = K>,
+        I: ExactSizeIterator<Item = &'a RenderSpecElement>,
     {
-        let mut key_meta = Vec::with_capacity(keys.len());
+        let mut key_meta = Vec::with_capacity(elements.len());
         let font_ref = self.font.swash_font();
         let context = &mut self.context;
-        key_meta.extend(keys.map(|k| {
-            let key: SwashCacheKey = Into::into(k.clone());
+        key_meta.extend(elements.map(|elm| {
             //let scaled_metrics = metrics.scale(f32::from_bits(key.font_size_bits));
-            let placement = Self::placement_for_glyph(context, &font_ref, &key);
             /*println!(
                 "Metrics: I:{} W:{} H:{}",
                 key.glyph_id,
@@ -180,10 +177,10 @@ where
             );*/
 
             (
-                key,
+                elm.key,
                 Extent3d {
-                    width: (placement.width as i32) as u32, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
-                    height: (placement.height as i32) as u32, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
+                    width: elm.extent.x,  //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
+                    height: elm.extent.y, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
                     depth_or_array_layers: 0,
                 },
             )
@@ -320,8 +317,14 @@ where
             let placement = Self::placement_for_glyph(&mut self.context, &font_ref, &elm.key);
             // Are placement scaled differently trough the graphics pipeline than the pixels in the texture?
 
-            elm.offset.x = (elm.offset.x as i32 - placement.left).max(0) as u32;
-            elm.offset.y = (elm.offset.y as i32 + placement.top).max(0) as u32;
+            elm.offset.x = (elm.offset.x as i32 + placement.left) as u32;
+            elm.offset.y = (elm.offset.y as i32 - placement.height as i32 + placement.top) as u32;
+            elm.extent.x = placement.width;
+            elm.extent.y = placement.height;
+            println!(
+                "Applied offset: {:?}: Placement: {:?} Offs: {:?}",
+                elm, placement, elm.offset
+            );
         }
     }
 
@@ -339,7 +342,7 @@ where
                 RenderRunError::CharacterMissingInAtlas => {
                     /* This will result in many duplicate keys being added,
                     but duplicates are ignored, and deduping takes (alloc) resources */
-                    self.update_cache(rs.elements.iter().map(|e| e.key.clone()));
+                    self.update_cache(rs.elements.iter());
                     rr.fill_render_run(rs, dev, &mut self.font.swash_font(), &mut self.cache)
                         .unwrap();
                     Ok(rr)
@@ -446,8 +449,10 @@ pub struct RenderSpec {
 }
 #[derive(Debug)]
 pub struct RenderSpecElement {
+    pub char: char,
     pub key: SwashCacheKey,
     pub offset: Origin2d,
+    pub extent: Origin2d,
 }
 
 impl RenderSpec {
@@ -683,6 +688,7 @@ mod tests {
                     x: char_width as u32 * x,
                     y: 0,
                 },
+                extent: Origin2d::ZERO,
             })
         }
         // TODO: Fill render spec with some default (statically shaped) data

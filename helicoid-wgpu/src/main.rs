@@ -123,7 +123,11 @@ pub fn base_asset_path() -> PathBuf {
 
 fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
     let font = SwashFont::from_path(
-        &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
+        //&base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
+        &base_asset_path()
+            .join("fonts")
+            .join("FiraCodeNerdFont-Regular.ttf"),
+        //        &base_asset_path().join("fonts").join("NotoSans-Regular.ttf"),
         0,
     )
     .unwrap();
@@ -181,7 +185,7 @@ fn cosmic_shape_str(
     let mut buffer = buffer.borrow_with(font_system);
 
     // Set a size for the text buffer, in pixels
-    buffer.set_size(180.0, 100.0);
+    buffer.set_size(500.0, 400.0);
 
     // Attributes indicate what font to choose
     let attrs = Attrs::new();
@@ -197,6 +201,7 @@ fn cosmic_shape_str(
         for glyph in run.glyphs {
             let physical = glyph.physical((glyph.x_offset, glyph.y_offset), 1.0);
             spec.add_element(RenderSpecElement {
+                char: 'a', //run.text[glyph.start..glyph.end].chars().next().unwrap(),
                 key: SwashCacheKey {
                     glyph_id: physical.cache_key.glyph_id,
                     font_size_bits: physical.cache_key.font_size_bits,
@@ -207,6 +212,7 @@ fn cosmic_shape_str(
                     x: init_offset.x + physical.x as u32,
                     y: init_offset.y + physical.y as u32 + (run.line_y as u32),
                 },
+                extent: Origin2d::ZERO,
             })
         }
     }
@@ -222,6 +228,7 @@ fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
 
     for (i, char) in text.chars().into_iter().enumerate() {
         spec.add_element(RenderSpecElement {
+            char,
             key: SwashCacheKey {
                 glyph_id: charmap.map(char) as u16,
                 font_size_bits: scale.to_bits(),
@@ -232,6 +239,7 @@ fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
                 x: (char_width * i) as u32,
                 y: 0,
             },
+            extent: Origin2d::ZERO,
         })
     }
     spec
@@ -430,7 +438,10 @@ fn main() {
         stroke_width: 1.0,
         target_stroke_width: 1.0,
         draw_background: true,
-        draw_text: String::from("Test rust shaping bla"),
+        draw_text: String::from(
+            "Testing rust rendering -> a <=> !@#$ || && .target_scroll: vector(70.0, 70.0),
+println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
+        ),
         window_size: PhysicalSize::new(DEFAULT_WINDOW_WIDTH as u32, DEFAULT_WINDOW_HEIGHT as u32),
         size_changed: true,
         render: false,
@@ -470,16 +481,18 @@ fn main() {
 
     // Create a text font cache and prepare a rendered string
     let mut font_cache = create_font_cache(&device);
-    let mut text_spec = if scene.draw_text.is_empty() {
+    let text_spec = if scene.draw_text.is_empty() {
         None
     } else {
         let mut font_system = font_system_from_swash(&font_cache.owner().swash_font());
-        Some(cosmic_shape_str(
-            Origin2d { x: 40, y: 40 },
+        let mut text_spec = Some(cosmic_shape_str(
+            Origin2d { x: 20, y: 20 },
             &scene.draw_text,
             &mut font_system,
             20f32,
-        ))
+        ));
+        font_cache.offset_glyphs(text_spec.as_mut().unwrap());
+        text_spec
         /*
         Some(simple_shape_str(
             &scene.draw_text,
@@ -613,8 +626,7 @@ fn main() {
             ],
         });
 
-    let mut text_render_run = if let Some(text_spec) = text_spec.as_mut() {
-        font_cache.offset_glyphs(text_spec);
+    let mut text_render_run = if let Some(text_spec) = text_spec {
         Some(font_cache.render_run(&device, &text_spec).unwrap())
     } else {
         None

@@ -14,7 +14,7 @@ struct VertexOutput {
 fn main(@location(0) position: vec4<f32>) -> VertexOutput {
     var v_pos = position.xy;
     var t_pos = position.zw;
-    var v_position = vec4<f32>((v_pos/500.0) - 0.9, 0.0000002, 1.0);
+    var v_position = vec4<f32>((v_pos/300.0) - 0.9, 0.0000002, 1.0);
 //    var v_position = vec4<f32>((render_point.v_pos/40.0) - 0.9, 0.0000002, 1.0);
     return VertexOutput(
         t_pos,
