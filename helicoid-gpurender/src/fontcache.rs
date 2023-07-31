@@ -97,11 +97,11 @@ where
             dev,
             extent.width,
             extent.height,
-            TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Bgra8UnormSrgb,
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Simple font cache view"),
-            format: Some(TextureFormat::Rgba8UnormSrgb),
+            format: Some(TextureFormat::Bgra8UnormSrgb),
             dimension: Some(TextureViewDimension::D2),
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,

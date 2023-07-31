@@ -496,7 +496,7 @@ impl BackedUpTexture {
                 height: 0,
                 depth_or_array_layers: 0,
             },
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
         }
     }
     pub fn with_extent(extent: &TextureCoordinate2D) -> Self {
@@ -509,7 +509,7 @@ impl BackedUpTexture {
             layout: ImageDataLayout::default(),
             label: None,
             extent: extent_from_texture_coordinate(extent),
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
         }
     }
     pub fn with_texture(texture_info: TextureInfo) -> Self {
@@ -540,7 +540,7 @@ impl BackedUpTexture {
                 height,
                 depth_or_array_layers: 1,
             },
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
         }
     }
     fn ensure_texture_parameters(&mut self, device: &wgpu::Device) {

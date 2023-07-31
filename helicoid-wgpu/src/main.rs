@@ -732,7 +732,7 @@ fn main() {
             module: fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -781,7 +781,7 @@ fn main() {
             module: bg_fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -824,7 +824,7 @@ fn main() {
             module: text_fs_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
                         src_factor: wgpu::BlendFactor::One,
@@ -873,7 +873,7 @@ fn main() {
 
     let mut surface_desc = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        format: wgpu::TextureFormat::Bgra8UnormSrgb,
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::AutoVsync,

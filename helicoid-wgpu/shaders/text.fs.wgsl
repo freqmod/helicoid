@@ -20,6 +20,6 @@ fn main(vo: VertexOutput) -> @location(0) vec4<f32>{
 //    return vec4(col.x,col.y, col.z, col.w);
     var a = col.x + col.y + col.z;
 //    return vec4(1.0,1.0,1.0,1.0);
-    return vec4(col.x,col.y,col.z,a);
+    return vec4(col.b,col.g,col.r,a);
 //    return vec4(vo.t_position.x*5.0, vo.t_position.y*20.0, col.x,col.y);
 }
