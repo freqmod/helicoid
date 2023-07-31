@@ -1,4 +1,4 @@
-use cosmic_text::fontdb::{FaceInfo, Language, ID};
+use cosmic_text::fontdb::{Database, FaceInfo, Language, ID};
 use cosmic_text::{Attrs, Buffer as TextBuffer, Font, FontSystem, Metrics, Shaping, Weight};
 /*
 (c) Frederik Vestre - Licensed under MPL (like the rest of helicoid).
@@ -143,7 +143,10 @@ fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
 fn font_system_from_swash(font: &FontRef) -> FontSystem {
     let mut data = Vec::with_capacity(font.data.len());
     data.extend_from_slice(font.data);
-    FontSystem::new_with_fonts([cosmic_text::fontdb::Source::Binary(Arc::new(data))].into_iter())
+    let mut font_db = Database::new();
+    font_db.load_font_data(data);
+    FontSystem::new_with_locale_and_db(String::from("C"), font_db)
+    //    FontSystem::new_with_fonts([cosmic_text::fontdb::Source::Binary(Arc::new(data))].into_iter())
 }
 
 fn face_info_from_swash(font: &FontRef) -> FaceInfo {
@@ -1186,7 +1189,7 @@ fn update_inputs(
             scene.render = true;
         }
         Event::RedrawEventsCleared => {
-            if scene.changed {
+            if scene.changed || scene.size_changed {
                 window.request_redraw();
             }
         }
@@ -1207,7 +1210,8 @@ fn update_inputs(
         } => {
             println!("Window evt: {:?}", event);
             scene.window_size = size;
-            scene.size_changed = true
+            scene.size_changed = true;
+            scene.changed = true;
         }
         Event::WindowEvent {
             event:
@@ -1272,8 +1276,7 @@ fn update_inputs(
     scene.stroke_width =
         scene.stroke_width + (scene.target_stroke_width - scene.stroke_width) / 5.0;
 
-    //    *control_flow = ControlFlow::Poll;
-    *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(500));
+    *control_flow = ControlFlow::Poll;
 
     true
 }
