@@ -508,7 +508,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             Origin2d { x: 10, y: 10 },
             &scene.draw_text,
             &mut font_system,
-            //            12.0,
+            // 50.0,
             17.0,
         ));
         font_cache.offset_glyphs(text_spec.as_mut().unwrap());
@@ -943,7 +943,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
                         src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                        dst_factor: wgpu::BlendFactor::OneMinusDst,
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
