@@ -123,10 +123,10 @@ pub fn base_asset_path() -> PathBuf {
 
 fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
     let font = SwashFont::from_path(
-        //&base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
-        &base_asset_path()
-            .join("fonts")
-            .join("FiraCodeNerdFont-Regular.ttf"),
+        &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
+        /* &base_asset_path()
+        .join("fonts")
+        .join("FiraCodeNerdFont-Regular.ttf"),*/
         //        &base_asset_path().join("fonts").join("NotoSans-Regular.ttf"),
         0,
     )
@@ -176,7 +176,7 @@ fn cosmic_shape_str(
     scale: f32,
 ) -> RenderSpec {
     // Text metrics indicate the font size and line height of a buffer
-    let metrics = Metrics::new(scale, scale + 2.0);
+    let metrics = Metrics::new(scale, scale * 1.1f32);
 
     // A Buffer provides shaping and layout for a UTF-8 string, create one per text widget
     let mut buffer = TextBuffer::new(font_system, metrics);
@@ -185,7 +185,7 @@ fn cosmic_shape_str(
     let mut buffer = buffer.borrow_with(font_system);
 
     // Set a size for the text buffer, in pixels
-    buffer.set_size(500.0, 400.0);
+    buffer.set_size(1000.0, 1000.0);
 
     // Attributes indicate what font to choose
     let attrs = Attrs::new();
@@ -486,10 +486,11 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     } else {
         let mut font_system = font_system_from_swash(&font_cache.owner().swash_font());
         let mut text_spec = Some(cosmic_shape_str(
-            Origin2d { x: 20, y: 20 },
+            Origin2d { x: 10, y: 10 },
             &scene.draw_text,
             &mut font_system,
-            20f32,
+            //            12.0,
+            17.0,
         ));
         font_cache.offset_glyphs(text_spec.as_mut().unwrap());
         text_spec
@@ -597,24 +598,24 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Text Bind group layout"),
             entries: &[
-                /*                wgpu::BindGroupLayoutEntry {
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
+                        min_binding_size: wgpu::BufferSize::new(globals_buffer_byte_size),
                     },
                     count: None,
-                },*/
+                },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 0,
+                    binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -648,15 +649,20 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         ],
     });
 
-    let text_bind_group = if let Some(render_run) = text_render_run.as_ref() {
-        let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
-        Some(
+    let text_bind_group =
+        if let Some(render_run) = text_render_run.as_ref() {
+            let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
+            Some(
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Text Bind group"),
                 layout: &text_bind_group_layout,
                 entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(globals_ubo.as_entire_buffer_binding()),
+            },
                     wgpu::BindGroupEntry {
-                        binding: 0,
+                        binding: 1,
                         resource: wgpu::BindingResource::Sampler(
                             font_cache
                                 .atlas_ref(
@@ -670,7 +676,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                         ),
                     },
                     wgpu::BindGroupEntry {
-                        binding: 1,
+                        binding: 2,
                         resource: wgpu::BindingResource::TextureView(
                             &font_cache
                                 .atlas_ref(
@@ -687,9 +693,9 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 ],
             }),
         )
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[&bind_group_layout],
@@ -843,12 +849,12 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
                         src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::Zero,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::SrcAlpha,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        src_factor: wgpu::BlendFactor::Src,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
                         operation: wgpu::BlendOperation::Add,
                     },
                 }),
@@ -1045,7 +1051,12 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 wgpu::RenderPassColorAttachment {
                     view: msaa_target,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.25,
+                            g: 0.25,
+                            b: 0.25,
+                            a: 1.0,
+                        }),
                         store: true,
                     },
                     resolve_target: Some(&frame_view),
@@ -1054,7 +1065,13 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 wgpu::RenderPassColorAttachment {
                     view: &frame_view,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.25,
+                            g: 0.25,
+                            b: 0.25,
+                            a: 1.0,
+                        }),
+                        //                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                         store: true,
                     },
                     resolve_target: None,

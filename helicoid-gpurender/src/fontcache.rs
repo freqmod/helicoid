@@ -318,7 +318,7 @@ where
             // Are placement scaled differently trough the graphics pipeline than the pixels in the texture?
 
             elm.offset.x = (elm.offset.x as i32 + placement.left) as u32;
-            elm.offset.y = (elm.offset.y as i32 - placement.height as i32 + placement.top) as u32;
+            elm.offset.y = (elm.offset.y as i32 - placement.top) as u32;
             elm.extent.x = placement.width;
             elm.extent.y = placement.height;
             println!(
@@ -447,11 +447,17 @@ pub struct RenderedRun {
 pub struct RenderSpec {
     elements: Vec<RenderSpecElement>,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Point2d {
+    pub x: i32,
+    pub y: i32,
+}
 #[derive(Debug)]
 pub struct RenderSpecElement {
     pub char: char,
     pub key: SwashCacheKey,
-    pub offset: Origin2d,
+    pub offset: Origin2d, // TODO: Use signed point
     pub extent: Origin2d,
 }
 
@@ -484,37 +490,37 @@ impl RenderSquare {
         Self {
             top_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
-                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                dy: (element.offset.y as f32).to_bits(),
                 sx: (atlas.origin.x as f32 / tw).to_bits(),
                 sy: (atlas.origin.y as f32 / th).to_bits(),
             },
             bottom_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
-                dy: (element.offset.y as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: (atlas.origin.x as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / tw).to_bits(),
             },
             top_right1: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
-                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                dy: ((element.offset.y) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y) as f32 / th).to_bits(),
             },
             top_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
-                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
+                dy: ((element.offset.y) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y) as f32 / th).to_bits(),
             },
             bottom_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
-                dy: ((element.offset.y) as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
             },
             bottom_left2: RenderPoint {
                 dx: ((element.offset.x) as f32).to_bits(),
-                dy: ((element.offset.y) as f32).to_bits(),
+                dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: ((atlas.origin.x) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
             },
