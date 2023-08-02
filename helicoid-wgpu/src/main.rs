@@ -18,7 +18,7 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 
 use lyon::algorithms::{rounded_polygon, walk};
 
-use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, TextureViewDescriptor};
+use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, TextureDescriptor, TextureViewDescriptor};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -28,6 +28,7 @@ use winit::window::{Window, WindowBuilder};
 // For create_buffer_init()
 use wgpu::util::DeviceExt;
 
+use core::slice;
 use futures::executor::block_on;
 use std::mem;
 use std::ops::Rem;
@@ -59,6 +60,21 @@ struct Globals {
 
 unsafe impl bytemuck::Pod for Globals {}
 unsafe impl bytemuck::Zeroable for Globals {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Color32 {
+    /// Red component of the color
+    pub r: u32,
+    /// Green component of the color
+    pub g: u32,
+    /// Blue component of the color
+    pub b: u32,
+    /// Alpha component of the color
+    pub a: u32,
+}
+unsafe impl bytemuck::Pod for Color32 {}
+unsafe impl bytemuck::Zeroable for Color32 {}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -199,7 +215,7 @@ fn cosmic_shape_str(
     let mut spec = RenderSpec::default();
 
     for run in buffer.layout_runs() {
-        for glyph in run.glyphs {
+        for (idx, glyph) in run.glyphs.iter().enumerate() {
             let physical = glyph.physical((glyph.x_offset, glyph.y_offset), 1.0);
             spec.add_element(RenderSpecElement {
                 char: 'a', //run.text[glyph.start..glyph.end].chars().next().unwrap(),
@@ -214,6 +230,7 @@ fn cosmic_shape_str(
                     y: init_offset.y + physical.y as u32 + (run.line_y as u32),
                 },
                 extent: Origin2d::ZERO,
+                color_idx: (idx % 128) as u16,
             })
         }
     }
@@ -241,6 +258,7 @@ fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
                 y: 0,
             },
             extent: Origin2d::ZERO,
+            color_idx: 0,
         })
     }
     spec
@@ -569,6 +587,44 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.fs.wgsl").into()),
     });
 
+    let mut palette_host = Vec::<u32>::with_capacity(128);
+    palette_host.resize(128, 0xFFFFFFFF);
+
+    palette_host[0] = 0xFFFF0000;
+    palette_host[1] = 0xFF00FF00;
+    palette_host[2] = 0xFF0000FF;
+    palette_host[3] = 0xFF00FFFF;
+    palette_host[4] = 0xFFFF00FF;
+    palette_host[5] = 0xFFFFFF00;
+
+    let palette_descriptor = &wgpu::TextureDescriptor {
+        label: Some("Frame descriptor"),
+        size: wgpu::Extent3d {
+            width: 128,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Bgra8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    };
+
+    let palette_texture = device.create_texture(palette_descriptor);
+
+    let palette_view = palette_texture.create_view(&TextureViewDescriptor::default());
+    let palette_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        address_mode_w: wgpu::AddressMode::Repeat,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Bind group layout"),
         entries: &[
@@ -625,6 +681,22 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -650,18 +722,19 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         ],
     });
 
-    let text_bind_group =
-        if let Some(render_run) = text_render_run.as_ref() {
-            let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
-            Some(
+    let text_bind_group = if let Some(render_run) = text_render_run.as_ref() {
+        let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
+        Some(
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Text Bind group"),
                 layout: &text_bind_group_layout,
                 entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(globals_ubo.as_entire_buffer_binding()),
-            },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(
+                            globals_ubo.as_entire_buffer_binding(),
+                        ),
+                    },
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: wgpu::BindingResource::Sampler(
@@ -691,12 +764,20 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                                 .create_view(&TextureViewDescriptor::default()),
                         ),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&palette_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&palette_view),
+                    },
                 ],
             }),
         )
-        } else {
-            None
-        };
+    } else {
+        None
+    };
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[&bind_group_layout],
@@ -918,6 +999,26 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     let mut multisampled_render_target = None;
 
     surface.configure(&device, &surface_desc);
+
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            aspect: wgpu::TextureAspect::All,
+            texture: &palette_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+        },
+        bytemuck::cast_slice(palette_host.as_slice()),
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * 128),
+            rows_per_image: Some(1),
+        },
+        Extent3d {
+            width: 128,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
 
     let mut depth_texture_view = None;
 

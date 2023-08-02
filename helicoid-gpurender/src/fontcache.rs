@@ -457,6 +457,7 @@ pub struct Point2d {
 #[derive(Debug)]
 pub struct RenderSpecElement {
     pub char: char,
+    pub color_idx: u16,
     pub key: SwashCacheKey,
     pub offset: Origin2d, // TODO: Use signed point
     pub extent: Origin2d,
@@ -488,7 +489,9 @@ impl RenderSquare {
         which means they are bottom to top */
         let tw = texture_width as f32;
         let th = texture_height as f32;
-        let color_idx = (0.0 as f32).to_bits();
+        let palette_len = 128;
+        let color_idx =
+            (((element.color_idx % palette_len) as f32 / palette_len as f32) as f32).to_bits();
         Self {
             top_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
@@ -704,6 +707,7 @@ mod tests {
                     y: 0,
                 },
                 extent: Origin2d::ZERO,
+                color_idx: 0,
             })
         }
         // TODO: Fill render spec with some default (statically shaped) data
