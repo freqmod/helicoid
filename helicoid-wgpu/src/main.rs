@@ -1,3 +1,4 @@
+use bytemuck::offset_of;
 use cosmic_text::fontdb::{Database, FaceInfo, Language, ID};
 use cosmic_text::{Attrs, Buffer as TextBuffer, Font, FontSystem, Metrics, Shaping, Weight};
 /*
@@ -834,11 +835,23 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             buffers: &[wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<RenderPoint>() as u64,
                 step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[wgpu::VertexAttribute {
-                    offset: 0,
-                    format: wgpu::VertexFormat::Float32x4,
-                    shader_location: 0,
-                }],
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        offset: offset_of!(RenderPoint, dx) as u64,
+                        format: wgpu::VertexFormat::Float32x2,
+                        shader_location: 0,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: offset_of!(RenderPoint, sx) as u64,
+                        format: wgpu::VertexFormat::Float32x2,
+                        shader_location: 1,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: offset_of!(RenderPoint, color_idx) as u64,
+                        format: wgpu::VertexFormat::Float32,
+                        shader_location: 2,
+                    },
+                ],
             }],
         },
         fragment: Some(wgpu::FragmentState {

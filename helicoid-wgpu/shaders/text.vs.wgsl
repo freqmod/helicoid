@@ -12,19 +12,21 @@ struct Globals {
 
 struct VertexOutput {
     @location(0) t_position: vec2<f32>,
+    @location(1) c_position: vec2<f32>,
     @builtin(position) position: vec4<f32>,
 };
 
 @vertex
-fn main(@location(0) position: vec4<f32>) -> VertexOutput {
-    var v_pos = position.xy;
-    var t_pos = position.zw;
+fn main(@location(0) v_pos: vec2<f32>,
+ @location(1) t_pos: vec2<f32>,
+ @location(2) color_idx: f32) -> VertexOutput {
     var x = (2.0 * v_pos.x / globals.resolution.x) - 1.0; 
     var y = (-2.0 * (v_pos.y / globals.resolution.y)) + 1.0;
     var v_position = vec4<f32>(x, y, 0.0000002, 1.0);
 //    var v_position = vec4<f32>((render_point.v_pos/40.0) - 0.9, 0.0000002, 1.0);
     return VertexOutput(
-        t_pos,
+        vec2<f32>(t_pos.x, t_pos.y),
+        vec2<f32>(color_idx, color_idx),
         v_position,
     );
 }

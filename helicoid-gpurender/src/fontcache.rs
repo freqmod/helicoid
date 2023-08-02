@@ -395,10 +395,11 @@ pub enum RenderRunError {
 #[repr(C)]
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RenderPoint {
-    dx: u32,
-    dy: u32,
-    sx: u32,
-    sy: u32,
+    pub dx: u32,
+    pub dy: u32,
+    pub sx: u32,
+    pub sy: u32,
+    pub color_idx: u32,
 }
 
 impl std::fmt::Debug for RenderPoint {
@@ -487,42 +488,49 @@ impl RenderSquare {
         which means they are bottom to top */
         let tw = texture_width as f32;
         let th = texture_height as f32;
+        let color_idx = (0.0 as f32).to_bits();
         Self {
             top_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
                 dy: (element.offset.y as f32).to_bits(),
                 sx: (atlas.origin.x as f32 / tw).to_bits(),
                 sy: (atlas.origin.y as f32 / th).to_bits(),
+                color_idx,
             },
             bottom_left1: RenderPoint {
                 dx: (element.offset.x as f32).to_bits(),
                 dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: (atlas.origin.x as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / tw).to_bits(),
+                color_idx,
             },
             top_right1: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
                 dy: ((element.offset.y) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y) as f32 / th).to_bits(),
+                color_idx,
             },
             top_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
                 dy: ((element.offset.y) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y) as f32 / th).to_bits(),
+                color_idx,
             },
             bottom_right2: RenderPoint {
                 dx: ((element.offset.x + atlas.extent.width) as f32).to_bits(),
                 dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: ((atlas.origin.x + atlas.extent.width) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
+                color_idx,
             },
             bottom_left2: RenderPoint {
                 dx: ((element.offset.x) as f32).to_bits(),
                 dy: ((element.offset.y + atlas.extent.height) as f32).to_bits(),
                 sx: ((atlas.origin.x) as f32 / tw).to_bits(),
                 sy: ((atlas.origin.y + atlas.extent.height) as f32 / th).to_bits(),
+                color_idx,
             },
         }
     }
@@ -684,6 +692,7 @@ mod tests {
 
         for x in 0..200 {
             spec.elements.push(RenderSpecElement {
+                char: ' ',
                 key: SwashCacheKey {
                     glyph_id: 120 + x as u16,
                     font_size_bits: font_scale_f.to_bits(),
