@@ -508,7 +508,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             Origin2d { x: 10, y: 10 },
             &scene.draw_text,
             &mut font_system,
-            // 50.0,
+            //50.0,
             17.0,
         ));
         font_cache.offset_glyphs(text_spec.as_mut().unwrap());
@@ -588,14 +588,24 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     });
 
     let mut palette_host = Vec::<u32>::with_capacity(128);
-    palette_host.resize(128, 0xFFFFFFFF);
+    palette_host.resize(128, 0xF00000FF);
 
     palette_host[0] = 0xFFFF0000;
     palette_host[1] = 0xFF00FF00;
     palette_host[2] = 0xFF0000FF;
     palette_host[3] = 0xFF00FFFF;
     palette_host[4] = 0xFFFF00FF;
-    palette_host[5] = 0xFFFFFF00;
+    //palette_host[5] = 0xFFFFFF00;
+    palette_host[10] = 0xF0000088;
+    palette_host[11] = 0xF0000088;
+    palette_host[12] = 0xF0000088;
+    palette_host[13] = 0xF0000088;
+    palette_host[14] = 0xF0000088;
+    palette_host[15] = 0xFFFFFFFF;
+    palette_host[16] = 0xFFFFFFFF;
+    palette_host[17] = 0xFFFFFFFF;
+    palette_host[18] = 0xFFFFFFFF;
+    palette_host[19] = 0xFFFFFFFF;
 
     let palette_descriptor = &wgpu::TextureDescriptor {
         label: Some("Frame descriptor"),
@@ -943,12 +953,13 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
                         src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::OneMinusDst,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                        //dst_factor: wgpu::BlendFactor::OneMinusSrc,
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
                         src_factor: wgpu::BlendFactor::Src,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                         operation: wgpu::BlendOperation::Add,
                     },
                 }),
