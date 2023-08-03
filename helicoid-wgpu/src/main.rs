@@ -473,6 +473,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
 
     // create an instance
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        //backends: wgpu::Backends::GL,
         backends: wgpu::Backends::all(),
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
@@ -491,7 +492,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     let (device, queue) = block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: None,
-            features: wgpu::Features::default(),
+            features: wgpu::Features::default().union(wgpu::Features::BLEND_FUNC_EXTENDED),
             limits: wgpu::Limits::default(),
         },
         None,
