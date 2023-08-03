@@ -473,7 +473,6 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
 
     // create an instance
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        //backends: wgpu::Backends::GL,
         backends: wgpu::Backends::all(),
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
     });
@@ -492,7 +491,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     let (device, queue) = block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: None,
-            features: wgpu::Features::default().union(wgpu::Features::BLEND_FUNC_EXTENDED),
+            features: wgpu::Features::default(),
             limits: wgpu::Limits::default(),
         },
         None,
@@ -589,7 +588,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     });
 
     let mut palette_host = Vec::<u32>::with_capacity(128);
-    palette_host.resize(128, 0xF00000FF);
+    palette_host.resize(128, 0xFF000000);
 
     palette_host[0] = 0xFFFF0000;
     palette_host[1] = 0xFF00FF00;
@@ -597,11 +596,11 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     palette_host[3] = 0xFF00FFFF;
     palette_host[4] = 0xFFFF00FF;
     //palette_host[5] = 0xFFFFFF00;
-    palette_host[10] = 0xF0000088;
-    palette_host[11] = 0xF0000088;
-    palette_host[12] = 0xF0000088;
-    palette_host[13] = 0xF0000088;
-    palette_host[14] = 0xF0000088;
+    palette_host[10] = 0xF0000000;
+    palette_host[11] = 0xFF000000;
+    palette_host[12] = 0xFF000000;
+    palette_host[13] = 0xFF000088;
+    palette_host[14] = 0xFF000088;
     palette_host[15] = 0xFFFFFFFF;
     palette_host[16] = 0xFFFFFFFF;
     palette_host[17] = 0xFFFFFFFF;
@@ -953,13 +952,13 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Src1,
+                        src_factor: wgpu::BlendFactor::Src,
                         dst_factor: wgpu::BlendFactor::OneMinusSrc1,
                         //dst_factor: wgpu::BlendFactor::OneMinusSrc,
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Src1,
+                        src_factor: wgpu::BlendFactor::Src,
                         dst_factor: wgpu::BlendFactor::OneMinusSrc1Alpha,
                         operation: wgpu::BlendOperation::Add,
                     },
