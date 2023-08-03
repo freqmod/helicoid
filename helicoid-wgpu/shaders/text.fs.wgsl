@@ -38,7 +38,7 @@ fn main(vo: VertexOutput) -> FragmentOutput {
         palette_col.r,
         palette_col.g,
         palette_col.b,
-        palette_col.a * a);
+        palette_col.a);
 //    bgr -> rgb
     var mask = vec4(
         font_col.b,
