@@ -18,7 +18,10 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 
 use lyon::algorithms::{rounded_polygon, walk};
 
-use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, TextureDescriptor, TextureViewDescriptor};
+use wgpu::{
+    BlendComponent, CompositeAlphaMode, Extent3d, Origin2d, TextureDescriptor,
+    TextureViewDescriptor,
+};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -589,13 +592,12 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
 
     let mut palette_host = Vec::<u32>::with_capacity(128);
     palette_host.resize(128, 0xFF000000);
-
+    // blue, green, red, alpha
     palette_host[0] = 0xFFFF0000;
     palette_host[1] = 0xFF00FF00;
     palette_host[2] = 0xFF0000FF;
     palette_host[3] = 0xFF00FFFF;
     palette_host[4] = 0xFFFF00FF;
-    //palette_host[5] = 0xFFFFFF00;
     palette_host[10] = 0xF0000000;
     palette_host[11] = 0xFF000000;
     palette_host[12] = 0xFF000000;
@@ -952,16 +954,11 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Src,
+                        src_factor: wgpu::BlendFactor::Src1,
                         dst_factor: wgpu::BlendFactor::OneMinusSrc1,
-                        //dst_factor: wgpu::BlendFactor::OneMinusSrc,
                         operation: wgpu::BlendOperation::Add,
                     },
-                    alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Src,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrc1Alpha,
-                        operation: wgpu::BlendOperation::Add,
-                    },
+                    alpha: BlendComponent::REPLACE,
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
