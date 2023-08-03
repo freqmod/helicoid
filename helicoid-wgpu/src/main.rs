@@ -952,14 +952,14 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                        src_factor: wgpu::BlendFactor::Src1,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrc1,
                         //dst_factor: wgpu::BlendFactor::OneMinusSrc,
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Src,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        src_factor: wgpu::BlendFactor::Src1,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrc1Alpha,
                         operation: wgpu::BlendOperation::Add,
                     },
                 }),
@@ -1217,6 +1217,8 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                         store: true,
                     }),
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             pass.set_pipeline(&render_pipeline);
