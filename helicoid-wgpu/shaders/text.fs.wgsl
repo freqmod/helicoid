@@ -44,7 +44,7 @@ fn main(vo: VertexOutput) -> FragmentOutput {
         font_col.b,
         font_col.g,
         font_col.r,
-        1.0);
+        a);
     return FragmentOutput(color, mask);
 //    return vec4(font_col.b,font_col.g,font_col.r,a);
 }
