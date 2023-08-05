@@ -140,8 +140,12 @@ where
         self.atlases
             .push(TextureAtlas::with_texture_info(texture_info));
     }
-    pub(crate) fn add_textureless_atlas(&mut self, extent: TextureCoordinate2D) {
-        self.atlases.push(TextureAtlas::new(extent));
+    pub(crate) fn add_textureless_atlas(
+        &mut self,
+        extent: TextureCoordinate2D,
+        format: wgpu::TextureFormat,
+    ) {
+        self.atlases.push(TextureAtlas::new(extent, format));
     }
     pub fn increment_generation(&mut self) {
         self.current_generation = self.current_generation.wrapping_add(1);
@@ -344,10 +348,10 @@ impl<K> TextureAtlas<K>
 where
     K: PartialEq + Eq + Hash,
 {
-    pub fn new(extent: TextureCoordinate2D) -> Self {
+    pub fn new(extent: TextureCoordinate2D, format: wgpu::TextureFormat) -> Self {
         TextureAtlas {
             manager: PackedTextureCache::new(extent),
-            backed_up_texture: BackedUpTexture::with_extent(&extent),
+            backed_up_texture: BackedUpTexture::with_extent(&extent, format),
         }
     }
     pub fn with_texture_info(texture: TextureInfo) -> Self {
@@ -356,6 +360,7 @@ where
                 x: texture.texture.width() as u16,
                 y: texture.texture.height() as u16,
             }),
+
             backed_up_texture: BackedUpTexture::with_texture(texture),
         }
     }
@@ -499,9 +504,10 @@ impl BackedUpTexture {
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
         }
     }
-    pub fn with_extent(extent: &TextureCoordinate2D) -> Self {
-        let mut host_data = Vec::with_capacity(extent.x as usize * extent.y as usize * RGBA_BPP);
-        host_data.resize(extent.x as usize * extent.y as usize * RGBA_BPP, 0);
+    pub fn with_extent(extent: &TextureCoordinate2D, format: wgpu::TextureFormat) -> Self {
+        let bpp = format.block_size(None).unwrap() as usize;
+        let mut host_data = Vec::with_capacity(extent.x as usize * extent.y as usize * bpp);
+        host_data.resize(extent.x as usize * extent.y as usize * bpp, 0);
         Self {
             host_data,
             gpu: None,
@@ -509,24 +515,19 @@ impl BackedUpTexture {
             layout: ImageDataLayout::default(),
             label: None,
             extent: extent_from_texture_coordinate(extent),
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format,
         }
     }
     pub fn with_texture(texture_info: TextureInfo) -> Self {
+        let format = texture_info.texture.format();
+        let bpp = format.block_size(None).unwrap() as usize;
         let mut host_data = Vec::with_capacity(
-            texture_info.texture.width() as usize
-                * texture_info.texture.width() as usize
-                * RGBA_BPP,
+            texture_info.texture.width() as usize * texture_info.texture.width() as usize * bpp,
         );
         host_data.resize(
-            texture_info.texture.width() as usize
-                * texture_info.texture.width() as usize
-                * RGBA_BPP,
+            texture_info.texture.width() as usize * texture_info.texture.width() as usize * bpp,
             0,
         );
-        /*        let view = texture_info
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());*/
         let width = texture_info.texture.width();
         let height = texture_info.texture.height();
         Self {
@@ -540,7 +541,7 @@ impl BackedUpTexture {
                 height,
                 depth_or_array_layers: 1,
             },
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format,
         }
     }
     fn ensure_texture_parameters(&mut self, device: &wgpu::Device) {
@@ -588,20 +589,12 @@ impl BackedUpTexture {
             | wgpu::TextureFormat::R8Snorm
             | wgpu::TextureFormat::R8Uint
             | wgpu::TextureFormat::R8Sint
-            | wgpu::TextureFormat::Stencil8 => wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(self.extent.width),
-                rows_per_image: Some(self.extent.height),
-            },
-            wgpu::TextureFormat::Rg8Unorm
+            | wgpu::TextureFormat::Stencil8
+            | wgpu::TextureFormat::Rg8Unorm
             | wgpu::TextureFormat::Rg8Snorm
             | wgpu::TextureFormat::Rg8Uint
-            | wgpu::TextureFormat::Rg8Sint => wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(2 * self.extent.width),
-                rows_per_image: Some(self.extent.height),
-            },
-            wgpu::TextureFormat::Rgba32Uint
+            | wgpu::TextureFormat::Rg8Sint
+            | wgpu::TextureFormat::Rgba32Uint
             | wgpu::TextureFormat::Rgba32Sint
             | wgpu::TextureFormat::Rgba32Float
             | wgpu::TextureFormat::Rgba8Unorm
@@ -613,7 +606,9 @@ impl BackedUpTexture {
             | wgpu::TextureFormat::Bgra8UnormSrgb
             | wgpu::TextureFormat::Depth16Unorm => wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * self.extent.width),
+                bytes_per_row: Some(
+                    self.format.block_size(None).unwrap() as u32 * self.extent.width,
+                ),
                 rows_per_image: Some(self.extent.height),
             },
             _ => {

@@ -141,7 +141,7 @@ pub fn base_asset_path() -> PathBuf {
         .join("assets")
 }
 
-fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
+fn create_font_cache(dev: &wgpu::Device, color: bool) -> FontCache<SwashFont> {
     let font = SwashFont::from_path(
         &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
         /* &base_asset_path()
@@ -151,7 +151,7 @@ fn create_font_cache(dev: &wgpu::Device) -> FontCache<SwashFont> {
         0,
     )
     .unwrap();
-    let mut font_cache = FontCache::new(font);
+    let mut font_cache = FontCache::new(font, color);
     let mut spec = RenderSpec::default();
     font_cache.add_atlas(
         dev,
@@ -326,6 +326,7 @@ fn main() {
     println!("  b: toggle drawing the background");
     println!("  a/z: increase/decrease the stroke width");
 
+    let font_subpixel_color = false;
     // Number of samples for anti-aliasing
     // Set to 1 to disable
     let sample_count = 4;
@@ -495,7 +496,11 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     let (device, queue) = block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: None,
-            features: wgpu::Features::default().union(wgpu::Features::BLEND_FUNC_EXTENDED),
+            features: if font_subpixel_color {
+                wgpu::Features::default().union(wgpu::Features::BLEND_FUNC_EXTENDED)
+            } else {
+                wgpu::Features::default()
+            },
             limits: wgpu::Limits::default(),
         },
         None,
@@ -503,7 +508,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     .unwrap();
 
     // Create a text font cache and prepare a rendered string
-    let mut font_cache = create_font_cache(&device);
+    let mut font_cache = create_font_cache(&device, font_subpixel_color);
     let text_spec = if scene.draw_text.is_empty() {
         None
     } else {
@@ -586,9 +591,16 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         label: Some("Text vs"),
         source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.vs.wgsl").into()),
     });
-    let text_fs_module = &device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Text fs"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.fs.wgsl").into()),
+    let text_fs_module = &(if font_cache.color() {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Text fs"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.fs.wgsl").into()),
+        })
+    } else {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Text fs"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text_mono.fs.wgsl").into()),
+        })
     });
 
     let mut palette_host = Vec::<u32>::with_capacity(128);
@@ -955,8 +967,16 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Src1,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrc1,
+                        src_factor: if font_cache.color() {
+                            wgpu::BlendFactor::Src1
+                        } else {
+                            wgpu::BlendFactor::SrcAlpha
+                        },
+                        dst_factor: if font_cache.color() {
+                            wgpu::BlendFactor::OneMinusSrc1
+                        } else {
+                            wgpu::BlendFactor::OneMinusSrcAlpha
+                        },
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: BlendComponent::REPLACE,

@@ -15,7 +15,6 @@ use crate::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
 pub trait FontOwner {
     fn swash_font(&self) -> FontRef<'_>;
 }
-const BPP: usize = 4;
 const POINTS_PER_SQUARE: usize = 6;
 thread_local! {
     static RENDER_LIST_HOST: RefCell<Vec<RenderSquare>> = RefCell::new(Vec::new());
@@ -27,6 +26,7 @@ where
     context: ScaleContext,
     font: O,
     cache: TextureAtlases<SwashCacheKey>,
+    color: bool, // use RGB subpixel rendering
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -56,6 +56,11 @@ impl SubpixelBin {
         }
     }
 }
+
+struct RedrawData<'a, 'b> {
+    font: &'a mut FontRef<'b>,
+    bpp: u8,
+}
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SwashCacheKey {
     pub glyph_id: u16,
@@ -79,11 +84,29 @@ impl<O> FontCache<O>
 where
     O: FontOwner,
 {
-    pub fn new(font: O) -> Self {
+    pub fn new(font: O, color: bool) -> Self {
         Self {
             context: ScaleContext::new(),
             font,
             cache: TextureAtlases::default(),
+            color,
+        }
+    }
+    pub fn bytes_per_pixel(&self) -> usize {
+        if self.color {
+            4
+        } else {
+            1
+        }
+    }
+    pub fn color(&self) -> bool {
+        self.color
+    }
+    pub fn texture_format(&self) -> wgpu::TextureFormat {
+        if self.color {
+            TextureFormat::Bgra8UnormSrgb
+        } else {
+            TextureFormat::R8Unorm
         }
     }
     /*pub fn add_atlas(
@@ -93,15 +116,10 @@ where
         sampler: wgpu::Sampler,
     ) */
     pub fn add_atlas(&mut self, dev: &wgpu::Device, extent: Extent3d) {
-        let texture = Self::create_texture(
-            dev,
-            extent.width,
-            extent.height,
-            TextureFormat::Bgra8UnormSrgb,
-        );
+        let texture = Self::create_texture(dev, extent.width, extent.height, self.texture_format());
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Simple font cache view"),
-            format: Some(TextureFormat::Bgra8UnormSrgb),
+            format: Some(self.texture_format()),
             dimension: Some(TextureViewDimension::D2),
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,
@@ -124,6 +142,7 @@ where
         context: &mut ScaleContext,
         font: &FontRef<'_>,
         cache_key: &SwashCacheKey,
+        bpp: usize,
     ) -> swash::zeno::Placement {
         /* TODO: Is it possible to get the exent of a rendered glyph without actually rendering it? */
         /* Use swash / cosmic text to runder to the texture */
@@ -138,26 +157,38 @@ where
             .hint(true)
             .build();
 
-        // Compute the fractional offset-- you'll likely want to quantize this
-        // in a real renderer
-        let offset = Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float());
-
         // Select our source order
-        let image = Render::new(&[
-            // Color outline with the first palette
-            Source::ColorOutline(0),
-            // Color bitmap with best fit selection mode
-            Source::ColorBitmap(StrikeWith::BestFit),
-            // Standard scalable outline
-            Source::Outline,
-        ])
-        // Select a subpixel format
-        .format(Format::Alpha)
-        // Apply the fractional offset
-        .offset(offset)
-        // Render the image
-        .render(&mut scaler, cache_key.glyph_id)
-        .unwrap();
+        let image = if bpp == 4 {
+            // Compute the fractional offset-- you'll likely want to quantize this
+            // in a real renderer
+            let offset = Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float());
+            Render::new(&[
+                // Color outline with the first palette
+                Source::ColorOutline(0),
+                // Color bitmap with best fit selection mode
+                Source::ColorBitmap(StrikeWith::ExactSize),
+                // Standard scalable outline
+                Source::Outline,
+            ])
+            // Select a subpixel format
+            .format(Format::Subpixel)
+            // Apply the fractional offset
+            .offset(offset)
+            // Render the image
+            .render(&mut scaler, cache_key.glyph_id)
+            .unwrap()
+        } else {
+            Render::new(&[
+                Source::Outline,
+                // Bitmap with best fit selection mode
+                Source::Bitmap(StrikeWith::ExactSize),
+                // Standard scalable outline
+                Source::Outline,
+            ])
+            .render(&mut scaler, cache_key.glyph_id)
+            .unwrap()
+        };
+
         image.placement
     }
     pub fn update_cache<'a, I>(&mut self, elements: I)
@@ -189,10 +220,11 @@ where
         self.cache.increment_generation();
         key_meta.sort_by(|a, b| texture_atlases::insert_order(&a.1, &b.1));
         for (key, extent) in key_meta.iter() {
-            match self
-                .cache
-                .insert_single(key.clone(), extent.clone(), BPP as u8)
-            {
+            match self.cache.insert_single(
+                key.clone(),
+                extent.clone(),
+                self.bytes_per_pixel() as u8,
+            ) {
                 Ok(location) => {
                     //println!("Inserted: {:?}", &key);
                     /* Render font data info the cache */
@@ -202,12 +234,16 @@ where
                     println!("Insert-err: {:?} {:?}", &key, e);
                     match e {
                         texture_atlases::InsertResult::NoMoreSpace => {
-                            self.cache
-                                .evict_outdated(&mut self.font.swash_font(), &Self::redraw);
-                            match self
-                                .cache
-                                .insert_single(key.clone(), extent.clone(), BPP as u8)
-                            {
+                            let mut evict_data = RedrawData {
+                                font: &mut self.font.swash_font(),
+                                bpp: self.bytes_per_pixel() as u8,
+                            };
+                            self.cache.evict_outdated(&mut evict_data, &Self::redraw);
+                            match self.cache.insert_single(
+                                key.clone(),
+                                extent.clone(),
+                                self.bytes_per_pixel() as u8,
+                            ) {
                                 Ok(location) => {
                                     /* Render font data info the cache */
                                     self.render_to_location(&key, &location);
@@ -226,20 +262,28 @@ where
     }
 
     fn redraw(
-        font: &mut FontRef<'_>,
+        redraw_data: &mut RedrawData<'_, '_>,
         key: &SwashCacheKey,
         loc: &AtlasLocation,
         atlas: &mut TextureAtlas<SwashCacheKey>,
     ) {
-        Self::do_render_to_location(font, key, loc, atlas);
+        Self::do_render_to_location(
+            &mut redraw_data.font,
+            key,
+            loc,
+            atlas,
+            redraw_data.bpp as usize,
+        );
     }
 
     fn render_to_location(&mut self, key: &SwashCacheKey, location: &AtlasLocation) {
+        let bpp = self.bytes_per_pixel();
         Self::do_render_to_location(
             &self.font.swash_font(),
             key,
             location,
             self.cache.atlas(location).unwrap(),
+            bpp,
         );
     }
 
@@ -248,6 +292,7 @@ where
         cache_key: &SwashCacheKey,
         location: &AtlasLocation,
         atlas: &mut TextureAtlas<SwashCacheKey>,
+        bpp: usize,
     ) {
         /* Use swash / cosmic text to runder to the texture */
         let mut context = ScaleContext::new(); // TODO: Move to class? for caching
@@ -267,21 +312,33 @@ where
         let offset = Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float());
 
         // Select our source order
-        let image = Render::new(&[
-            // Color outline with the first palette
-            Source::ColorOutline(0),
-            // Color bitmap with best fit selection mode
-            Source::ColorBitmap(StrikeWith::ExactSize),
-            // Standard scalable outline
-            Source::Outline,
-        ])
-        // Select a subpixel format
-        .format(Format::Subpixel)
-        // Apply the fractional offset
-        .offset(offset)
-        // Render the image
-        .render(&mut scaler, cache_key.glyph_id)
-        .unwrap();
+        let image = if bpp == 4 {
+            Render::new(&[
+                // Color outline with the first palette
+                Source::ColorOutline(0),
+                // Color bitmap with best fit selection mode
+                Source::ColorBitmap(StrikeWith::ExactSize),
+                // Standard scalable outline
+                Source::Outline,
+            ])
+            // Select a subpixel format
+            .format(Format::Subpixel)
+            // Apply the fractional offset
+            .offset(offset)
+            // Render the image
+            .render(&mut scaler, cache_key.glyph_id)
+            .unwrap()
+        } else {
+            Render::new(&[
+                Source::Outline,
+                // Bitmap with best fit selection mode
+                Source::Bitmap(StrikeWith::ExactSize),
+                // Standard scalable outline
+                Source::Outline,
+            ])
+            .render(&mut scaler, cache_key.glyph_id)
+            .unwrap()
+        };
 
         let width = (image.placement.width as i32) as u32;
         let height = (image.placement.height as i32) as u32;
@@ -294,19 +351,18 @@ where
         let mut data_view = atlas.tile_data_mut(location);
         for y in 0..height {
             let row = data_view.row(y as u16);
-            //            let copy_width = (BPP * width as usize).min(row.len()) as u32;
-            let copy_width = (BPP * width as usize) as u32;
-            if copy_width != (BPP as u32) * width || copy_width != (row.len()) as u32 {
+            let copy_width = (bpp * width as usize) as u32;
+            if copy_width != (bpp as u32) * width || copy_width != (row.len()) as u32 {
                 println!(
                     "Render: {}=={} {}",
                     row.len(),
-                    BPP as u32 * width,
+                    bpp as u32 * width,
                     copy_width
                 );
             }
             row[0..copy_width as usize].copy_from_slice(
-                &image.data[(y * BPP as u32 * width) as usize
-                    ..((y * BPP as u32 * width) + copy_width) as usize],
+                &image.data[(y * bpp as u32 * width) as usize
+                    ..((y * bpp as u32 * width) + copy_width) as usize],
             );
             //println!("Rendered: {:?}", &row[0..copy_width as usize]);
         }
@@ -314,7 +370,12 @@ where
     pub fn offset_glyphs(&mut self, rs: &mut RenderSpec) {
         let font_ref = &mut self.font.swash_font();
         for elm in rs.elements.iter_mut() {
-            let placement = Self::placement_for_glyph(&mut self.context, &font_ref, &elm.key);
+            if !self.color() {
+                elm.key.x_bin = SubpixelBin::Zero;
+                elm.key.y_bin = SubpixelBin::Zero;
+            }
+            let bpp = self.bytes_per_pixel();
+            let placement = Self::placement_for_glyph(&mut self.context, &font_ref, &elm.key, bpp);
             // Are placement scaled differently trough the graphics pipeline than the pixels in the texture?
 
             elm.offset.x = (elm.offset.x as i32 + placement.left) as u32;
@@ -680,11 +741,12 @@ mod tests {
             0,
         )
         .unwrap();
-        let mut font_cache = FontCache::new(font);
+        let mut font_cache = FontCache::new(font, true);
         let mut spec = RenderSpec::default();
-        font_cache
-            .cache
-            .add_textureless_atlas(TextureCoordinate2D { x: 1024, y: 1024 });
+        font_cache.cache.add_textureless_atlas(
+            TextureCoordinate2D { x: 1024, y: 1024 },
+            TextureFormat::Bgra8UnormSrgb,
+        );
 
         let char_width = font_cache
             .owner()
