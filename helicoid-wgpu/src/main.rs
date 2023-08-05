@@ -326,7 +326,7 @@ fn main() {
     println!("  b: toggle drawing the background");
     println!("  a/z: increase/decrease the stroke width");
 
-    let font_subpixel_color = false;
+    let font_subpixel_color = true;
     // Number of samples for anti-aliasing
     // Set to 1 to disable
     let sample_count = 4;
@@ -517,7 +517,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             Origin2d { x: 10, y: 10 },
             &scene.draw_text,
             &mut font_system,
-            //50.0,
+            // 50.0,
             17.0,
         ));
         font_cache.offset_glyphs(text_spec.as_mut().unwrap());
@@ -610,12 +610,12 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     palette_host[1] = 0xFF00FF00;
     palette_host[2] = 0xFF0000FF;
     palette_host[3] = 0xFF00FFFF;
-    palette_host[4] = 0xFFFF00FF;
-    palette_host[10] = 0xF0000000;
-    palette_host[11] = 0xFF000000;
-    palette_host[12] = 0xFF000000;
-    palette_host[13] = 0xFF000088;
-    palette_host[14] = 0xFF000088;
+    palette_host[4] = 0xFFFFFF00;
+    palette_host[10] = 0xA000FF00;
+    palette_host[11] = 0xA0008800;
+    palette_host[12] = 0xA000FF00;
+    palette_host[13] = 0xF0000088;
+    palette_host[14] = 0xF0000088;
     palette_host[15] = 0xFFFFFFFF;
     palette_host[16] = 0xFFFFFFFF;
     palette_host[17] = 0xFFFFFFFF;
@@ -638,13 +638,12 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     };
 
     let palette_texture = device.create_texture(palette_descriptor);
-
     let palette_view = palette_texture.create_view(&TextureViewDescriptor::default());
     let palette_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         address_mode_u: wgpu::AddressMode::Repeat,
         address_mode_v: wgpu::AddressMode::Repeat,
         address_mode_w: wgpu::AddressMode::Repeat,
-        mag_filter: wgpu::FilterMode::Linear,
+        mag_filter: wgpu::FilterMode::Nearest,
         min_filter: wgpu::FilterMode::Nearest,
         mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()

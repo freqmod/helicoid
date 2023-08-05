@@ -29,16 +29,16 @@ fn main(vo: VertexOutput) -> FragmentOutput {
     var font_col = textureSample(atlas_texture, atlas_sampler, vo.t_position);
     var palette_col = textureSample(palette_texture, palette_sampler, vec2<f32>(vo.c_position.x, 1.0));
     var a = max(max(font_col.r, font_col.g), font_col.b);
-//    var mul_a = 1.0;
-//    if (palette_col.a != 0.0){
-//        var mul_a = palette_col;
-//    }
+    var amask  = 0.0;
+    if a > 0.0 {
+        amask = 1.0;
+    }
     var pal_premul = palette_col;
     var color = vec4(
         palette_col.r,
         palette_col.g,
         palette_col.b,
-        palette_col.a);
+        palette_col.a * amask);
 //    bgr -> rgb
     var mask = vec4(
         font_col.b,
