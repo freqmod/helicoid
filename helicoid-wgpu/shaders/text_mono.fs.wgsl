@@ -27,8 +27,8 @@ fn main(vo: VertexOutput) -> @location(0) vec4<f32> {
 //    var a = max(max(font_col.r, font_col.g), font_col.b);
 var a = font_col.r;
     return vec4(
-        palette_col.r * a,
-        palette_col.g * a,
-        palette_col.b * a,
+        palette_col.r,
+        palette_col.g,
+        palette_col.b,
         palette_col.a * a);
 }

@@ -604,7 +604,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     });
 
     let mut palette_host = Vec::<u32>::with_capacity(128);
-    palette_host.resize(128, 0xFF000000);
+    palette_host.resize(128, 0xFFFFFFFF);
     // blue, green, red, alpha
     palette_host[0] = 0xFFFF0000;
     palette_host[1] = 0xFF00FF00;
@@ -1195,9 +1195,9 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                     view: msaa_target,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.25,
-                            g: 0.25,
-                            b: 0.25,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
                             a: 1.0,
                         }),
                         store: true,
@@ -1209,9 +1209,9 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                     view: &frame_view,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.25,
-                            g: 0.25,
-                            b: 0.25,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
                             a: 1.0,
                         }),
                         //                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
