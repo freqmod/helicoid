@@ -1,4 +1,6 @@
-use crate::texture_map::{self, PackedTextureCache, TextureCoordinate2D, TextureCoordinateInt};
+use crate::font::texture_map::{
+    self, PackedTextureCache, TextureCoordinate2D, TextureCoordinateInt,
+};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, ops::Range};
 use wgpu::{Extent3d, ImageDataLayout, Origin2d, Sampler, Texture, TextureViewDescriptor};
 

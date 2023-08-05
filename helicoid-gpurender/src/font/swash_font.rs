@@ -5,7 +5,7 @@ use std::{
 
 use swash::{CacheKey, FontRef};
 
-use crate::fontcache::FontOwner;
+use crate::font::fontcache::FontOwner;
 
 pub struct SwashFont {
     data: Vec<u8>,

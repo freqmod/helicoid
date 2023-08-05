@@ -1,6 +1,7 @@
 use bytemuck::offset_of;
 use cosmic_text::fontdb::{Database, FaceInfo, Language, ID};
 use cosmic_text::{Attrs, Buffer as TextBuffer, Font, FontSystem, Metrics, Shaping, Weight};
+use helicoid_gpurender::font::texture_atlases::AtlasLocation;
 /*
 (c) Frederik Vestre - Licensed under MPL (like the rest of helicoid).
 
@@ -38,7 +39,7 @@ use std::ops::Rem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use helicoid_gpurender::{
+use helicoid_gpurender::font::{
     fontcache::{
         FontCache, FontOwner, RenderPoint, RenderSpec, RenderSpecElement, RenderSquare,
         SubpixelBin, SwashCacheKey,
@@ -763,11 +764,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                         binding: 1,
                         resource: wgpu::BindingResource::Sampler(
                             font_cache
-                                .atlas_ref(
-                                    &helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(
-                                        0,
-                                    ),
-                                )
+                                .atlas_ref(&AtlasLocation::atlas_only(0))
                                 .unwrap()
                                 .sampler()
                                 .unwrap(),
@@ -777,11 +774,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                         binding: 2,
                         resource: wgpu::BindingResource::TextureView(
                             &font_cache
-                                .atlas_ref(
-                                    &helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(
-                                        0,
-                                    ),
-                                )
+                                .atlas_ref(&AtlasLocation::atlas_only(0))
                                 .unwrap()
                                 .texture()
                                 .unwrap()
@@ -1268,7 +1261,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                         .host_data()[0..1024]
                 );*/
                 font_cache
-                    .atlas(&helicoid_gpurender::texture_atlases::AtlasLocation::atlas_only(0))
+                    .atlas(&AtlasLocation::atlas_only(0))
                     .unwrap()
                     .update_texture(&device, &queue);
 

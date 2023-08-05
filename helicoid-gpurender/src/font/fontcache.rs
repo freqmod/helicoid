@@ -11,7 +11,7 @@ use wgpu::{
     CompositeAlphaMode, Extent3d, Origin2d, SamplerDescriptor, TextureFormat, TextureViewDimension,
 };
 
-use crate::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
+use crate::font::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
 pub trait FontOwner {
     fn swash_font(&self) -> FontRef<'_>;
 }
@@ -709,7 +709,7 @@ impl RenderedRun {
 mod tests {
     use std::{env, path::PathBuf};
 
-    use crate::{swash_font::SwashFont, texture_map::TextureCoordinate2D};
+    use crate::font::{swash_font::SwashFont, texture_map::TextureCoordinate2D};
 
     use super::*;
 
