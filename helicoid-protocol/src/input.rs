@@ -1,5 +1,3 @@
-
-
 //use crate::text::ShapedTextBlock;
 use bytecheck::CheckBytes;
 use num_enum::IntoPrimitive;
@@ -79,6 +77,7 @@ pub struct MouseButtonStateChangeEvent {
 pub struct CursorMovedEvent {
     pub physical_position_x: OrderedFloat<f32>,
     pub physical_position_y: OrderedFloat<f32>,
+    pub area_id: u32,
     pub timestamp: u32,
 }
 /* See winit Ime event for details, expects the strings in the smallvec to

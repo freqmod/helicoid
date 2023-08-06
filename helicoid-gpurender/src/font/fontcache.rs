@@ -1,7 +1,10 @@
 use std::{borrow::BorrowMut, cell::RefCell};
 
 use cosmic_text::{CacheKey, SwashCache};
+use helicoid_protocol::text::SHAPABLE_STRING_ALLOC_LEN;
 use lyon::geom::euclid::num::Ceil;
+use num_enum::{FromPrimitive, IntoPrimitive};
+use smallvec::SmallVec;
 use swash::{
     scale::{Render, ScaleContext, Source, StrikeWith},
     zeno::{Format, Vector},
@@ -29,8 +32,12 @@ where
     color: bool, // use RGB subpixel rendering
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, IntoPrimitive, FromPrimitive, Default,
+)]
+#[repr(u8)]
 pub enum SubpixelBin {
+    #[default]
     Zero,
     One,
     Two,
@@ -61,12 +68,15 @@ struct RedrawData<'a, 'b> {
     font: &'a mut FontRef<'b>,
     bpp: u8,
 }
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Default)]
+pub struct PackedSubpixels(u8);
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SwashCacheKey {
     pub glyph_id: u16,
     pub font_size_bits: u32,
-    pub x_bin: SubpixelBin,
-    pub y_bin: SubpixelBin,
+    pub bins: PackedSubpixels,
 }
 
 impl From<CacheKey> for SwashCacheKey {
@@ -74,9 +84,28 @@ impl From<CacheKey> for SwashCacheKey {
         SwashCacheKey {
             glyph_id: key.glyph_id,
             font_size_bits: key.font_size_bits,
-            x_bin: SubpixelBin::from(key.x_bin),
-            y_bin: SubpixelBin::from(key.y_bin),
+            bins: PackedSubpixels::new(SubpixelBin::from(key.x_bin), SubpixelBin::from(key.y_bin)),
         }
+    }
+}
+
+impl SwashCacheKey {
+    pub fn x_bin(&self) -> SubpixelBin {
+        self.bins.x_bin()
+    }
+    pub fn y_bin(&self) -> SubpixelBin {
+        self.bins.y_bin()
+    }
+}
+impl PackedSubpixels {
+    pub fn new(x_bin: SubpixelBin, y_bin: SubpixelBin) -> Self {
+        Self(((x_bin as u8) << 4) & (y_bin as u8))
+    }
+    pub fn x_bin(&self) -> SubpixelBin {
+        SubpixelBin::from(self.0 >> 4)
+    }
+    pub fn y_bin(&self) -> SubpixelBin {
+        SubpixelBin::from(self.0 & 0xF)
     }
 }
 
@@ -161,7 +190,7 @@ where
         let image = if bpp == 4 {
             // Compute the fractional offset-- you'll likely want to quantize this
             // in a real renderer
-            let offset = Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float());
+            let offset = Vector::new(cache_key.x_bin().as_float(), cache_key.y_bin().as_float());
             Render::new(&[
                 // Color outline with the first palette
                 Source::ColorOutline(0),
@@ -208,10 +237,10 @@ where
             );*/
 
             (
-                elm.key,
+                elm.key(),
                 Extent3d {
-                    width: elm.extent.x,  //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
-                    height: elm.extent.y, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
+                    width: elm.extent_o2d().x, //scaled_metrics.advance_width(key.glyph_id).ceil() as u32,
+                    height: elm.extent_o2d().y, //scaled_metrics.advance_height(key.glyph_id).ceil() as u32,
                     depth_or_array_layers: 0,
                 },
             )
@@ -309,7 +338,7 @@ where
 
         // Compute the fractional offset-- you'll likely want to quantize this
         // in a real renderer
-        let offset = Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float());
+        let offset = Vector::new(cache_key.x_bin().as_float(), cache_key.y_bin().as_float());
 
         // Select our source order
         let image = if bpp == 4 {
@@ -371,17 +400,17 @@ where
         let font_ref = &mut self.font.swash_font();
         for elm in rs.elements.iter_mut() {
             if !self.color() {
-                elm.key.x_bin = SubpixelBin::Zero;
-                elm.key.y_bin = SubpixelBin::Zero;
+                elm.key_bins = PackedSubpixels::default();
             }
             let bpp = self.bytes_per_pixel();
-            let placement = Self::placement_for_glyph(&mut self.context, &font_ref, &elm.key, bpp);
+            let placement =
+                Self::placement_for_glyph(&mut self.context, &font_ref, &elm.key(), bpp);
             // Are placement scaled differently trough the graphics pipeline than the pixels in the texture?
 
             elm.offset.x = (elm.offset.x as i32 + placement.left) as u32;
             elm.offset.y = (elm.offset.y as i32 - placement.top) as u32;
-            elm.extent.x = placement.width;
-            elm.extent.y = placement.height;
+            elm.extent.0 = placement.width as u8;
+            elm.extent.1 = placement.height as u8;
             println!(
                 "Applied offset: {:?}: Placement: {:?} Offs: {:?}",
                 elm, placement, elm.offset
@@ -507,7 +536,7 @@ pub struct RenderedRun {
 
 #[derive(Debug, Default)]
 pub struct RenderSpec {
-    elements: Vec<RenderSpecElement>,
+    elements: SmallVec<[RenderSpecElement; SHAPABLE_STRING_ALLOC_LEN]>,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -515,19 +544,62 @@ pub struct Point2d {
     pub x: i32,
     pub y: i32,
 }
-#[derive(Debug)]
-pub struct RenderSpecElement {
-    pub char: char,
-    pub color_idx: u16,
-    pub key: SwashCacheKey,
-    pub offset: Origin2d, // TODO: Use signed point
-    pub extent: Origin2d,
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Fixed88(u16); // 8.8 bits fixed point
+
+impl From<f32> for Fixed88 {
+    fn from(value: f32) -> Self {
+        Self(((value.min(255.0).max(0.0) as u16) << 8) + (value.fract() * 255.0) as u16)
+    }
 }
 
+impl From<u32> for Fixed88 {
+    fn from(value: u32) -> Self {
+        From::<f32>::from(f32::from_bits(value))
+    }
+}
+impl Into<f32> for Fixed88 {
+    fn into(self) -> f32 {
+        (self.0 >> 8) as f32 + ((self.0 & 0xFF) as f32 * 255.0)
+    }
+}
+impl Into<u32> for Fixed88 {
+    fn into(self) -> u32 {
+        Into::<f32>::into(self).to_bits()
+    }
+}
+
+/* This struct is optimized for size to make the RenderSpec smallvec as small as possible */
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RenderSpecElement {
+    pub color_idx: u8,
+    pub key_glyph_id: u16,
+    pub key_font_size: Fixed88,
+    pub key_bins: PackedSubpixels,
+    pub offset: Origin2d, // TODO: Use signed?
+    pub extent: (u8, u8),
+}
+
+impl RenderSpecElement {
+    pub fn key(&self) -> SwashCacheKey {
+        SwashCacheKey {
+            glyph_id: self.key_glyph_id,
+            font_size_bits: Into::into(self.key_font_size),
+            bins: self.key_bins,
+        }
+    }
+    pub fn extent_o2d(&self) -> Origin2d {
+        Origin2d {
+            x: self.extent.0 as u32,
+            y: self.extent.1 as u32,
+        }
+    }
+}
 impl RenderSpec {
     pub fn unique_keys(&self) -> Vec<SwashCacheKey> {
         let mut keys = Vec::with_capacity(self.elements.len());
-        keys.extend(self.elements.iter().map(|rse| rse.key.clone()));
+        keys.extend(self.elements.iter().map(|rse| rse.key()));
         keys.sort();
         keys.dedup();
         keys
@@ -654,7 +726,7 @@ impl RenderedRun {
         self.host_indices.try_reserve(spec.elements.len()).unwrap();
 
         for (idx, element) in spec.elements.iter().enumerate() {
-            match atlas.look_up(&element.key) {
+            match atlas.look_up(&element.key()) {
                 Some(location) => {
                     if let Some(first_char_generation) = self.first_char_generation.as_mut() {
                         *first_char_generation = (*first_char_generation).min(location.generation);
@@ -682,7 +754,7 @@ impl RenderedRun {
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */
-                    println!("Missing in atlas: {:?}", element.key);
+                    println!("Missing in atlas: {:?}", element.key());
                     return Err(RenderRunError::CharacterMissingInAtlas);
                 }
             }
@@ -757,18 +829,15 @@ mod tests {
 
         for x in 0..200 {
             spec.elements.push(RenderSpecElement {
-                char: ' ',
-                key: SwashCacheKey {
-                    glyph_id: 120 + x as u16,
-                    font_size_bits: font_scale_f.to_bits(),
-                    x_bin: SubpixelBin::Zero,
-                    y_bin: SubpixelBin::Zero,
-                },
+                //                char: ' ',
+                key_glyph_id: 120 + x as u16,
+                key_font_size: Fixed88::from(font_scale_f),
+                key_bins: PackedSubpixels::default(),
                 offset: Origin2d {
                     x: char_width as u32 * x,
                     y: 0,
                 },
-                extent: Origin2d::ZERO,
+                extent: (0, 0),
                 color_idx: 0,
             })
         }

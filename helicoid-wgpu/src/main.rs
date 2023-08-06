@@ -1,6 +1,7 @@
 use bytemuck::offset_of;
 use cosmic_text::fontdb::{Database, FaceInfo, Language, ID};
 use cosmic_text::{Attrs, Buffer as TextBuffer, Font, FontSystem, Metrics, Shaping, Weight};
+use helicoid_gpurender::font::fontcache::{Fixed88, PackedSubpixels};
 use helicoid_gpurender::font::texture_atlases::AtlasLocation;
 /*
 (c) Frederik Vestre - Licensed under MPL (like the rest of helicoid).
@@ -222,19 +223,18 @@ fn cosmic_shape_str(
         for (idx, glyph) in run.glyphs.iter().enumerate() {
             let physical = glyph.physical((glyph.x_offset, glyph.y_offset), 1.0);
             spec.add_element(RenderSpecElement {
-                char: 'a', //run.text[glyph.start..glyph.end].chars().next().unwrap(),
-                key: SwashCacheKey {
-                    glyph_id: physical.cache_key.glyph_id,
-                    font_size_bits: physical.cache_key.font_size_bits,
-                    x_bin: physical.cache_key.x_bin.into(),
-                    y_bin: physical.cache_key.y_bin.into(),
-                },
+                key_glyph_id: physical.cache_key.glyph_id,
+                key_font_size: Fixed88::from(physical.cache_key.font_size_bits),
+                key_bins: PackedSubpixels::new(
+                    physical.cache_key.x_bin.into(),
+                    physical.cache_key.y_bin.into(),
+                ),
                 offset: Origin2d {
                     x: init_offset.x + physical.x as u32,
                     y: init_offset.y + physical.y as u32 + (run.line_y as u32),
                 },
-                extent: Origin2d::ZERO,
-                color_idx: (idx % 128) as u16,
+                extent: (0, 0),
+                color_idx: (idx % 128) as u8,
             })
         }
     }
@@ -250,18 +250,14 @@ fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
 
     for (i, char) in text.chars().into_iter().enumerate() {
         spec.add_element(RenderSpecElement {
-            char,
-            key: SwashCacheKey {
-                glyph_id: charmap.map(char) as u16,
-                font_size_bits: scale.to_bits(),
-                x_bin: SubpixelBin::Zero,
-                y_bin: SubpixelBin::Zero,
-            },
+            key_glyph_id: charmap.map(char) as u16,
+            key_font_size: Into::into(scale),
+            key_bins: PackedSubpixels::default(),
             offset: Origin2d {
                 x: (char_width * i) as u32,
                 y: 0,
             },
-            extent: Origin2d::ZERO,
+            extent: (0, 0),
             color_idx: 0,
         })
     }

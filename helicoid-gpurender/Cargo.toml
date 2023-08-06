@@ -16,5 +16,18 @@ swash = {version="0.1.8"}
 wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend"}
 naga = { git =  "https://github.com/freqmod/naga.git", branch ="alt_blend"}
 
+copypasta = "0.8.1"
+
+helicoid-protocol = {path="../helicoid-protocol"}
+rkyv = { version = "0.8", features = ["validation", "smallvec"] }
+ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
+anyhow = {version="1.0.68"}
+hashbrown = {version = "0.13.2"}
+ahash = {version = "0.8.3"}
+smallvec = {version = "1.10", features = ["serde", "const_generics"]}
+parking_lot = "0.12.0"
+log = "0.4"
+num_enum="0.6.1"
+ 
 [dev-dependencies]
 svg = {version="0.13.1"}

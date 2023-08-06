@@ -2,23 +2,19 @@ use hashbrown::HashMap;
 use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 
-use helicoid_protocol::block_manager::{
-    BlockGfx, ManagerGfx, MetaBlock,
-};
+use helicoid_protocol::block_manager::{BlockGfx, ManagerGfx, MetaBlock};
 use helicoid_protocol::gfx::{
-    FontPaint, PathVerb, PointF32, RenderBlockLocation,
-    SimpleDrawElement, SimplePaint, SVG_RESOURCE_NAME_LEN,
+    FontPaint, PathVerb, PointF32, RenderBlockLocation, SimpleDrawElement, SimplePaint,
+    SVG_RESOURCE_NAME_LEN,
 };
-use helicoid_protocol::{
-    gfx::{RenderBlockDescription, RenderBlockId},
-};
+use helicoid_protocol::gfx::{RenderBlockDescription, RenderBlockId};
 use parking_lot::Mutex;
 use skia_safe as skia;
 
 use skia_safe::gpu::{DirectContext, SurfaceOrigin};
 use skia_safe::{
-    BlendMode, Budgeted, Color, Data, ISize, Image, ImageInfo, Paint, Path,
-    PathFillType, Point, Surface, SurfaceProps, SurfacePropsFlags, Vector,
+    BlendMode, Budgeted, Color, Data, ISize, Image, ImageInfo, Paint, Path, PathFillType, Point,
+    Surface, SurfaceProps, SurfacePropsFlags, Vector,
 };
 use smallvec::SmallVec;
 
