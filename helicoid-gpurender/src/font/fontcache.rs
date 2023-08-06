@@ -84,7 +84,11 @@ impl From<CacheKey> for SwashCacheKey {
         SwashCacheKey {
             glyph_id: key.glyph_id,
             font_size_bits: key.font_size_bits,
-            bins: PackedSubpixels::new(SubpixelBin::from(key.x_bin), SubpixelBin::from(key.y_bin)),
+            bins: PackedSubpixels::new(
+                SubpixelBin::from(key.x_bin),
+                SubpixelBin::from(key.y_bin),
+                0,
+            ),
         }
     }
 }
@@ -98,14 +102,21 @@ impl SwashCacheKey {
     }
 }
 impl PackedSubpixels {
-    pub fn new(x_bin: SubpixelBin, y_bin: SubpixelBin) -> Self {
-        Self(((x_bin as u8) << 4) & (y_bin as u8))
+    pub fn new(x_bin: SubpixelBin, y_bin: SubpixelBin, font_id: u8) -> Self {
+        debug_assert!(font_id < 16);
+        Self((font_id << 4) & ((x_bin as u8) << 2) & (y_bin as u8))
     }
     pub fn x_bin(&self) -> SubpixelBin {
-        SubpixelBin::from(self.0 >> 4)
+        SubpixelBin::from((self.0 >> 2) & 3)
     }
     pub fn y_bin(&self) -> SubpixelBin {
-        SubpixelBin::from(self.0 & 0xF)
+        SubpixelBin::from(self.0 & 3)
+    }
+    pub fn font_id(&self) -> u8 {
+        (self.0 >> 4) & 0xF
+    }
+    pub fn cleared_offset(&self) -> Self {
+        Self(self.0 & 0xF) // clear subpixel offset, but keep fontid
     }
 }
 
@@ -400,7 +411,7 @@ where
         let font_ref = &mut self.font.swash_font();
         for elm in rs.elements.iter_mut() {
             if !self.color() {
-                elm.key_bins = PackedSubpixels::default();
+                elm.key_bins = elm.key_bins.cleared_offset();
             }
             let bpp = self.bytes_per_pixel();
             let placement =

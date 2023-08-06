@@ -228,6 +228,7 @@ fn cosmic_shape_str(
                 key_bins: PackedSubpixels::new(
                     physical.cache_key.x_bin.into(),
                     physical.cache_key.y_bin.into(),
+                    0,
                 ),
                 offset: Origin2d {
                     x: init_offset.x + physical.x as u32,
