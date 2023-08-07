@@ -143,7 +143,11 @@ pub fn base_asset_path() -> PathBuf {
         .join("assets")
 }
 
-fn create_font_cache(dev: &wgpu::Device, color: bool) -> FontCache<SwashFont> {
+fn create_font_cache(
+    dev: &wgpu::Device,
+    target_multisample_state: wgpu::MultisampleState,
+    color: bool,
+) -> FontCache<SwashFont> {
     let font = SwashFont::from_path(
         &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
         /* &base_asset_path()
@@ -153,7 +157,7 @@ fn create_font_cache(dev: &wgpu::Device, color: bool) -> FontCache<SwashFont> {
         0,
     )
     .unwrap();
-    let mut font_cache = FontCache::new(font, color);
+    let mut font_cache = FontCache::new(font, color, Some(dev), target_multisample_state);
     let mut spec = RenderSpec::default();
     font_cache.add_atlas(
         dev,
@@ -504,9 +508,14 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         None,
     ))
     .unwrap();
+    let target_multisample_state = wgpu::MultisampleState {
+        count: sample_count,
+        mask: !0,
+        alpha_to_coverage_enabled: false,
+    };
 
     // Create a text font cache and prepare a rendered string
-    let mut font_cache = create_font_cache(&device, font_subpixel_color);
+    let mut font_cache = create_font_cache(&device, target_multisample_state, font_subpixel_color);
     let text_spec = if scene.draw_text.is_empty() {
         None
     } else {
@@ -585,7 +594,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         label: Some("Background fs"),
         source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/background.fs.wgsl").into()),
     });
-    let text_vs_module = &device.create_shader_module(wgpu::ShaderModuleDescriptor {
+    /*    let text_vs_module = &device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Text vs"),
         source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text.vs.wgsl").into()),
     });
@@ -599,7 +608,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             label: Some("Text fs"),
             source: wgpu::ShaderSource::Wgsl(include_str!("./../shaders/text_mono.fs.wgsl").into()),
         })
-    });
+    });*/
 
     let mut palette_host = Vec::<u32>::with_capacity(128);
     palette_host.resize(128, 0xFFFFFFFF);
@@ -723,6 +732,22 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         });
 
     let mut text_render_run = if let Some(text_spec) = text_spec {
+        font_cache.set_palette_entry(0, 0xFFFF0000);
+        font_cache.set_palette_entry(1, 0xFF00FF00);
+        font_cache.set_palette_entry(2, 0xFF0000FF);
+        font_cache.set_palette_entry(3, 0xFF00FFFF);
+        font_cache.set_palette_entry(4, 0xFFFFFF00);
+        font_cache.set_palette_entry(10, 0xA000FF00);
+        font_cache.set_palette_entry(11, 0xA0008800);
+        font_cache.set_palette_entry(12, 0xA000FF00);
+        font_cache.set_palette_entry(13, 0xF0000088);
+        font_cache.set_palette_entry(14, 0xF0000088);
+        font_cache.set_palette_entry(15, 0xFFFFFFFF);
+        font_cache.set_palette_entry(16, 0xFFFFFFFF);
+        font_cache.set_palette_entry(17, 0xFFFFFFFF);
+        font_cache.set_palette_entry(18, 0xFFFFFFFF);
+        font_cache.set_palette_entry(19, 0xFFFFFFFF);
+        font_cache.update_palette(&queue);
         Some(font_cache.render_run(&device, &text_spec).unwrap())
     } else {
         None
@@ -743,66 +768,67 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             },
         ],
     });
-
-    let text_bind_group = if let Some(render_run) = text_render_run.as_ref() {
-        let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
-        Some(
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Text Bind group"),
-                layout: &text_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(
-                            globals_ubo.as_entire_buffer_binding(),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(
-                            font_cache
-                                .atlas_ref(&AtlasLocation::atlas_only(0))
-                                .unwrap()
-                                .sampler()
-                                .unwrap(),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(
-                            &font_cache
-                                .atlas_ref(&AtlasLocation::atlas_only(0))
-                                .unwrap()
-                                .texture()
-                                .unwrap()
-                                .create_view(&TextureViewDescriptor::default()),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&palette_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::TextureView(&palette_view),
-                    },
-                ],
-            }),
-        )
-    } else {
-        None
-    };
-
+    /*
+        let text_bind_group = if let Some(render_run) = text_render_run.as_ref() {
+            let buffer_vertices = render_run.gpu_vertices.as_ref().unwrap();
+            Some(
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Text Bind group"),
+                    layout: &text_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::Buffer(
+                                globals_ubo.as_entire_buffer_binding(),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(
+                                font_cache
+                                    .atlas_ref(&AtlasLocation::atlas_only(0))
+                                    .unwrap()
+                                    .sampler()
+                                    .unwrap(),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(
+                                &font_cache
+                                    .atlas_ref(&AtlasLocation::atlas_only(0))
+                                    .unwrap()
+                                    .texture()
+                                    .unwrap()
+                                    .create_view(&TextureViewDescriptor::default()),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&palette_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&palette_view),
+                        },
+                    ],
+                }),
+            )
+        } else {
+            None
+        };
+    */
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[&bind_group_layout],
         push_constant_ranges: &[],
         label: None,
     });
+    /*
     let text_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[&text_bind_group_layout],
         push_constant_ranges: &[],
         label: None,
-    });
+    });*/
 
     let depth_stencil_state = Some(wgpu::DepthStencilState {
         format: wgpu::TextureFormat::Depth32Float,
@@ -864,11 +890,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             unclipped_depth: false,
         },
         depth_stencil: depth_stencil_state.clone(),
-        multisample: wgpu::MultisampleState {
-            count: sample_count,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
+        multisample: target_multisample_state,
         multiview: None,
     };
 
@@ -920,88 +942,88 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         },
         multiview: None,
     });
-
-    let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: None,
-        layout: Some(&text_pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: text_vs_module,
-            entry_point: "main",
-            buffers: &[wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<RenderPoint>() as u64,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[
-                    wgpu::VertexAttribute {
-                        offset: offset_of!(RenderPoint, dx) as u64,
-                        format: wgpu::VertexFormat::Float32x2,
-                        shader_location: 0,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: offset_of!(RenderPoint, sx) as u64,
-                        format: wgpu::VertexFormat::Float32x2,
-                        shader_location: 1,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: offset_of!(RenderPoint, color_idx) as u64,
-                        format: wgpu::VertexFormat::Float32,
-                        shader_location: 2,
-                    },
-                ],
-            }],
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: text_fs_module,
-            entry_point: "main",
-            targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                blend: Some(wgpu::BlendState {
-                    color: wgpu::BlendComponent {
-                        src_factor: if font_cache.color() {
-                            wgpu::BlendFactor::Src1
-                        } else {
-                            wgpu::BlendFactor::SrcAlpha
+    /*
+        let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
+            layout: Some(&text_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: text_vs_module,
+                entry_point: "main",
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<RenderPoint>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            offset: offset_of!(RenderPoint, dx) as u64,
+                            format: wgpu::VertexFormat::Float32x2,
+                            shader_location: 0,
                         },
-                        dst_factor: if font_cache.color() {
-                            wgpu::BlendFactor::OneMinusSrc1
-                        } else {
-                            wgpu::BlendFactor::OneMinusSrcAlpha
+                        wgpu::VertexAttribute {
+                            offset: offset_of!(RenderPoint, sx) as u64,
+                            format: wgpu::VertexFormat::Float32x2,
+                            shader_location: 1,
                         },
-                        operation: wgpu::BlendOperation::Add,
-                    },
-                    alpha: BlendComponent::REPLACE,
-                }),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            front_face: wgpu::FrontFace::Ccw,
-            strip_index_format: None,
-            cull_mode: None,
-            unclipped_depth: false,
-            conservative: false,
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Greater,
-            stencil: wgpu::StencilState {
-                front: wgpu::StencilFaceState::IGNORE,
-                back: wgpu::StencilFaceState::IGNORE,
-                read_mask: 0,
-                write_mask: 0,
+                        wgpu::VertexAttribute {
+                            offset: offset_of!(RenderPoint, color_idx) as u64,
+                            format: wgpu::VertexFormat::Float32,
+                            shader_location: 2,
+                        },
+                    ],
+                }],
             },
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState {
-            count: sample_count,
-            mask: !0,
-            alpha_to_coverage_enabled: true,
-        },
-        multiview: None,
-    });
-
+            fragment: Some(wgpu::FragmentState {
+                module: text_fs_module,
+                entry_point: "main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: if font_cache.color() {
+                                wgpu::BlendFactor::Src1
+                            } else {
+                                wgpu::BlendFactor::SrcAlpha
+                            },
+                            dst_factor: if font_cache.color() {
+                                wgpu::BlendFactor::OneMinusSrc1
+                            } else {
+                                wgpu::BlendFactor::OneMinusSrcAlpha
+                            },
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: BlendComponent::REPLACE,
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                front_face: wgpu::FrontFace::Ccw,
+                strip_index_format: None,
+                cull_mode: None,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Greater,
+                stencil: wgpu::StencilState {
+                    front: wgpu::StencilFaceState::IGNORE,
+                    back: wgpu::StencilFaceState::IGNORE,
+                    read_mask: 0,
+                    write_mask: 0,
+                },
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: sample_count,
+                mask: !0,
+                alpha_to_coverage_enabled: true,
+            },
+            multiview: None,
+        });
+    */
     let size = window.inner_size();
 
     let mut surface_desc = wgpu::SurfaceConfiguration {
@@ -1170,6 +1192,10 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 _pad: 0.0,
             }]),
         );
+        font_cache.resolution_changed(
+            &queue,
+            (window.inner_size().width, window.inner_size().height),
+        );
 
         queue.write_buffer(&prims_ubo, 0, bytemuck::cast_slice(&cpu_primitives));
 
@@ -1261,14 +1287,14 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                     .atlas(&AtlasLocation::atlas_only(0))
                     .unwrap()
                     .update_texture(&device, &queue);
-
-                pass.set_pipeline(&text_pipeline);
-                let tmp_text_bind_group = text_bind_group.as_ref().unwrap();
-                let text_vbo = text_render_run.gpu_vertices.as_ref().unwrap();
+                /* TODO: Can we avoid using an index buffer */
+                font_cache.setup_pipeline(&device, &mut pass);
                 let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
-                pass.set_bind_group(0, tmp_text_bind_group, &[]);
                 pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
+
+                let text_vbo = text_render_run.gpu_vertices.as_ref().unwrap();
                 pass.set_vertex_buffer(0, text_vbo.slice(..));
+
                 pass.draw_indexed(
                     0..(buffer_indices.size() as u32 / std::mem::size_of::<u16>() as u32),
                     0,
