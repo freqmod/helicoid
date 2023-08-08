@@ -1,6 +1,5 @@
-use bytemuck::offset_of;
-use cosmic_text::fontdb::{Database, FaceInfo, Language, ID};
-use cosmic_text::{Attrs, Buffer as TextBuffer, Font, FontSystem, Metrics, Shaping, Weight};
+use cosmic_text::fontdb::Database;
+use cosmic_text::{Attrs, Buffer as TextBuffer, FontSystem, Metrics, Shaping};
 use helicoid_gpurender::font::fontcache::{Fixed88, PackedSubpixels};
 use helicoid_gpurender::font::texture_atlases::AtlasLocation;
 /*
@@ -20,10 +19,7 @@ use lyon::tessellation::{StrokeOptions, StrokeTessellator};
 
 use lyon::algorithms::{rounded_polygon, walk};
 
-use wgpu::{
-    BlendComponent, CompositeAlphaMode, Extent3d, Origin2d, TextureDescriptor,
-    TextureViewDescriptor,
-};
+use wgpu::{CompositeAlphaMode, Extent3d, Origin2d, TextureViewDescriptor};
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -33,22 +29,17 @@ use winit::window::{Window, WindowBuilder};
 // For create_buffer_init()
 use wgpu::util::DeviceExt;
 
-use core::slice;
 use futures::executor::block_on;
-use std::mem;
+
 use std::ops::Rem;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use helicoid_gpurender::font::{
-    fontcache::{
-        FontCache, FontOwner, RenderPoint, RenderSpec, RenderSpecElement, RenderSquare,
-        SubpixelBin, SwashCacheKey,
-    },
+    fontcache::{FontCache, FontOwner, RenderSpec, RenderSpecElement},
     swash_font::SwashFont,
 };
 use std::{env, path::PathBuf};
-use swash::{CacheKey, FontRef};
+use swash::FontRef;
 
 //use log;
 
@@ -159,7 +150,7 @@ fn create_font_cache(
     .unwrap();
     let mut font_cache = FontCache::new(font, color, Some(dev));
     font_cache.create_renderer(0, (0, 0), target_multisample_state);
-    let mut spec = RenderSpec::default();
+    let _spec = RenderSpec::default();
     font_cache.add_atlas(
         dev,
         Extent3d {
@@ -178,22 +169,6 @@ fn font_system_from_swash(font: &FontRef) -> FontSystem {
     font_db.load_font_data(data);
     FontSystem::new_with_locale_and_db(String::from("C"), font_db)
     //    FontSystem::new_with_fonts([cosmic_text::fontdb::Source::Binary(Arc::new(data))].into_iter())
-}
-
-fn face_info_from_swash(font: &FontRef) -> FaceInfo {
-    let mut data = Vec::with_capacity(font.data.len());
-    data.extend_from_slice(font.data);
-    FaceInfo {
-        id: ID::dummy(),
-        source: cosmic_text::fontdb::Source::Binary(Arc::new(data)),
-        index: 0,
-        families: vec![(String::from(""), Language::Unknown)],
-        post_script_name: String::from(""),
-        style: cosmic_text::Style::Normal,
-        weight: Weight::NORMAL,
-        stretch: cosmic_text::Stretch::Normal,
-        monospaced: false,
-    }
 }
 
 fn cosmic_shape_str(
@@ -247,7 +222,7 @@ fn cosmic_shape_str(
 
     spec
 }
-fn simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
+fn _simple_shape_str(text: &str, font: &FontRef, scale: f32) -> RenderSpec {
     let scaled_metrics = font.metrics(&[]).scale(scale);
     let char_width =
         (scaled_metrics.average_width + scaled_metrics.vertical_leading).ceil() as usize;
@@ -292,31 +267,6 @@ fn create_multisampled_framebuffer(
 
     device
         .create_texture(multisampled_frame_descriptor)
-        .create_view(&wgpu::TextureViewDescriptor::default())
-}
-
-/// Creates a texture that can be used for an atlas
-fn create_simple_texture(
-    device: &wgpu::Device,
-    desc: &wgpu::SurfaceConfiguration,
-) -> wgpu::TextureView {
-    let frame_descriptor = &wgpu::TextureDescriptor {
-        label: Some("Frame descriptor"),
-        size: wgpu::Extent3d {
-            width: desc.width,
-            height: desc.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: desc.format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-    };
-
-    device
-        .create_texture(frame_descriptor)
         .create_view(&wgpu::TextureViewDescriptor::default())
 }
 
@@ -399,7 +349,7 @@ fn main() {
         )
         .unwrap();
 
-    let arrow_range = stroke_range.end..(geometry.indices.len() as u32);
+    let _arrow_range = stroke_range.end..(geometry.indices.len() as u32);
 
     let mut bg_geometry: VertexBuffers<BgPoint, u16> = VertexBuffers::new();
 
@@ -646,8 +596,8 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     };
 
     let palette_texture = device.create_texture(palette_descriptor);
-    let palette_view = palette_texture.create_view(&TextureViewDescriptor::default());
-    let palette_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+    let _palette_view = palette_texture.create_view(&TextureViewDescriptor::default());
+    let _palette_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         address_mode_u: wgpu::AddressMode::Repeat,
         address_mode_v: wgpu::AddressMode::Repeat,
         address_mode_w: wgpu::AddressMode::Repeat,
@@ -683,7 +633,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         ], //
     });
 
-    let text_bind_group_layout =
+    let _text_bind_group_layout =
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Text Bind group layout"),
             entries: &[
