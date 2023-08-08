@@ -25,7 +25,7 @@ fn main(vo: VertexOutput) -> @location(0) vec4<f32> {
     var font_col = textureSample(atlas_texture, atlas_sampler, vo.t_position);
     var palette_col = textureSample(palette_texture, palette_sampler, vec2<f32>(vo.c_position.x, 1.0));
 //    var a = max(max(font_col.r, font_col.g), font_col.b);
-var a = font_col.r;
+    var a = font_col;
     return vec4(
         palette_col.r,
         palette_col.g,

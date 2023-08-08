@@ -512,7 +512,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
     let target_multisample_state = wgpu::MultisampleState {
         count: sample_count,
         mask: !0,
-        alpha_to_coverage_enabled: false,
+        alpha_to_coverage_enabled: true, // this is needed for fontcache for alpha not to blead on the gl renderer
     };
 
     // Create a text font cache and prepare a rendered string
@@ -1194,10 +1194,10 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 _pad: 0.0,
             }]),
         );
-        font_cache.renderer(&0).unwrap().resolution_changed(
-            &queue,
-            (window.inner_size().width, window.inner_size().height),
-        );
+        font_cache
+            .renderer(&0)
+            .unwrap()
+            .resolution_changed(&queue, (scene.window_size.width, scene.window_size.height));
 
         queue.write_buffer(&prims_ubo, 0, bytemuck::cast_slice(&cpu_primitives));
 
