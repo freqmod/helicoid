@@ -3,6 +3,7 @@ use std::{borrow::BorrowMut, cell::RefCell};
 
 use bytemuck::offset_of;
 use cosmic_text::{CacheKey, SwashCache};
+use hashbrown::HashMap;
 use helicoid_protocol::text::SHAPABLE_STRING_ALLOC_LEN;
 use lyon::geom::euclid::num::Ceil;
 use num_enum::{FromPrimitive, IntoPrimitive};
@@ -13,9 +14,9 @@ use swash::{
     FontRef,
 };
 use wgpu::{
-    BindGroup, BindGroupLayout, BlendComponent, CompositeAlphaMode, Device, Extent3d, Origin2d,
-    RenderPass, RenderPipeline, SamplerDescriptor, ShaderModule, TextureFormat,
-    TextureViewDescriptor, TextureViewDimension,
+    BindGroup, BindGroupLayout, BlendComponent, CompositeAlphaMode, Device, Extent3d,
+    MultisampleState, Origin2d, PipelineLayout, RenderPass, RenderPipeline, SamplerDescriptor,
+    ShaderModule, TextureFormat, TextureViewDescriptor, TextureViewDimension,
 };
 
 use crate::font::texture_atlases::{self, AtlasLocation, TextureAtlas, TextureAtlases};
@@ -33,6 +34,18 @@ pub struct FontPalette {
     view: wgpu::TextureView,
     sampler: wgpu::Sampler,
 }
+
+pub type RenderTargetId = usize;
+
+pub struct FontCacheRenderer {
+    pipeline: Option<RenderPipeline>,
+    // the bind_group is not created before the texture etc. that it binds to are created
+    bind_group: Option<BindGroup>,
+    globals_ubo: Option<wgpu::Buffer>,
+    globals: FontCacheGlobals,
+    multisample: MultisampleState,
+}
+
 pub struct FontCache<O>
 where
     O: FontOwner,
@@ -42,6 +55,7 @@ where
     cache: TextureAtlases<SwashCacheKey>,
     color: bool, // use RGB subpixel rendering
     wgpu_resources: Option<WGpuResources>,
+    renderers: HashMap<RenderTargetId, FontCacheRenderer>,
 }
 
 /* Todo: Split bind group, and globals into a separate struct so different
@@ -49,18 +63,14 @@ setups can be used for different surfaces and windows */
 pub struct WGpuResources {
     text_vs_shader: ShaderModule,
     text_fs_shader: ShaderModule,
-    pipeline: RenderPipeline,
-    // the bind_group is not created before the texture etc. that it binds to are created
-    bind_group: Option<BindGroup>,
-    globals_ubo: Option<wgpu::Buffer>,
+    text_pipeline_layout: PipelineLayout,
     bind_group_layout: BindGroupLayout,
-    globals: FontCacheGlobals,
     palette: FontPalette,
 }
 
-impl WGpuResources {
-    pub fn pipeline(&self) -> &RenderPipeline {
-        &self.pipeline
+impl FontCacheRenderer {
+    pub fn pipeline(&self) -> Option<&RenderPipeline> {
+        self.pipeline.as_ref()
     }
     pub fn bind_group(&self) -> Option<&BindGroup> {
         self.bind_group.as_ref()
@@ -227,23 +237,204 @@ impl FontPalette {
         );
     }
 }
+
+impl FontCacheRenderer {
+    fn new(globals: FontCacheGlobals, multisample: wgpu::MultisampleState) -> Self {
+        FontCacheRenderer {
+            pipeline: None,
+            bind_group: None,
+            globals_ubo: None,
+            globals,
+            multisample,
+        }
+    }
+    pub fn resolution_changed(&mut self, queue: &wgpu::Queue, resolution: (u32, u32)) {
+        self.globals.resolution = [resolution.0 as f32, resolution.1 as f32];
+        queue.write_buffer(
+            &self.globals_ubo.as_ref().unwrap(),
+            0,
+            bytemuck::cast_slice(&[self.globals]),
+        );
+    }
+    /* This should ideally only run on init for the surface */
+    fn setup_resources(
+        &mut self,
+        device: &wgpu::Device,
+        color: bool,
+        wgpu_resources: &mut WGpuResources,
+        atlas: &TextureAtlas<SwashCacheKey>,
+    ) {
+        self.globals_ubo = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Globals ubo"),
+            size: std::mem::size_of::<FontCacheGlobals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
+        let resources = wgpu_resources;
+        self.update_pipeline(&resources, color, atlas, device);
+        self.update_bind_group(resources, atlas, device);
+    }
+    pub fn setup_pipeline<'a: 'p, 'p>(
+        &'a mut self,
+        //        device: &wgpu::Device,
+        pass: &mut RenderPass<'p>,
+    ) {
+        pass.set_pipeline(self.pipeline.as_ref().unwrap());
+        pass.set_bind_group(0, &self.bind_group.as_ref().unwrap(), &[])
+    }
+    fn update_bind_group(
+        &mut self,
+        owner_resources: &WGpuResources,
+        atlas: &TextureAtlas<SwashCacheKey>,
+        device: &wgpu::Device,
+    ) {
+        if self.bind_group.is_none() {
+            self.bind_group = Some(
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Text Bind group"),
+                    layout: &owner_resources.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::Buffer(
+                                self.globals_ubo
+                                    .as_ref()
+                                    .unwrap()
+                                    .as_entire_buffer_binding(),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(atlas.sampler().unwrap()),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(
+                                &atlas
+                                    .texture()
+                                    .unwrap()
+                                    .create_view(&TextureViewDescriptor::default()),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(
+                                &owner_resources.palette.sampler,
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(
+                                &owner_resources.palette.view,
+                            ),
+                        },
+                    ],
+                }),
+            );
+        }
+    }
+    fn update_pipeline(
+        &mut self,
+        owner_resources: &WGpuResources,
+        color: bool,
+        atlas: &TextureAtlas<SwashCacheKey>,
+        device: &wgpu::Device,
+    ) {
+        if self.pipeline.is_none() {
+            self.pipeline = Some(
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: None,
+                    layout: Some(&owner_resources.text_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &owner_resources.text_vs_shader,
+                        entry_point: "main",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<RenderPoint>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &[
+                                wgpu::VertexAttribute {
+                                    offset: offset_of!(RenderPoint, dx) as u64,
+                                    format: wgpu::VertexFormat::Float32x2,
+                                    shader_location: 0,
+                                },
+                                wgpu::VertexAttribute {
+                                    offset: offset_of!(RenderPoint, sx) as u64,
+                                    format: wgpu::VertexFormat::Float32x2,
+                                    shader_location: 1,
+                                },
+                                wgpu::VertexAttribute {
+                                    offset: offset_of!(RenderPoint, color_idx) as u64,
+                                    format: wgpu::VertexFormat::Float32,
+                                    shader_location: 2,
+                                },
+                            ],
+                        }],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &owner_resources.text_fs_shader,
+                        entry_point: "main",
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: if color {
+                                        wgpu::BlendFactor::Src1
+                                    } else {
+                                        wgpu::BlendFactor::SrcAlpha
+                                    },
+                                    dst_factor: if color {
+                                        wgpu::BlendFactor::OneMinusSrc1
+                                    } else {
+                                        wgpu::BlendFactor::OneMinusSrcAlpha
+                                    },
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: BlendComponent::REPLACE,
+                            }),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        front_face: wgpu::FrontFace::Ccw,
+                        strip_index_format: None,
+                        cull_mode: None,
+                        unclipped_depth: false,
+                        conservative: false,
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Greater,
+                        stencil: wgpu::StencilState {
+                            front: wgpu::StencilFaceState::IGNORE,
+                            back: wgpu::StencilFaceState::IGNORE,
+                            read_mask: 0,
+                            write_mask: 0,
+                        },
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
+                    multisample: self.multisample,
+                    multiview: None,
+                }),
+            );
+        }
+    }
+}
 impl<O> FontCache<O>
 where
     O: FontOwner,
 {
-    pub fn new(
-        font: O,
-        color: bool,
-        dev: Option<&Device>,
-        multisample: wgpu::MultisampleState,
-    ) -> Self {
-        let resources = dev.map(|dev| Self::create_resources(dev, multisample, color));
+    pub fn new(font: O, color: bool, dev: Option<&Device>) -> Self {
+        let resources = dev.map(|dev| Self::create_resources(dev, color));
         Self {
             context: ScaleContext::new(),
             font,
             cache: TextureAtlases::default(),
             color,
             wgpu_resources: resources,
+            renderers: Default::default(),
         }
     }
     pub fn bytes_per_pixel(&self) -> usize {
@@ -419,7 +610,6 @@ where
     pub fn update_palette(&mut self, queue: &wgpu::Queue) {
         if let Some(wgpu_resources) = self.wgpu_resources.as_mut() {
             wgpu_resources.palette.copy_to_gpu(queue);
-            println!("Set globals: {:?}", wgpu_resources.globals);
         } else {
             panic!()
         }
@@ -615,36 +805,7 @@ where
     pub fn atlas_ref(&self, location: &AtlasLocation) -> Option<&TextureAtlas<SwashCacheKey>> {
         self.cache.atlas_ref(location)
     }
-
-    pub fn resolution_changed(&mut self, queue: &wgpu::Queue, resolution: (u32, u32)) {
-        if let Some(wgpu_resources) = self.wgpu_resources.as_mut() {
-            wgpu_resources.globals.resolution = [resolution.0 as f32, resolution.1 as f32];
-            //println!("Set resolution: {:?}", resources.globals.resolution);
-            queue.write_buffer(
-                &wgpu_resources.globals_ubo.as_ref().unwrap(),
-                0,
-                bytemuck::cast_slice(&[wgpu_resources.globals]),
-            );
-        }
-    }
-    pub fn setup_pipeline<'a: 'p, 'p>(
-        &'a mut self,
-        device: &wgpu::Device,
-        pass: &mut RenderPass<'p>,
-    ) {
-        self.update_bind_group(device);
-
-        let Some(resources ) = self.wgpu_resources.as_ref() else { panic!("Font cache not instanciated with a wgpu device ")};
-
-        pass.set_pipeline(&resources.pipeline);
-        pass.set_bind_group(0, &resources.bind_group.as_ref().unwrap(), &[])
-    }
-
-    fn create_resources(
-        device: &wgpu::Device,
-        multisample: wgpu::MultisampleState,
-        color: bool,
-    ) -> WGpuResources {
+    fn create_resources(device: &wgpu::Device, color: bool) -> WGpuResources {
         let globals = FontCacheGlobals {
             resolution: [0f32, 0f32],
         };
@@ -724,164 +885,61 @@ where
             push_constant_ranges: &[],
             label: None,
         });
-        let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&text_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &text_vs_module,
-                entry_point: "main",
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<RenderPoint>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            offset: offset_of!(RenderPoint, dx) as u64,
-                            format: wgpu::VertexFormat::Float32x2,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: offset_of!(RenderPoint, sx) as u64,
-                            format: wgpu::VertexFormat::Float32x2,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: offset_of!(RenderPoint, color_idx) as u64,
-                            format: wgpu::VertexFormat::Float32,
-                            shader_location: 2,
-                        },
-                    ],
-                }],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &text_fs_module,
-                entry_point: "main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: if color {
-                                wgpu::BlendFactor::Src1
-                            } else {
-                                wgpu::BlendFactor::SrcAlpha
-                            },
-                            dst_factor: if color {
-                                wgpu::BlendFactor::OneMinusSrc1
-                            } else {
-                                wgpu::BlendFactor::OneMinusSrcAlpha
-                            },
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: BlendComponent::REPLACE,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                front_face: wgpu::FrontFace::Ccw,
-                strip_index_format: None,
-                cull_mode: None,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Greater,
-                stencil: wgpu::StencilState {
-                    front: wgpu::StencilFaceState::IGNORE,
-                    back: wgpu::StencilFaceState::IGNORE,
-                    read_mask: 0,
-                    write_mask: 0,
-                },
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample,
-            multiview: None,
-        });
-        let globals_ubo = Some(device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Globals ubo"),
-            size: std::mem::size_of::<FontCacheGlobals>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        }));
         let palette = FontPalette::new(device);
         WGpuResources {
             text_vs_shader: text_vs_module,
             text_fs_shader: text_fs_module,
-            pipeline: text_pipeline,
-            globals,
-            globals_ubo,
-            bind_group: None,
+            text_pipeline_layout,
             bind_group_layout: text_bind_group_layout,
             palette,
         }
     }
+
     pub fn wgpu_resources(&self) -> Option<&WGpuResources> {
         self.wgpu_resources.as_ref()
     }
-    pub fn update_bind_group(&mut self, device: &wgpu::Device) -> Option<&wgpu::BindGroup> {
-        if let Some(wgpu_resources) = self.wgpu_resources.as_mut() {
-            if wgpu_resources.bind_group.is_none() {
-                wgpu_resources.bind_group = Some(
-                    device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Text Bind group"),
-                        layout: &wgpu_resources.bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::Buffer(
-                                    wgpu_resources
-                                        .globals_ubo
-                                        .as_ref()
-                                        .unwrap()
-                                        .as_entire_buffer_binding(),
-                                ),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(
-                                    self.cache
-                                        .atlas_ref(&AtlasLocation::atlas_only(0))
-                                        .unwrap()
-                                        .sampler()
-                                        .unwrap(),
-                                ),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::TextureView(
-                                    &self
-                                        .cache
-                                        .atlas_ref(&AtlasLocation::atlas_only(0))
-                                        .unwrap()
-                                        .texture()
-                                        .unwrap()
-                                        .create_view(&TextureViewDescriptor::default()),
-                                ),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 3,
-                                resource: wgpu::BindingResource::Sampler(
-                                    &wgpu_resources.palette.sampler,
-                                ),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 4,
-                                resource: wgpu::BindingResource::TextureView(
-                                    &wgpu_resources.palette.view,
-                                ),
-                            },
-                        ],
-                    }),
-                );
-            }
+    pub fn renderer(&mut self, target_id: &RenderTargetId) -> Option<&mut FontCacheRenderer> {
+        self.renderers.get_mut(target_id)
+    }
+    /* This should ideally only run on init for the surface */
+    pub fn renderer_setup_resources(&mut self, target_id: &RenderTargetId, device: &wgpu::Device) {
+        if let Some(renderer) = self.renderers.get_mut(target_id) {
+            let atlas = self.cache.atlas_ref(&AtlasLocation::atlas_only(0)).unwrap();
+            renderer.setup_resources(
+                device,
+                self.color,
+                self.wgpu_resources.as_mut().unwrap(),
+                atlas,
+            );
         }
-        self.wgpu_resources
-            .as_mut()
-            .map(|wr| wr.bind_group.as_ref())
-            .flatten()
+    }
+    /*    pub fn renderer_setup_pipeline<'a: 'p, 'p>(
+        &'a mut self,
+        target_id: &RenderTargetId,
+        device: &wgpu::Device,
+        pass: &mut RenderPass<'p>,
+    ) {
+        if let Some(renderer) = self.renderers.get_mut(target_id) {
+            renderer.setup_pipeline::<O>(device, pass);
+        }
+    }*/
+    pub fn create_renderer(
+        &mut self,
+        target_id: RenderTargetId,
+        resolution: (u8, u8),
+        multisample: wgpu::MultisampleState,
+    ) -> Option<&mut FontCacheRenderer> {
+        if self.renderers.contains_key(&target_id) {
+            return None;
+        }
+        let globals = FontCacheGlobals {
+            resolution: [resolution.0 as f32, resolution.1 as f32],
+        };
+        assert!(self
+            .renderers
+            .insert(target_id, FontCacheRenderer::new(globals, multisample))
+            .is_none());
+        return self.renderer(&target_id);
     }
 }
 
@@ -1222,7 +1280,7 @@ mod tests {
             0,
         )
         .unwrap();
-        let mut font_cache = FontCache::new(font, true, None, MultisampleState::default());
+        let mut font_cache = FontCache::new(font, true, None);
         let mut spec = RenderSpec::default();
         font_cache.cache.add_textureless_atlas(
             TextureCoordinate2D { x: 1024, y: 1024 },

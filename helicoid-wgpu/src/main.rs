@@ -157,7 +157,8 @@ fn create_font_cache(
         0,
     )
     .unwrap();
-    let mut font_cache = FontCache::new(font, color, Some(dev), target_multisample_state);
+    let mut font_cache = FontCache::new(font, color, Some(dev));
+    font_cache.create_renderer(0, (0, 0), target_multisample_state);
     let mut spec = RenderSpec::default();
     font_cache.add_atlas(
         dev,
@@ -1059,6 +1060,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
             depth_or_array_layers: 1,
         },
     );
+    font_cache.renderer_setup_resources(&0, &device);
 
     let mut depth_texture_view = None;
 
@@ -1192,7 +1194,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 _pad: 0.0,
             }]),
         );
-        font_cache.resolution_changed(
+        font_cache.renderer(&0).unwrap().resolution_changed(
             &queue,
             (window.inner_size().width, window.inner_size().height),
         );
@@ -1288,7 +1290,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                     .unwrap()
                     .update_texture(&device, &queue);
                 /* TODO: Can we avoid using an index buffer */
-                font_cache.setup_pipeline(&device, &mut pass);
+                font_cache.renderer(&0).unwrap().setup_pipeline(&mut pass);
                 let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
                 pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
 
