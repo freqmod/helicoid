@@ -576,7 +576,7 @@ where
                     self.render_to_location(&key, &location);
                 }
                 Err(e) => {
-                    println!("Insert-err: {:?} {:?}", &key, e);
+                    log::trace!("Insert-err: {:?} {:?}", &key, e);
                     match e {
                         texture_atlases::InsertResult::NoMoreSpace => {
                             let mut evict_data = RedrawData {
@@ -702,22 +702,25 @@ where
         let height = (image.placement.height as i32) as u32;
         // TODO: Do we need to take placement offset into account?
 
-        println!(
+        log::trace!(
             "Render to loc placement: {}, {:?} W:{} H:{}",
-            cache_key.glyph_id, image.placement, width, height
+            cache_key.glyph_id,
+            image.placement,
+            width,
+            height
         );
         let mut data_view = atlas.tile_data_mut(location);
         for y in 0..height {
             let row = data_view.row(y as u16);
             let copy_width = (bpp * width as usize) as u32;
-            if copy_width != (bpp as u32) * width || copy_width != (row.len()) as u32 {
+            /*if copy_width != (bpp as u32) * width || copy_width != (row.len()) as u32 {
                 println!(
                     "Render: {}=={} {}",
                     row.len(),
                     bpp as u32 * width,
                     copy_width
                 );
-            }
+            }*/
             row[0..copy_width as usize].copy_from_slice(
                 &image.data[(y * bpp as u32 * width) as usize
                     ..((y * bpp as u32 * width) + copy_width) as usize],
@@ -740,9 +743,11 @@ where
             elm.offset.y = (elm.offset.y as i32 - placement.top) as u32;
             elm.extent.0 = placement.width as u8;
             elm.extent.1 = placement.height as u8;
-            println!(
+            log::trace!(
                 "Applied offset: {:?}: Placement: {:?} Offs: {:?}",
-                elm, placement, elm.offset
+                elm,
+                placement,
+                elm.offset
             );
         }
     }
@@ -1210,7 +1215,7 @@ impl RenderedRun {
                         texture.map(|t| t.width()).unwrap_or(1),
                         texture.map(|t| t.height()).unwrap_or(1),
                     );
-                    println!("SE ({:?}): {:?}", location, spec_element);
+                    //                    println!("SE ({:?}): {:?}", location, spec_element);
                     self.host_vertices.push(spec_element);
                     for x in 0..POINTS_PER_SQUARE {
                         self.host_indices
@@ -1219,7 +1224,7 @@ impl RenderedRun {
                 }
                 None => {
                     /* Caller: Populate atlas with all elements and retry */
-                    println!("Missing in atlas: {:?}", element.key());
+                    log::warn!("Missing in atlas: {:?}", element.key());
                     return Err(RenderRunError::CharacterMissingInAtlas);
                 }
             }
@@ -1269,7 +1274,7 @@ mod tests {
     fn render_string_with_font() {
         //        let
         let font_scale_f: f32 = 12.0; //2.0;
-        println!(
+        log::info!(
             "FP: {:?} : Sf: {} B:{} ",
             &base_asset_path().join("fonts").join("AnonymiceNerd.ttf"),
             font_scale_f,

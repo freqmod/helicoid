@@ -17,6 +17,7 @@ swash = {version="0.1.8"}
 cosmic-text = {version="0.9.0"}
 
 env_logger = "0.9.0"
+log = "0.4"
 
 wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend"}
 naga = { git =  "https://github.com/freqmod/naga.git", branch ="alt_blend"}

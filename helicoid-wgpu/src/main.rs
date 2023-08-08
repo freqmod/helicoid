@@ -1078,7 +1078,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         }
 
         if scene.size_changed {
-            println!("Scene changed: Size: {:?}", scene.window_size);
+            log::trace!("Scene changed: Size: {:?}", scene.window_size);
             scene.size_changed = false;
             let physical = scene.window_size;
             surface_desc.width = physical.width;
@@ -1124,7 +1124,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         let frame = match surface.get_current_texture() {
             Ok(texture) => texture,
             Err(e) => {
-                println!("Swap-chain error: {e:?}");
+                log::error!("Swap-chain error: {e:?}");
                 return;
             }
         };
@@ -1312,7 +1312,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         let now = Instant::now();
         time_secs = (now - start).as_secs_f32();
         if now >= next_report {
-            println!("{frame_count} FPS");
+            log::info!("{frame_count} FPS");
             frame_count = 0;
             next_report = now + Duration::from_secs(1);
         }
@@ -1399,7 +1399,6 @@ fn update_inputs(
             event: WindowEvent::Resized(size),
             ..
         } => {
-            println!("Window evt: {:?}", event);
             scene.window_size = size;
             scene.size_changed = true;
             scene.changed = true;

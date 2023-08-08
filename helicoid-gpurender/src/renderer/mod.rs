@@ -12,6 +12,7 @@ use std::any::Any;
 
 use hashbrown::HashMap;
 use helicoid_protocol::{gfx::PointU32, input::ViewportInfo};
+use wgpu::{CommandEncoder, RenderPass, Surface};
 use winit::{event_loop::ControlFlow, window::WindowId as winitWindowId};
 
 type HelicoidWinitEvent<'a> = winit::event::Event<'a, ()>;
@@ -56,6 +57,21 @@ pub struct Window {
     native_handle: winitWindowId,
 }
 
+/* Context with handles to the structs required to do actual rendering, like
+device, window etc */
+pub struct RenderContext<'a> {
+    pub device: &'a wgpu::Device,
+    pub queue: &'a wgpu::Queue,
+}
+
+/* TODO: The actual contents, and lifetimes of this struct must be adjusted
+when the struct is actually used so the requirements are determined */
+pub struct RenderTargetContext<'a> {
+    pub backend: RenderContext<'a>,
+    pub encoder: &'a CommandEncoder,
+    pub pass: &'a RenderPass<'a>,
+    pub target: &'a Surface,
+}
 #[derive(Default)]
 pub struct Renderer {
     #[allow(dead_code)]
