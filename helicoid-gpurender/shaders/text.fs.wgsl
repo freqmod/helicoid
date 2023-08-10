@@ -21,9 +21,10 @@ struct VertexOutput {
 };
 
 struct FragmentOutput{
-    @location(0,0) color: vec4<f32>,
-    @location(0,1) mask: vec4<f32>,
-}
+    @location(0) @index(0) color: vec4<f32>,
+    @location(0) @index(1) mask: vec4<f32>,
+};
+
 @fragment
 fn main(vo: VertexOutput) -> FragmentOutput {
     var font_col = textureSample(atlas_texture, atlas_sampler, vo.t_position);
