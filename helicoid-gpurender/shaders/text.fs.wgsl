@@ -21,8 +21,8 @@ struct VertexOutput {
 };
 
 struct FragmentOutput{
-    @location(0) @index(0) color: vec4<f32>,
-    @location(0) @index(1) mask: vec4<f32>,
+    @location(0) color: vec4<f32>,
+    @location(0) @blend_src_1 mask: vec4<f32>,
 };
 
 @fragment

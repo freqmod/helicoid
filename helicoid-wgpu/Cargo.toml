@@ -19,7 +19,7 @@ cosmic-text = {version="0.9.0"}
 env_logger = "0.9.0"
 log = "0.4"
 
-wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend"}
+wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend_tmp"}
 naga = { git =  "https://github.com/freqmod/naga.git", branch ="alt_blend"}
 
 winit = "0.29.0-beta.0"

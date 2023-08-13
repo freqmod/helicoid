@@ -16,7 +16,7 @@ resolver = "2"
 [patch.crates-io]
 rkyv = { git = "https://github.com/rkyv/rkyv.git"}
 ordered-float = { git = "https://github.com/freqmod/rust-ordered-float.git"}
-wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend"}
+wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend_tmp"}
 naga = { git =  "https://github.com/freqmod/naga.git", branch ="alt_blend"}
 #winit = { git = "https://github.com/freqmod/winit.git", branch="keys"}
 
