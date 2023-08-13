@@ -24,6 +24,8 @@ pub trait FontOwner {
     fn swash_font(&self) -> FontRef<'_>;
 }
 const POINTS_PER_SQUARE: usize = 6;
+pub type FontId = u8;
+
 thread_local! {
     static RENDER_LIST_HOST: RefCell<Vec<RenderSquare>> = RefCell::new(Vec::new());
 }
@@ -35,7 +37,7 @@ pub struct FontPalette {
     sampler: wgpu::Sampler,
 }
 
-pub type RenderTargetId = usize;
+pub type RenderTargetId = u32;
 
 pub struct FontCacheRenderer {
     pipeline: Option<RenderPipeline>,
@@ -52,8 +54,8 @@ where
 {
     context: ScaleContext,
     font: O,
-    cache: TextureAtlases<SwashCacheKey>,
-    color: bool, // use RGB subpixel rendering
+    cache: TextureAtlases<SwashCacheKey>, // Consider using the etagere crate instead
+    color: bool,                          // use RGB subpixel rendering
     wgpu_resources: Option<WGpuResources>,
     renderers: HashMap<RenderTargetId, FontCacheRenderer>,
 }
@@ -80,6 +82,7 @@ impl FontCacheRenderer {
 #[derive(Copy, Clone, Debug, Default)]
 struct FontCacheGlobals {
     resolution: [f32; 2],
+    offset: [f32; 2],
 }
 
 unsafe impl bytemuck::Pod for FontCacheGlobals {}
@@ -155,7 +158,7 @@ impl SwashCacheKey {
     }
 }
 impl PackedSubpixels {
-    pub fn new(x_bin: SubpixelBin, y_bin: SubpixelBin, font_id: u8) -> Self {
+    pub fn new(x_bin: SubpixelBin, y_bin: SubpixelBin, font_id: FontId) -> Self {
         debug_assert!(font_id < 16);
         Self((font_id << 4) & ((x_bin as u8) << 2) & (y_bin as u8))
     }
@@ -165,7 +168,7 @@ impl PackedSubpixels {
     pub fn y_bin(&self) -> SubpixelBin {
         SubpixelBin::from(self.0 & 3)
     }
-    pub fn font_id(&self) -> u8 {
+    pub fn font_id(&self) -> FontId {
         (self.0 >> 4) & 0xF
     }
     pub fn cleared_offset(&self) -> Self {
@@ -811,9 +814,6 @@ where
         self.cache.atlas_ref(location)
     }
     fn create_resources(device: &wgpu::Device, color: bool) -> WGpuResources {
-        let globals = FontCacheGlobals {
-            resolution: [0f32, 0f32],
-        };
         let text_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("FCText Bind group layout"),
@@ -939,6 +939,7 @@ where
         }
         let globals = FontCacheGlobals {
             resolution: [resolution.0 as f32, resolution.1 as f32],
+            offset: [0f32, 0f32],
         };
         assert!(self
             .renderers

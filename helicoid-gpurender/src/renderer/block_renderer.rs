@@ -16,7 +16,8 @@ use smallvec::SmallVec;
 
 use cosmic_text;
 
-use crate::font::fontcache::{RenderSpec, RenderedRun};
+use crate::font::fontcache::{FontCache, FontId, RenderSpec, RenderTargetId, RenderedRun};
+use crate::font::swash_font::SwashFont;
 use crate::font::texture_atlases::TextureInfo;
 
 /* Seeds for hashes: The hashes should stay consistent so we can compare them */
@@ -95,6 +96,9 @@ impl WGpuClientRenderBlock {
         };
         log::trace!("Render text box: {:?} {:?}", meta.parent_path(), meta.id());
         // TODO: Render text using wgpu (see helcoid-wgpu main)
+        /* Create a vertexlist etc. and hash it. If the source and atlas haven't
+        changed reuse the vertex list. */
+
         /*
                /* TODO: Use and configuration  of blob builder and storage of fonts should be improved,
                probably delegated to storage */
@@ -464,6 +468,8 @@ impl WGpuClientRenderBlock {
 pub struct WGpuClientRenderTarget<'a> {
     pub location: &'a RenderBlockLocation,
     pub target_pass: &'a mut RenderPass<'a>,
+    pub target_id: RenderTargetId,
+    pub font_caches: HashMap<FontId, FontCache<SwashFont>>,
 }
 impl BlockGfx for WGpuClientRenderBlock {
     type RenderTarget<'b> = WGpuClientRenderTarget<'b>;
