@@ -6,7 +6,6 @@ members = [
     "helicoid-testserver",
     "helicoid-gpurender",
     "helicoid-wgpu",
-    "helicoid-client",
 ]
 
 default-members = [
