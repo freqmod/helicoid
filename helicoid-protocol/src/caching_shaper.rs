@@ -1,10 +1,10 @@
-use crate::font_options::{self, FontOptions};
+use crate::font_options::{FontOptions};
 use crate::gfx::{FontPaint, PointF32};
 use crate::swash_font::SwashFont;
 use crate::text::{
     FontParameters, ShapableMetadata, ShapableString, ShapedStringMetadata,
     ShapedStringMetadataCoordinates, ShapedTextBlock, ShapedTextGlyph, SmallFontOptions,
-    SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+    SHAPABLE_STRING_ALLOC_LEN,
 };
 use smallvec::SmallVec;
 use std::env;
@@ -271,7 +271,7 @@ impl CachingShaper {
     ) {
         let _cluster = CharCluster::new();
         let meta_span = &text.metadata.spans[meta_span_index as usize];
-        let meta_coords = &text
+        let _meta_coords = &text
             .metadata
             .span_coordinates
             .get(meta_span.span_coordinates as usize);
@@ -542,7 +542,9 @@ impl CachingShaper {
 
                 let coordinates = ShapedStringMetadataCoordinates {
                     baseline_x: OrderedFloat(current_pixel_offset - start_pixel_offset),
-                    baseline_y: OrderedFloat(y_advance + y_offset),
+                    baseline_y: OrderedFloat(y_offset),
+                    fixed_advance_y: OrderedFloat(y_advance), // per line
+                    ..Default::default()
                 };
                 resulting_block.metadata.push(
                     (resulting_block.glyphs.len() - glyphs_start_offset) as u16,

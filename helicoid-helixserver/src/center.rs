@@ -17,7 +17,6 @@ use helicoid_protocol::{
 use helix_core::{
     doc_formatter::{DocumentFormatter, GraphemeSource, TextFormat},
     graphemes::Grapheme,
-    smallvec,
     str_utils::char_to_byte_idx,
     syntax::{Highlight, HighlightEvent},
     text_annotations::TextAnnotations,

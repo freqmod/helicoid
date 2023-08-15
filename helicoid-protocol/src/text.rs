@@ -70,6 +70,8 @@ pub struct ShapedStringMetadataSpan {
 pub struct ShapedStringMetadataCoordinates {
     pub baseline_x: OrderedFloat<f32>,
     pub baseline_y: OrderedFloat<f32>,
+    pub fixed_advance_x: OrderedFloat<f32>, // advance per (monospace glyph)
+    pub fixed_advance_y: OrderedFloat<f32>, // advance per line
 }
 
 #[derive(
@@ -207,12 +209,8 @@ impl ShapableString {
     pub fn from_text(text: &str) -> Self {
         let text = SmallVec::from_slice(text.as_bytes());
         let simple_run = ShapedStringMetadata {
-            //substring_length: text.len() as u16,
             font_info: Default::default(),
             paint: FontPaint::default(),
-            //advance_x: OrderedFloat(0f32),
-            //advance_y: OrderedFloat(0f32),
-            //baseline_y: OrderedFloat(0f32),
         };
         let substring_length = text.len() as u16;
         ShapableString {
