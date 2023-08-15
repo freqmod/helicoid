@@ -252,7 +252,7 @@ impl HeliconeEditor {
             lctrl_pressed: modifier_state.ctrl(),
             lalt_pressed: modifier_state.alt(),
             llogo_pressed: modifier_state.logo(),
-            caps_pressed: modifier_state.caps(),
+            caps_pressed: false, // NOT supported in this version
             rshift_pressed: false,
             rctrl_pressed: false,
             ralt_pressed: false,

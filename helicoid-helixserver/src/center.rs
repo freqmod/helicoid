@@ -9,13 +9,15 @@ use helicoid_protocol::{
         ShadowMetaContainerBlockInner, ShadowMetaTextBlock,
     },
     text::{
-        FontParameters, ShapableString, ShapedStringMetadata, ShapedTextBlock, SmallFontOptions,
-        SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+        FontParameters, ShapableMetadata, ShapableString, ShapedStringMetadata,
+        ShapedStringMetadataSpan, ShapedTextBlock, SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN,
+        SHAPABLE_STRING_ALLOC_RUNS,
     },
 };
 use helix_core::{
     doc_formatter::{DocumentFormatter, GraphemeSource, TextFormat},
     graphemes::Grapheme,
+    smallvec,
     str_utils::char_to_byte_idx,
     syntax::{Highlight, HighlightEvent},
     text_annotations::TextAnnotations,
@@ -168,11 +170,14 @@ impl LayoutParagraphEntry {
     }
 
     fn render(&mut self) -> Result<RenderParagraphSource, ()> {
-        let text = ShapableString {
+        let mut text = ShapableString {
             text: self.layout.text.clone(),
-            metadata_runs: SmallVec::from_iter(self.layout.metadata_runs.iter().map(|run| {
-                assert!(f32::from(run.font_size) > 0f32);
-                let font_info = SmallFontOptions {
+            metadata: ShapableMetadata::default(),
+        };
+
+        for run in self.layout.metadata_runs.iter() {
+            let metadata = ShapedStringMetadata {
+                font_info: SmallFontOptions {
                     family_id: 0,
                     font_parameters: FontParameters {
                         size: run.font_size,
@@ -185,26 +190,18 @@ impl LayoutParagraphEntry {
                         hinting: Default::default(),
                         edging: Default::default(),
                     },
-                };
-                let paint = FontPaint {
+                },
+                paint: FontPaint {
                     color: DEFAULT_TEXT_COLOR,
                     ..Default::default()
-                };
-
-                ShapedStringMetadata {
-                    substring_length: run.section_length,
-                    font_info,
-                    paint,
-                    ..Default::default()
-                }
-            })),
-        };
-        /*        let rendered = RenderParagraph {
-            location: todo!(),
-            data_hash: 0,
-            last_modified: current_generation,
-            contents: MaybeRenderedParagraph::Source(RenderParagraphSource { text }),
-        };*/
+                },
+            };
+            text.push_span(
+                metadata,
+                ShapedStringMetadataSpan::simple(run.section_length),
+                None,
+            );
+        }
         Ok(RenderParagraphSource {
             text,
             location: Default::default(),

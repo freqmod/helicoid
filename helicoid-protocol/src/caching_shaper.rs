@@ -1,9 +1,10 @@
-use crate::font_options::FontOptions;
+use crate::font_options::{self, FontOptions};
 use crate::gfx::{FontPaint, PointF32};
 use crate::swash_font::SwashFont;
 use crate::text::{
-    FontParameters, ShapableString, ShapedStringMetadata, ShapedTextBlock, ShapedTextGlyph,
-    SmallFontOptions, SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
+    FontParameters, ShapableMetadata, ShapableString, ShapedStringMetadata,
+    ShapedStringMetadataCoordinates, ShapedTextBlock, ShapedTextGlyph, SmallFontOptions,
+    SHAPABLE_STRING_ALLOC_LEN, SHAPABLE_STRING_ALLOC_RUNS,
 };
 use smallvec::SmallVec;
 use std::env;
@@ -235,7 +236,7 @@ impl CachingShaper {
     */
     /* Make sure that all fonts that may be needed for building clusters are cached */
     fn cache_fonts(&self, text: &ShapableString, backup_font_families: &Option<SmallVec<[u8; 8]>>) {
-        for meta_run in text.metadata_runs.iter() {
+        for meta_run in text.metadata.runs.iter() {
             let _ = self.cache_font_for_index(&meta_run.font_info);
             //let Some(specified_font) = self.font_cache.get(&meta_run.font_info) else {return (SmallVec::new(), SmallVec::new())};
             if let Some(font_list) = backup_font_families.as_ref() {
@@ -261,17 +262,22 @@ impl CachingShaper {
     fn build_clusters(
         inner: &CachingShaperInner,
         text: &ShapableString,
-        meta_run_index: usize,
+        meta_span_index: usize,
         meta_run_start: usize,
         backup_font_families: &Option<SmallVec<[u8; 8]>>,
     ) -> (
         SmallVec<[CharCluster; SHAPABLE_STRING_ALLOC_LEN]>,
-        SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]>,
+        ShapableMetadata,
     ) {
         let _cluster = CharCluster::new();
-        let meta_run = &text.metadata_runs[meta_run_index];
+        let meta_span = &text.metadata.spans[meta_span_index as usize];
+        let meta_coords = &text
+            .metadata
+            .span_coordinates
+            .get(meta_span.span_coordinates as usize);
+        let meta_run = &text.metadata.runs[meta_span.metadata_info as usize];
         let text_str_data =
-            &text.text[meta_run_start..(meta_run_start + meta_run.substring_length as usize)];
+            &text.text[meta_run_start..(meta_run_start + meta_span.substring_length as usize)];
         let text_str = std::str::from_utf8(text_str_data).unwrap();
         // Enumerate the characters storing the glyph index in the user data so that we can position
         // glyphs according to Neovim's grid rules
@@ -394,8 +400,7 @@ impl CachingShaper {
                 );
             }
         }
-        let mut result_metadatas: SmallVec<[ShapedStringMetadata; SHAPABLE_STRING_ALLOC_RUNS]> =
-            SmallVec::new();
+        let mut result_metadata = ShapableMetadata::default();
         let mut last_result_metadata: Option<SmallFontOptions> = None;
         let mut last_result_metadata_start = 0;
 
@@ -416,28 +421,28 @@ impl CachingShaper {
 
         for (cluster_index, (_, font_info)) in results.iter().enumerate() {
             if last_result_metadata.as_ref() != Some(font_info) {
-                result_metadatas.push(ShapedStringMetadata {
-                    substring_length: (cluster_index - last_result_metadata_start) as u16,
-                    font_info: last_result_metadata.take().unwrap(),
-                    paint: FontPaint::default(),
-                    advance_x: OrderedFloat(0f32),
-                    advance_y: OrderedFloat(0f32),
-                    baseline_y: OrderedFloat(0f32),
-                });
+                result_metadata.push(
+                    (cluster_index - last_result_metadata_start) as u16,
+                    ShapedStringMetadata {
+                        font_info: last_result_metadata.take().unwrap(),
+                        paint: FontPaint::default(),
+                    },
+                    None,
+                );
                 last_result_metadata = Some(font_info.clone());
                 last_result_metadata_start = cluster_index;
             }
         }
 
         if last_result_metadata.is_some() {
-            result_metadatas.push(ShapedStringMetadata {
-                substring_length: (results.len() - last_result_metadata_start) as u16,
-                font_info: last_result_metadata.take().unwrap(),
-                paint: FontPaint::default(),
-                advance_x: OrderedFloat(0f32),
-                advance_y: OrderedFloat(0f32),
-                baseline_y: OrderedFloat(0f32),
-            });
+            result_metadata.push(
+                (results.len() - last_result_metadata_start) as u16,
+                ShapedStringMetadata {
+                    font_info: last_result_metadata.take().unwrap(),
+                    paint: FontPaint::default(),
+                },
+                None,
+            );
         }
 
         let mut result_clusters: SmallVec<[CharCluster; SHAPABLE_STRING_ALLOC_LEN]> =
@@ -445,7 +450,7 @@ impl CachingShaper {
         result_clusters.reserve(results.len());
         result_clusters.extend(results.drain(..).map(|(c, _)| c));
 
-        (result_clusters, result_metadatas)
+        (result_clusters, result_metadata)
     }
 
     /*    pub fn adjust_font_cache_size(&self) {
@@ -478,17 +483,18 @@ impl CachingShaper {
         let mut current_pixel_offset = 0f32;
         let mut max_y_advance = 0f32;
 
-        for (run_index, run) in text.metadata_runs.iter().enumerate() {
+        for (span_index, span) in text.metadata.spans.iter().enumerate() {
             let (mut cluster_list, shaped_string_list) = Self::build_clusters(
                 &inner,
                 text,
-                run_index,
+                span_index,
                 current_text_offset,
                 backup_font_families,
             );
             let mut current_cluster_offset = 0;
-            for shaped_string_run in shaped_string_list {
-                let font_options = &shaped_string_run.font_info;
+            for shaped_string_run in shaped_string_list.spans {
+                let font_options =
+                    &shaped_string_list.runs[shaped_string_run.metadata_info as usize].font_info;
                 /* If this font is not valid it should not be returned by build clusters */
                 let font = inner
                     .font_cache
@@ -534,19 +540,18 @@ impl CachingShaper {
                 client? Like the total with of the text box (to know the size of the charaters)
                 */
 
-                let mut metadata = shaped_string_run.clone();
-                metadata.substring_length =
-                    (resulting_block.glyphs.len() - glyphs_start_offset) as u16;
-                metadata.paint = run.paint.clone();
-                metadata.set_advance(
-                    current_pixel_offset - start_pixel_offset,
-                    y_advance,
-                    y_offset,
+                let coordinates = ShapedStringMetadataCoordinates {
+                    baseline_x: OrderedFloat(current_pixel_offset - start_pixel_offset),
+                    baseline_y: OrderedFloat(y_advance + y_offset),
+                };
+                resulting_block.metadata.push(
+                    (resulting_block.glyphs.len() - glyphs_start_offset) as u16,
+                    text.metadata.runs[shaped_string_run.metadata_info as usize].clone(),
+                    Some(coordinates),
                 );
-                resulting_block.metadata_runs.push(metadata);
                 current_cluster_offset += shaped_string_run.substring_length as usize;
             }
-            current_text_offset += run.substring_length as usize;
+            current_text_offset += span.substring_length as usize;
         }
         resulting_block.extent = PointF32::new(current_pixel_offset, max_y_advance);
         trace!("Shaped text: {:?}", resulting_block);

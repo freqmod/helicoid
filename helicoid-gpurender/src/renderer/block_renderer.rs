@@ -20,6 +20,8 @@ use crate::font::fontcache::{FontCache, FontId, RenderSpec, RenderTargetId, Rend
 use crate::font::swash_font::SwashFont;
 use crate::font::texture_atlases::TextureInfo;
 
+use super::fontconverter::FontConverter;
+
 /* Seeds for hashes: The hashes should stay consistent so we can compare them */
 const S1: u64 = 0x1199AACCDD117766;
 const S2: u64 = 0x99AACCDD11776611;
@@ -46,6 +48,8 @@ impl std::fmt::Debug for RenderedRenderBlock {
 struct TextRenderBlockInner {
     source: RenderSpec,
     runs: SmallVec<[RenderedRun; SHAPABLE_STRING_ALLOC_RUNS]>,
+    spec_hash: u64,
+    shaped_string_hash: Option<u64>,
 }
 #[derive(Default, Debug)]
 enum RenderBlockInner {
@@ -95,6 +99,21 @@ impl WGpuClientRenderBlock {
             panic!("Render text box should not be called with a description that is not a ShapedTextBlock")
         };
         log::trace!("Render text box: {:?} {:?}", meta.parent_path(), meta.id());
+        let remake_gpu_buffers = match &self.inner {
+            RenderBlockInner::None => false,
+            RenderBlockInner::TextBlock(inner) => {
+                if inner.shaped_string_hash.is_none() {
+                    false
+                } else {
+                    //let spec_hash = stb.metadata_runs;
+                    //if inner.spec_hash == spec_hash {}
+                    false
+                }
+            }
+            RenderBlockInner::MetaBlock() => panic!(
+                "A meta block inner should not be present for a shaped text block description"
+            ),
+        };
         // TODO: Render text using wgpu (see helcoid-wgpu main)
         /* Create a vertexlist etc. and hash it. If the source and atlas haven't
         changed reuse the vertex list. */
@@ -469,7 +488,8 @@ pub struct WGpuClientRenderTarget<'a> {
     pub location: &'a RenderBlockLocation,
     pub target_pass: &'a mut RenderPass<'a>,
     pub target_id: RenderTargetId,
-    pub font_caches: HashMap<FontId, FontCache<SwashFont>>,
+    pub font_caches: &'a mut HashMap<FontId, FontCache<SwashFont>>,
+    pub font_convertor: &'a mut FontConverter,
 }
 impl BlockGfx for WGpuClientRenderBlock {
     type RenderTarget<'b> = WGpuClientRenderTarget<'b>;

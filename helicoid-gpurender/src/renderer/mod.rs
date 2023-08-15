@@ -3,6 +3,7 @@
 //pub mod fonts;
 //pub mod grid_renderer;
 pub mod block_renderer;
+pub mod fontconverter;
 //pub mod profiler;
 //mod rendered_window;
 //mod text_box_renderer;

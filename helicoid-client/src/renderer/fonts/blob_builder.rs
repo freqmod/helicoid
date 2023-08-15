@@ -105,36 +105,30 @@ impl ShapedBlobBuilder {
         trace!("Shaping text: {:?}", text);
 
         let mut current_run_start = 0;
-        for shaped_string in text.metadata_runs.iter() {
-            if shaped_string.substring_length == 0 {
+        for span in text.metadata.spans.iter() {
+            if span.substring_length == 0 {
                 continue;
             }
-            let current_run_end = current_run_start + shaped_string.substring_length as usize;
+            let current_run_end = current_run_start + span.substring_length as usize;
             let subglyphs = &text.glyphs[current_run_start..current_run_end];
+            let run = &text.metadata.runs[span.metadata_info as usize];
 
             //let resolved_fonts =  SmallVec::<[u8;8]>::new();// self.fonts.get()
-            let font: &KeyedFont = if let Some(font) = self.font_cache.get(&shaped_string.font_info)
-            {
-                log::trace!(
-                    "Succeded using cached font with key: {:?}",
-                    &shaped_string.font_info
-                );
+            let font: &KeyedFont = if let Some(font) = self.font_cache.get(&run.font_info) {
+                log::trace!("Succeded using cached font with key: {:?}", &run.font_info);
 
                 font
             } else {
-                if let Some(font_name) = self
-                    .font_names
-                    .get(shaped_string.font_info.family_id as usize)
-                {
+                if let Some(font_name) = self.font_names.get(run.font_info.family_id as usize) {
                     if let Some(font_name) = font_name {
                         let loaded = KeyedFont::load_keyed(
                             &mut self.font_manager,
                             &base_asset_path(),
                             FontKey::from_parameters(
-                                shaped_string.font_info.font_parameters.clone(),
+                                run.font_info.font_parameters.clone(),
                                 Some(font_name.clone()),
                             ),
-                            *shaped_string.font_info.font_parameters.size,
+                            *run.font_info.font_parameters.size,
                         );
                         if let Some(loaded) = loaded {
                             log::trace!(
@@ -143,42 +137,35 @@ impl ShapedBlobBuilder {
                                 &base_asset_path(),
                                 font_name
                             );
-                            self.font_cache
-                                .insert(shaped_string.font_info.clone(), loaded);
+                            self.font_cache.insert(run.font_info.clone(), loaded);
                         } else {
                             log::trace!("Failed loading font with name: {}", font_name);
                         }
                     }
                 }
 
-                if let Some(cached_font) = self.font_cache.get(&shaped_string.font_info) {
+                if let Some(cached_font) = self.font_cache.get(&run.font_info) {
                     cached_font
                 } else {
                     log::trace!(
                         "Could not get font for key, using default font: {:?}",
-                        &shaped_string.font_info
+                        &run.font_info
                     );
-                    if let Some(font) = self
-                        .default_font
-                        .get(&shaped_string.font_info.font_parameters)
-                    {
+                    if let Some(font) = self.default_font.get(&run.font_info.font_parameters) {
                         &font
                     } else {
-                        self.insert_sized_default(shaped_string.font_info.font_parameters.clone());
+                        self.insert_sized_default(run.font_info.font_parameters.clone());
                         &self
                             .default_font
-                            .get(&shaped_string.font_info.font_parameters)
+                            .get(&run.font_info.font_parameters)
                             .unwrap()
                     }
                 }
             };
 
             let mut blob_builder = TextBlobBuilder::new();
-            let (glyphs, positions) = blob_builder.alloc_run_pos(
-                &font.skia_font(),
-                shaped_string.substring_length as usize,
-                None,
-            );
+            let (glyphs, positions) =
+                blob_builder.alloc_run_pos(&font.skia_font(), span.substring_length as usize, None);
             for (i, shaped_glyph) in subglyphs.iter().enumerate() {
                 glyphs[i] = shaped_glyph.glyph();
                 positions[i].x = shaped_glyph.x();

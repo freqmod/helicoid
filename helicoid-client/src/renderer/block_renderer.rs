@@ -8,6 +8,7 @@ use helicoid_protocol::gfx::{
     SVG_RESOURCE_NAME_LEN,
 };
 use helicoid_protocol::gfx::{RenderBlockDescription, RenderBlockId};
+use helicoid_protocol::text::ShapedStringMetadataCoordinates;
 use parking_lot::Mutex;
 use skia_safe as skia;
 
@@ -337,27 +338,37 @@ impl SkiaClientRenderBlock {
             x,
             y,
             shaped
-                .metadata_runs
+                .metadata
+                .runs
                 .first()
                 .map(|r| &r.font_info.font_parameters.size)
         );
-        for (blob, metadata_run) in blobs.iter().zip(shaped.metadata_runs.iter()) {
-            let paint = font_paint_to_sk_paint(&metadata_run.paint);
+        for (blob, span) in blobs.iter().zip(shaped.metadata.spans.iter()) {
+            let paint =
+                font_paint_to_sk_paint(&shaped.metadata.runs[span.metadata_info as usize].paint);
             canvas.draw_text_blob(blob, (x as f32, y as f32), &paint);
         }
         let mut rect_paint = Paint::default();
         rect_paint.set_stroke_width(1.0);
         rect_paint.set_style(skia::PaintStyle::Stroke);
-        for metadata_run in shaped.metadata_runs.iter() {
-            if metadata_run.font_info.font_parameters.underlined {
+        let default_coordinates = ShapedStringMetadataCoordinates::default();
+        for span in shaped.metadata.spans.iter() {
+            let font_info = &shaped.metadata.runs[span.metadata_info as usize].font_info;
+            let coords = &shaped
+                .metadata
+                .span_coordinates
+                .get(span.span_coordinates as usize)
+                .clone()
+                .unwrap_or(&default_coordinates);
+            if font_info.font_parameters.underlined {
                 canvas.draw_line(
                     Point {
                         x: x as f32,
-                        y: y + metadata_run.baseline_y(),
+                        y: y + coords.baseline_y(),
                     },
                     Point {
-                        x: x as f32 + metadata_run.advance_x(),
-                        y: y + metadata_run.baseline_y(),
+                        x: x as f32 + coords.baseline_x(),
+                        y: y + coords.baseline_y(),
                     },
                     &rect_paint,
                 );
@@ -372,7 +383,7 @@ impl SkiaClientRenderBlock {
                 },
                 &rect_paint,
             );*/
-            x += metadata_run.advance_x();
+            //            x += span.advance_x();
         }
         canvas.restore();
     }

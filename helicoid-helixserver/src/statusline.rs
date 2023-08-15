@@ -164,6 +164,7 @@ impl StatusLineModel {
                 StatusLineElement::VersionControl => {}
                 StatusLineElement::WindowIdentifiers => {}
                 StatusLineElement::Register => {}
+                StatusLineElement::ReadOnlyIndicator => {}
             }
         }
     }
@@ -208,7 +209,8 @@ impl StatusLineModel {
     ) {
         let shaper = context.shaper();
         let char_width = string_to_shape
-            .metadata_runs
+            .metadata
+            .runs
             .first()
             .map(|meta| shaper.info(&meta.font_info).map(|i| i.1))
             .flatten()
