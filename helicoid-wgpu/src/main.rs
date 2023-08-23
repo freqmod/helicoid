@@ -1144,10 +1144,11 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
                 _pad: 0.0,
             }]),
         );
-        font_cache
-            .renderer(&0)
-            .unwrap()
-            .resolution_changed(&queue, (scene.window_size.width, scene.window_size.height));
+        font_cache.renderer(&0).unwrap().resolution_changed((
+            scene.window_size.width as f32,
+            scene.window_size.height as f32,
+        ));
+        font_cache.renderer(&0).unwrap().sync_globals(&queue);
 
         queue.write_buffer(&prims_ubo, 0, bytemuck::cast_slice(&cpu_primitives));
 

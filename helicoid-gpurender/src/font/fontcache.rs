@@ -45,6 +45,7 @@ pub struct FontCacheRenderer {
     bind_group: Option<BindGroup>,
     globals_ubo: Option<wgpu::Buffer>,
     globals: FontCacheGlobals,
+    globals_dirty: bool,
     multisample: MultisampleState,
 }
 
@@ -247,17 +248,37 @@ impl FontCacheRenderer {
             pipeline: None,
             bind_group: None,
             globals_ubo: None,
+            globals_dirty: false,
             globals,
             multisample,
         }
     }
-    pub fn resolution_changed(&mut self, queue: &wgpu::Queue, resolution: (u32, u32)) {
-        self.globals.resolution = [resolution.0 as f32, resolution.1 as f32];
-        queue.write_buffer(
-            &self.globals_ubo.as_ref().unwrap(),
-            0,
-            bytemuck::cast_slice(&[self.globals]),
-        );
+    pub fn resolution_changed(&mut self, resolution: (f32, f32)) {
+        if self.globals.resolution == [resolution.0, resolution.1] {
+            return;
+        }
+        self.globals.resolution = [resolution.0, resolution.1];
+        self.globals_dirty = true;
+    }
+    pub fn offset_changed(&mut self, offset: (f32, f32)) {
+        if self.globals.offset == [offset.0, offset.1] {
+            return;
+        }
+        self.globals.offset = [offset.0, offset.1];
+        self.globals_dirty = true;
+    }
+    pub fn defile_globals(&mut self) {
+        self.globals_dirty = true;
+    }
+    pub fn sync_globals(&mut self, queue: &wgpu::Queue) {
+        if self.globals_dirty {
+            queue.write_buffer(
+                &self.globals_ubo.as_ref().unwrap(),
+                0,
+                bytemuck::cast_slice(&[self.globals]),
+            );
+            self.globals_dirty = false;
+        }
     }
     /* This should ideally only run on init for the surface */
     fn setup_resources(
@@ -273,6 +294,7 @@ impl FontCacheRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         }));
+        self.globals_dirty = true;
         let resources = wgpu_resources;
         self.update_pipeline(&resources, color, atlas, device);
         self.update_bind_group(resources, atlas, device);
@@ -813,6 +835,9 @@ where
     pub fn atlas_ref(&self, location: &AtlasLocation) -> Option<&TextureAtlas<SwashCacheKey>> {
         self.cache.atlas_ref(location)
     }
+    pub fn atlases_ref(&mut self) -> &TextureAtlases<SwashCacheKey> {
+        &self.cache
+    }
     fn create_resources(device: &wgpu::Device, color: bool) -> WGpuResources {
         let text_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1081,6 +1106,9 @@ impl RenderSpec {
     pub fn len(&self) -> usize {
         self.elements.len()
     }
+    pub fn clear(&mut self) {
+        self.elements.clear();
+    }
 }
 impl RenderSquare {
     pub fn from_spec_element(
@@ -1246,6 +1274,16 @@ impl RenderedRun {
             0,
             bytemuck::cast_slice(self.host_indices.as_slice()),
         );
+    }
+    pub fn compatible(&self, atlas: &TextureAtlases<SwashCacheKey>) -> bool {
+        let valid_generations = atlas.valid_generations_raw();
+        self.first_char_generation
+            .map(|gen| gen > valid_generations.0)
+            .unwrap_or(true)
+            && self
+                .last_char_generation
+                .map(|gen| gen < valid_generations.1)
+                .unwrap_or(true)
     }
 }
 #[cfg(test)]

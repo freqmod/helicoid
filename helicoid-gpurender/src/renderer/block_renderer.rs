@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use helicoid_protocol::text::SHAPABLE_STRING_ALLOC_RUNS;
+use helicoid_protocol::text::{ShapedStringMetadata, ShapedTextBlock, SHAPABLE_STRING_ALLOC_RUNS};
 use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 use wgpu::RenderPass;
@@ -18,7 +18,7 @@ use cosmic_text;
 
 use crate::font::fontcache::{FontCache, FontId, RenderSpec, RenderTargetId, RenderedRun};
 use crate::font::swash_font::SwashFont;
-use crate::font::texture_atlases::TextureInfo;
+use crate::font::texture_atlases::{AtlasLocation, TextureInfo};
 
 use super::fontconverter::FontConverter;
 
@@ -46,10 +46,11 @@ impl std::fmt::Debug for RenderedRenderBlock {
 
 #[derive(Debug)]
 struct TextRenderBlockInner {
+    spec: ShapedTextBlock,
     source: RenderSpec,
-    runs: SmallVec<[RenderedRun; SHAPABLE_STRING_ALLOC_RUNS]>,
-    spec_hash: u64,
-    shaped_string_hash: Option<u64>,
+    runs: SmallVec<[(u8, RenderedRun); SHAPABLE_STRING_ALLOC_RUNS]>,
+    source_hash: u64,
+    spec_hash: Option<u64>,
 }
 #[derive(Default, Debug)]
 enum RenderBlockInner {
@@ -64,6 +65,21 @@ pub struct WGpuClientRenderBlock {
     //    rendered: Option<RenderedRenderBlock>,
 }
 
+fn value_or_backup<'m, K, V, S>(
+    map: &'m mut HashMap<K, V, S>,
+    primary_key: &K,
+    alternate_key: &K,
+) -> &'m mut V
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
+    if map.contains_key(primary_key) {
+        map.get_mut(primary_key).unwrap()
+    } else {
+        map.get_mut(alternate_key).unwrap()
+    }
+}
 impl WGpuClientRenderBlock {
     pub fn new(_desc: &RenderBlockDescription) -> Self {
         Self {
@@ -99,15 +115,93 @@ impl WGpuClientRenderBlock {
             panic!("Render text box should not be called with a description that is not a ShapedTextBlock")
         };
         log::trace!("Render text box: {:?} {:?}", meta.parent_path(), meta.id());
-        let remake_gpu_buffers = match &self.inner {
-            RenderBlockInner::None => false,
+        match &mut self.inner {
+            RenderBlockInner::None => {}
             RenderBlockInner::TextBlock(inner) => {
-                if inner.shaped_string_hash.is_none() {
-                    false
+                /* Is reconversion from spec to cache lists required */
+                let spec_changed = if let Some(hash) = inner.spec_hash {
+                    let mut hasher =
+                        ahash::random_state::RandomState::with_seeds(S1, S2, S3, S4).build_hasher();
+                    stb.hash(&mut hasher);
+
+                    inner.spec_hash != Some(hasher.finish())
                 } else {
-                    //let spec_hash = stb.metadata_runs;
-                    //if inner.spec_hash == spec_hash {}
-                    false
+                    true
+                };
+                let reconvert = if !spec_changed {
+                    /* If not spec changed, make sure all altlas references still are valid */
+                    inner
+                        .spec
+                        .metadata
+                        .runs
+                        .iter()
+                        .enumerate()
+                        .all(|(idx, run)| {
+                            let font_cache =
+                                value_or_backup(target.font_caches, &run.font_info.family_id, &0);
+                            if let Some(rendered_run) = inner.runs.get(idx) {
+                                !(rendered_run.0 == run.font_info.family_id
+                                    && rendered_run.1.compatible(font_cache.atlases_ref()))
+                            } else {
+                                true
+                            }
+                        })
+                } else {
+                    /* If spec has changed, always reconvert text */
+                    true
+                };
+                if reconvert {
+                    inner.spec = stb.clone();
+                    inner.runs.clear();
+                    let mut hasher =
+                        ahash::random_state::RandomState::with_seeds(S1, S2, S3, S4).build_hasher();
+                    inner.spec.hash(&mut hasher);
+                    inner.spec_hash = Some(hasher.finish());
+
+                    for (idx, run) in inner.spec.metadata.runs.iter().enumerate() {
+                        let font_cache =
+                            value_or_backup(target.font_caches, &run.font_info.family_id, &0);
+                        let rendered_run = font_cache
+                            .render_run(
+                                &target.target_device,
+                                target
+                                    .font_convertor
+                                    .convert_and_set(&inner.spec, idx)
+                                    .unwrap(),
+                            )
+                            .unwrap();
+                        inner.runs.push((run.font_info.family_id, rendered_run));
+                    }
+                    /* Render the converted runs to the pipeline, this is done every frame */
+
+                    for (cache_id, rendered_run) in inner.runs.iter() {
+                        let font_cache = value_or_backup(target.font_caches, &cache_id, &0);
+
+                        /* If the texture has changed because of the conversion above, it should be transferred to the device.
+                        TODOS: Consider handling this on a higher level. What happens if the atlas is transformed after
+                               the text is converted, before the frame is rendered?*/
+                        font_cache
+                            .atlas(&AtlasLocation::atlas_only(0))
+                            .unwrap()
+                            .update_texture(&target.target_device, &target.target_queue);
+                        /* TODO: Can we avoid using an index buffer */
+                        font_cache.renderer(&0).unwrap().setup_pipeline(&mut pass);
+                        let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
+                        pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
+
+                        let text_vbo = text_render_run.gpu_vertices.as_ref().unwrap();
+                        pass.set_vertex_buffer(0, text_vbo.slice(..));
+
+                        pass.draw_indexed(
+                            0..(buffer_indices.size() as u32 / std::mem::size_of::<u16>() as u32),
+                            0,
+                            0..1,
+                        );
+
+                        //target.fon
+
+                        //target.target_pass
+                    }
                 }
             }
             RenderBlockInner::MetaBlock() => panic!(
@@ -120,6 +214,7 @@ impl WGpuClientRenderBlock {
 
         /*
                /* TODO: Use and configuration  of blob builder and storage of fonts should be improved,
+
                probably delegated to storage */
                let shaped = stb;
                let blobs = SHAPED_BLOB_BUILDER.with(|blob_builder| {
@@ -487,6 +582,7 @@ impl WGpuClientRenderBlock {
 pub struct WGpuClientRenderTarget<'a> {
     pub location: &'a RenderBlockLocation,
     pub target_pass: &'a mut RenderPass<'a>,
+    pub target_device: &'a mut wgpu::Device,
     pub target_id: RenderTargetId,
     pub font_caches: &'a mut HashMap<FontId, FontCache<SwashFont>>,
     pub font_convertor: &'a mut FontConverter,
