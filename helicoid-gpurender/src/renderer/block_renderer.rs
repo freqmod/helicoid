@@ -185,6 +185,7 @@ impl WGpuClientRenderBlock {
                             .unwrap()
                             .update_texture(&target.target_device, &target.target_queue);
                         /* TODO: Can we avoid using an index buffer */
+                        /*
                         font_cache.renderer(&0).unwrap().setup_pipeline(&mut pass);
                         let buffer_indices = text_render_run.gpu_indices.as_ref().unwrap();
                         pass.set_index_buffer(buffer_indices.slice(..), wgpu::IndexFormat::Uint16);
@@ -196,7 +197,7 @@ impl WGpuClientRenderBlock {
                             0..(buffer_indices.size() as u32 / std::mem::size_of::<u16>() as u32),
                             0,
                             0..1,
-                        );
+                        );*/
 
                         //target.fon
 
@@ -583,6 +584,7 @@ pub struct WGpuClientRenderTarget<'a> {
     pub location: &'a RenderBlockLocation,
     pub target_pass: &'a mut RenderPass<'a>,
     pub target_device: &'a mut wgpu::Device,
+    pub target_queue: &'a mut wgpu::Queue,
     pub target_id: RenderTargetId,
     pub font_caches: &'a mut HashMap<FontId, FontCache<SwashFont>>,
     pub font_convertor: &'a mut FontConverter,
