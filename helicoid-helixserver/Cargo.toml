@@ -14,7 +14,7 @@ tokio = { version = "1", features = ["full"] }
 clap = { version = "4.0.32", features = ["cargo", "derive", "env"] }
 env_logger = {version = "0.10" }
 log = "0.4.16"
-anyhow = {version="1.0.68"}
+anyhow = {version="1.0"}
 termion-input-tokio = "0.3.0"
 termion = "^1"
 futures = { version = "0.3.25" }

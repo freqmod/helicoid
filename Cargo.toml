@@ -16,8 +16,8 @@ resolver = "2"
 [patch.crates-io]
 rkyv = { git = "https://github.com/rkyv/rkyv.git"}
 ordered-float = { git = "https://github.com/freqmod/rust-ordered-float.git"}
-wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend_tmp"}
-naga = { git =  "https://github.com/freqmod/naga.git", branch ="alt_blend"}
+wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend"}
+naga = { git =  "https://github.com/gfx-rs/naga.git", branch ="master"}
 #winit = { git = "https://github.com/freqmod/winit.git", branch="keys"}
 
 # Needed by helix repo crates (helix-core etc.)

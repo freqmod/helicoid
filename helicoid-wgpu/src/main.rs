@@ -433,6 +433,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         //backends: wgpu::Backends::GL,
         backends: wgpu::Backends::all(),
         dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
+        gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
     });
 
     // create an surface
@@ -450,7 +451,7 @@ println!(\"Insert-err: {:?} {:?}\", &key, e);            ",
         &wgpu::DeviceDescriptor {
             label: None,
             features: if font_subpixel_color {
-                wgpu::Features::default().union(wgpu::Features::BLEND_FUNC_EXTENDED)
+                wgpu::Features::default().union(wgpu::Features::DUAL_SOURCE_BLENDING)
             } else {
                 wgpu::Features::default()
             },

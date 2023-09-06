@@ -13,15 +13,15 @@ winit = "0.29.0-beta.0"
 bytemuck = "1.13.0"
 cosmic-text = {version="0.9.0"}
 swash = {version="0.1.8"}
-wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend_tmp"}
-naga = { git =  "https://github.com/freqmod/naga.git", branch ="alt_blend"}
+wgpu = { git =  "https://github.com/freqmod/wgpu.git", branch ="alt_blend"}
+naga = { git =  "https://github.com/gfx-rs/naga.git", branch ="master"}
 
 copypasta = "0.8.1"
 
 helicoid-protocol = {path="../helicoid-protocol"}
 rkyv = { version = "0.8", features = ["validation", "smallvec"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
-anyhow = {version="1.0.68"}
+anyhow = {version="1.0"}
 hashbrown = {version = "0.13.2"}
 ahash = {version = "0.8.3"}
 smallvec = {version = "1.10", features = ["serde", "const_generics"]}

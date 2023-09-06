@@ -49,7 +49,7 @@ smallvec = {version = "1.10", features = ["serde", "const_generics"]}
 half = {version = "2.1", features=["serde", "bytemuck"]}
 rkyv = { version = "0.8", features = ["validation", "smallvec"] }
 ordered-float = { version = "3.0", features = ["bytemuck", "rkyv", "serde"]}
-anyhow = {version="1.0.68"}
+anyhow = {version="1.0"}
 #skia-safe = {path = "/home/freqmod/Downloads/rust-skia/skia-safe/",features = ["gl"]}
 skia-safe = {version="0.58",features = ["gl"]}
 hashbrown = {version = "0.13.2"}
